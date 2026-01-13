@@ -96,7 +96,7 @@
               </p>
             </div>
             
-            <a href="http://localhost:3000/loans/${e.loanId}" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
+            <a href="https://feyza.app/loans/${e.loanId}" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
               View Your Loan & Schedule →
             </a>
           </div>

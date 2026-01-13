@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
-import { Card, Button, Badge } from '@/components/ui';
+import { Card, Button, Badge, Breadcrumbs } from '@/components/ui';
 import { 
   DollarSign, 
   User, 
@@ -202,6 +202,14 @@ export default function LenderSetupLoanPage() {
 
       <main className="flex-1 py-12 px-4">
         <div className="max-w-2xl mx-auto">
+          {/* Breadcrumbs */}
+          <Breadcrumbs 
+            items={[
+              { label: 'Loan Request' },
+              { label: 'Set Terms' }
+            ]}
+          />
+
           {/* Header */}
           <div className="text-center mb-8">
             <Badge variant="success" className="mb-4">
@@ -486,15 +494,19 @@ export default function LenderSetupLoanPage() {
             </Card>
           )}
 
-          {/* Payment Method */}
+          {/* Payment Method - YOUR payment info for receiving repayments */}
           <Card className="mb-6">
             <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-primary-600" />
-              Your Payment Method
+              <CreditCard className="w-5 h-5 text-green-600" />
+              Where Should the Borrower Pay You?
             </h2>
-            <p className="text-sm text-neutral-600 mb-4">
-              How will you receive payments from the borrower?
-            </p>
+            
+            {/* Explanation box */}
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
+              <p className="text-sm text-green-800">
+                💰 <strong>This is YOUR account info.</strong> When {loan.borrower_name || 'the borrower'} makes payments, they'll send money to this account.
+              </p>
+            </div>
 
             <div className="space-y-3 mb-4">
               {[
@@ -506,7 +518,7 @@ export default function LenderSetupLoanPage() {
                   key={method.value}
                   className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer border-2 transition-all ${
                     paymentMethod === method.value 
-                      ? 'border-primary-500 bg-primary-50' 
+                      ? 'border-green-500 bg-green-50' 
                       : 'border-neutral-200 hover:border-neutral-300'
                   }`}
                 >
@@ -516,7 +528,7 @@ export default function LenderSetupLoanPage() {
                     value={method.value}
                     checked={paymentMethod === method.value}
                     onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className="w-4 h-4 text-primary-600"
+                    className="w-4 h-4 text-green-600"
                   />
                   <div className={`w-2 h-2 rounded-full ${method.color}`} />
                   <span className="font-medium">{method.label}</span>
@@ -534,8 +546,11 @@ export default function LenderSetupLoanPage() {
                   value={paymentUsername}
                   onChange={(e) => setPaymentUsername(e.target.value)}
                   placeholder={paymentMethod === 'paypal' ? 'you@example.com' : '$username'}
-                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
                 />
+                <p className="text-xs text-neutral-500 mt-2">
+                  ✓ This is where you'll receive loan repayments
+                </p>
               </div>
             )}
           </Card>

@@ -48,16 +48,16 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
     >
       <div
         className={cn(
-          'w-full bg-white rounded-2xl shadow-2xl animate-slide-up',
+          'w-full bg-white dark:bg-neutral-800 rounded-2xl shadow-2xl animate-slide-up',
           sizes[size]
         )}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
-            <h2 className="text-lg font-semibold text-neutral-900">{title}</h2>
+          <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 dark:border-neutral-700">
+            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">{title}</h2>
             <button
               onClick={onClose}
-              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 transition-colors"
+              className="p-2 rounded-lg text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>

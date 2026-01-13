@@ -114,47 +114,132 @@ export async function POST(
         <!DOCTYPE html>
         <html>
           <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: ${isOverdue ? '#ef4444' : '#f59e0b'}; padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-              <h1 style="color: white; margin: 0;">${isOverdue ? '⚠️ Payment Overdue' : '💰 Payment Reminder'}</h1>
+            <!-- Header with logo and dynamic gradient -->
+            <div style="background: linear-gradient(135deg, ${isOverdue ? '#dc2626' : '#059669'} 0%, ${isOverdue ? '#b91c1c' : '#047857'} 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
+              <!-- Logo -->
+              <div style="margin-bottom: 20px;">
+                <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
+                    alt="Feyza Logo" 
+                    style="height: 40px; width: auto; filter: brightness(0) invert(1);">
+              </div>
+              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
+                ${isOverdue ? '⚠️ Payment Overdue' : '💰 Payment Reminder'}
+              </h1>
+              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Feyza Payment System</p>
             </div>
             
-            <div style="background: ${isOverdue ? '#fef2f2' : '#fffbeb'}; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid ${isOverdue ? '#fecaca' : '#fde68a'};">
-              <p style="font-size: 18px;">Hi ${borrowerName},</p>
+            <!-- Content area with dynamic background -->
+            <div style="background: ${isOverdue ? '#fef2f2' : '#f0fdf4'}; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid ${isOverdue ? '#fecaca' : '#bbf7d0'}; border-top: none;">
+              <p style="font-size: 18px; color: ${isOverdue ? '#991b1b' : '#166534'}; margin-bottom: 20px;">Hi ${borrowerName},</p>
               
-              <p><strong>${lenderName}</strong> has sent you a payment reminder.</p>
+              <p style="color: ${isOverdue ? '#991b1b' : '#166534'}; line-height: 1.6;">
+                <strong style="color: ${isOverdue ? '#dc2626' : '#059669'};">${lenderName}</strong> has sent you a payment reminder.
+              </p>
               
-              <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid ${isOverdue ? '#fecaca' : '#fde68a'};">
-                <p style="color: #6b7280; margin: 0 0 10px 0;">Payment Amount</p>
-                <p style="font-size: 32px; font-weight: bold; color: ${isOverdue ? '#ef4444' : '#f59e0b'}; margin: 0;">
-                  ${loan.currency} ${payment.amount.toLocaleString()}
-                </p>
-                <p style="color: #6b7280; margin: 10px 0 0 0;">
-                  ${isOverdue 
-                    ? `<span style="color: #ef4444; font-weight: bold;">⚠️ ${Math.abs(daysUntilDue)} days overdue</span>` 
-                    : daysUntilDue === 0 
-                      ? '<span style="color: #f59e0b; font-weight: bold;">Due Today!</span>'
-                      : `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`
-                  }
-                </p>
-                <p style="color: #6b7280; margin: 5px 0 0 0;">
-                  Due Date: ${dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </p>
+              <!-- Payment Details Card -->
+              <div style="background: white; padding: 24px; border-radius: 12px; margin: 25px 0; border: 1px solid ${isOverdue ? '#fecaca' : '#bbf7d0'}; box-shadow: 0 2px 8px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.1);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                  <div>
+                    <p style="color: #6b7280; margin: 0 0 8px 0; font-size: 14px; font-weight: 500;">Payment Amount</p>
+                    <p style="font-size: 36px; font-weight: bold; color: ${isOverdue ? '#dc2626' : '#059669'}; margin: 0;">
+                      ${loan.currency} ${payment.amount.toLocaleString()}
+                    </p>
+                  </div>
+                  
+                  <!-- Status Badge -->
+                  <div style="background: ${isOverdue ? '#fee2e2' : '#dcfce7'}; padding: 8px 16px; border-radius: 20px; border: 1px solid ${isOverdue ? '#fecaca' : '#bbf7d0'};">
+                    <p style="color: ${isOverdue ? '#dc2626' : '#059669'}; margin: 0; font-weight: 600; font-size: 14px;">
+                      ${isOverdue 
+                        ? `⚠️ ${Math.abs(daysUntilDue)} day${Math.abs(daysUntilDue) !== 1 ? 's' : ''} overdue`
+                        : daysUntilDue === 0 
+                          ? 'Due Today'
+                          : `Due in ${daysUntilDue} day${daysUntilDue !== 1 ? 's' : ''}`
+                      }
+                    </p>
+                  </div>
+                </div>
+                
+                <!-- Due Date -->
+                <div style="background: #f9fafb; padding: 16px; border-radius: 8px; margin-top: 20px;">
+                  <p style="color: #6b7280; margin: 0 0 8px 0; font-size: 14px; font-weight: 500;">Due Date</p>
+                  <p style="color: ${isOverdue ? '#991b1b' : '#166534'}; margin: 0; font-size: 16px; font-weight: 500;">
+                    ${dueDate.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </p>
+                </div>
               </div>
               
+              <!-- Lender Message -->
               ${message ? `
-                <div style="background: white; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${isOverdue ? '#ef4444' : '#f59e0b'};">
-                  <p style="color: #6b7280; margin: 0 0 8px 0; font-size: 14px;">Message from ${lenderName}:</p>
-                  <p style="color: #1f2937; margin: 0; font-style: italic;">"${message}"</p>
+                <div style="background: white; padding: 20px; border-radius: 12px; margin: 25px 0; border-left: 4px solid ${isOverdue ? '#dc2626' : '#059669'}; box-shadow: 0 2px 8px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.1);">
+                  <p style="color: #6b7280; margin: 0 0 12px 0; font-size: 14px; font-weight: 500;">
+                    Message from <span style="color: ${isOverdue ? '#dc2626' : '#059669'};">${lenderName}</span>:
+                  </p>
+                  <div style="background: #f9fafb; padding: 16px; border-radius: 8px;">
+                    <p style="color: #1f2937; margin: 0; font-style: italic; line-height: 1.6;">"${message}"</p>
+                  </div>
                 </div>
               ` : ''}
               
-              <a href="${loanLink}" style="display: block; background: ${isOverdue ? '#ef4444' : '#f59e0b'}; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
-                View Loan & Make Payment →
-              </a>
+              <!-- Action Buttons -->
+              <div style="display: flex; gap: 15px; margin: 30px 0; flex-wrap: wrap;">
+                <a href="${loanLink}" 
+                  style="display: inline-block; background: linear-gradient(to right, ${isOverdue ? '#dc2626' : '#059669'}, ${isOverdue ? '#b91c1c' : '#047857'}); 
+                          color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
+                          font-weight: 600; text-align: center; font-size: 16px;
+                          box-shadow: 0 4px 12px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.2); transition: all 0.2s ease;
+                          flex: 2; min-width: 250px;"
+                  onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.3)';"
+                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.2)';">
+                  View Loan & Make Payment →
+                </a>
+                
+                <a href="${APP_URL}/help/payments" 
+                  style="display: inline-block; background: white; 
+                          color: ${isOverdue ? '#dc2626' : '#059669'}; text-decoration: none; padding: 16px 24px; border-radius: 8px; 
+                          font-weight: 600; text-align: center; font-size: 16px; border: 2px solid ${isOverdue ? '#dc2626' : '#059669'};
+                          box-shadow: 0 2px 8px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.1); transition: all 0.2s ease;
+                          flex: 1; min-width: 150px;"
+                  onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.2)';this.style.background='${isOverdue ? '#fef2f2' : '#f0fdf4'}';"
+                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(${isOverdue ? '220, 38, 38' : '5, 150, 105'}, 0.1)';this.style.background='white';">
+                  Payment Help
+                </a>
+              </div>
               
-              <p style="color: #6b7280; font-size: 14px; margin-top: 20px;">
-                If you've already made this payment, please mark it as paid in your account or contact your lender.
-              </p>
+              <!-- Important Information -->
+              <div style="background: ${isOverdue ? '#fee2e2' : '#dcfce7'}; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid ${isOverdue ? '#fecaca' : '#bbf7d0'};">
+                <h4 style="color: ${isOverdue ? '#991b1b' : '#065f46'}; margin: 0 0 10px 0; font-weight: 600; font-size: 16px;">
+                  ${isOverdue ? '⚠️ Important:' : '💡 Important:'}
+                </h4>
+                <ul style="margin: 0; padding-left: 20px; color: ${isOverdue ? '#991b1b' : '#065f46'};">
+                  <li style="margin-bottom: 8px; line-height: 1.5; font-size: 14px;">
+                    ${isOverdue ? 'Late payments may affect your credit score and future loan eligibility.' : 'Timely payments help maintain good standing with lenders.'}
+                  </li>
+                  <li style="margin-bottom: 8px; line-height: 1.5; font-size: 14px;">
+                    If you've already made this payment, please mark it as paid in your account.
+                  </li>
+                  <li style="line-height: 1.5; font-size: 14px;">
+                    Contact your lender directly if you need to discuss payment arrangements.
+                  </li>
+                </ul>
+              </div>
+              
+              <!-- Footer -->
+              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid ${isOverdue ? '#fecaca' : '#bbf7d0'}; color: ${isOverdue ? '#b91c1c' : '#047857'}; font-size: 14px;">
+                <p style="margin: 0 0 10px 0;">Need assistance with payment?</p>
+                <p style="margin: 0;">
+                  <a href="${APP_URL}/help/payments" style="color: ${isOverdue ? '#dc2626' : '#059669'}; text-decoration: none; font-weight: 500; margin-right: 15px;">
+                    Payment FAQ
+                  </a>
+                  <a href="mailto:support@feyza.com" style="color: ${isOverdue ? '#dc2626' : '#059669'}; text-decoration: none; font-weight: 500;">
+                    Contact Support
+                  </a>
+                </p>
+              </div>
+            </div>
+            
+            <!-- Signature -->
+            <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
+              <p style="margin: 0;">Feyza • Secure Payment Processing</p>
             </div>
           </body>
         </html>

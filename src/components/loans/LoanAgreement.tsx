@@ -152,7 +152,7 @@ export function LoanAgreement({
 
             <p><strong>6. Communication</strong></p>
             <p>
-              Both parties agree to communicate through the LoanTrack platform and respond 
+              Both parties agree to communicate through the Feyza platform and respond 
               to messages within a reasonable timeframe.
             </p>
 

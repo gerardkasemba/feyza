@@ -17,6 +17,7 @@ import {
   ArrowRight,
   Shield,
   CheckCircle,
+  Building2,
 } from 'lucide-react';
 
 export default async function DashboardPage() {
@@ -71,11 +72,11 @@ export default async function DashboardPage() {
   }
 
   // Also get loans from user's business profile
-  let businessProfile = null;
+  let businessProfile: any = null;
   try {
     const { data: bp } = await supabase
       .from('business_profiles')
-      .select('id')
+      .select('id, business_name, profile_completed, is_verified, verification_status, slug, public_profile_enabled')
       .eq('user_id', user.id)
       .single();
     businessProfile = bp;
@@ -295,6 +296,92 @@ export default async function DashboardPage() {
             </div>
           )}
 
+          {/* Business Profile Banner - Show when user is business type but no profile */}
+          {userProfile.user_type === 'business' && !businessProfile && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-primary-50 dark:from-green-900/20 dark:to-primary-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-6 h-6 text-green-600 dark:text-green-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-green-800 dark:text-green-300 mb-1">Complete Your Business Profile</h3>
+                  <p className="text-sm text-green-700 dark:text-green-400 mb-3">
+                    Set up your business lender profile to start receiving loan requests from verified borrowers.
+                  </p>
+                  <Link href="/business/setup">
+                    <Button size="sm">
+                      <Building2 className="w-4 h-4 mr-2" />
+                      Complete Setup
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Business Profile Pending Approval Banner */}
+          {businessProfile && businessProfile.profile_completed && businessProfile.verification_status === 'pending' && (
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Clock className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Application Under Review</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                    Your business profile for <strong>{businessProfile.business_name}</strong> is being reviewed. 
+                    This usually takes 1-2 business days. We'll email you once it's approved!
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Business Profile Approved Banner */}
+          {businessProfile && businessProfile.verification_status === 'approved' && (
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  <span className="text-sm text-green-700 dark:text-green-400 font-medium">
+                    ✓ <strong>{businessProfile.business_name}</strong> is verified and active
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Link href="/lender/preferences">
+                    <Button variant="outline" size="sm">Lender Settings</Button>
+                  </Link>
+                  <Link href="/business">
+                    <Button size="sm">Business Dashboard</Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Business Profile Rejected Banner */}
+          {businessProfile && businessProfile.verification_status === 'rejected' && (
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <AlertCircle className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-red-800 dark:text-red-300 mb-1">Business Application Not Approved</h3>
+                  <p className="text-sm text-red-700 dark:text-red-400 mb-3">
+                    Your application for <strong>{businessProfile.business_name}</strong> was not approved. 
+                    Please contact support for more information or to resubmit.
+                  </p>
+                  <a href="mailto:support@feyza.app">
+                    <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30">
+                      Contact Support
+                    </Button>
+                  </a>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Stats Grid with Borrowing Limit */}
           <div className="grid lg:grid-cols-4 gap-4 mb-8">
             <div className="lg:col-span-3">
@@ -334,9 +421,30 @@ export default async function DashboardPage() {
           {/* Loans Tabs */}
           <Tabs defaultValue="borrowed" className="mb-8">
             <TabsList className="mb-6">
-              <TabsTrigger value="borrowed">Borrowed</TabsTrigger>
-              <TabsTrigger value="lent">Lent</TabsTrigger>
-              <TabsTrigger value="pending">Pending</TabsTrigger>
+              <TabsTrigger value="borrowed" className="relative">
+                Borrowed
+                {activeLoansAsBorrower.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-primary-100 text-primary-700 rounded-full">
+                    {activeLoansAsBorrower.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="lent" className="relative">
+                Lent
+                {activeLoansAsLender.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                    {activeLoansAsLender.length}
+                  </span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="pending" className="relative">
+                Pending
+                {pendingLoans.length > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
+                    {pendingLoans.length}
+                  </span>
+                )}
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="borrowed">

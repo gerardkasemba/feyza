@@ -6,6 +6,7 @@ import { Button, Card, Badge } from '@/components/ui';
 import { StatsCard } from '@/components/dashboard';
 import { LoanCard } from '@/components/loans';
 import { PendingLoanCard } from '@/components/business/PendingLoanCard';
+import { ShareBusinessCard } from '@/components/business/ShareBusinessCard';
 import { formatCurrency } from '@/lib/utils';
 import { 
   Building2, 
@@ -18,7 +19,10 @@ import {
   Clock,
   AlertCircle,
   CreditCard,
-  Zap
+  Zap,
+  Share2,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 
 export default async function BusinessPage() {
@@ -46,11 +50,11 @@ export default async function BusinessPage() {
   }
 
   // Fetch business profile
-  let businessProfile = null;
+  let businessProfile: any = null;
   try {
     const { data } = await supabase
       .from('business_profiles')
-      .select('*')
+      .select('*, slug, public_profile_enabled, verification_status, logo_url')
       .eq('user_id', user.id)
       .single();
     businessProfile = data;
@@ -171,8 +175,12 @@ export default async function BusinessPage() {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center">
-                <Building2 className="w-8 h-8 text-primary-600" />
+              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center overflow-hidden">
+                {businessProfile.logo_url ? (
+                  <img src={businessProfile.logo_url} alt={businessProfile.business_name} className="w-full h-full object-cover" />
+                ) : (
+                  <Building2 className="w-8 h-8 text-primary-600" />
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -183,6 +191,12 @@ export default async function BusinessPage() {
                     <Badge variant="success" size="sm">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       Verified
+                    </Badge>
+                  )}
+                  {businessProfile.verification_status === 'pending' && (
+                    <Badge variant="warning" size="sm">
+                      <Clock className="w-3 h-3 mr-1" />
+                      Pending
                     </Badge>
                   )}
                 </div>
@@ -204,6 +218,18 @@ export default async function BusinessPage() {
               </Link>
             </div>
           </div>
+
+          {/* Share Business Card */}
+          {businessProfile.slug && businessProfile.public_profile_enabled && (
+            <div className="mb-8">
+              <ShareBusinessCard 
+                businessName={businessProfile.business_name}
+                slug={businessProfile.slug}
+                tagline={businessProfile.tagline}
+                isApproved={businessProfile.verification_status === 'approved'}
+              />
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

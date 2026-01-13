@@ -262,55 +262,138 @@ export async function POST(
     // Notify borrower that terms are set
     if (borrowerEmail) {
       try {
-        await sendEmail({
-          to: borrowerEmail,
-          subject: '📋 Loan terms are ready for your review',
-          html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                  <h1 style="color: white; margin: 0;">📋 Loan Terms Ready</h1>
+      await sendEmail({
+        to: borrowerEmail,
+        subject: '📋 Loan terms are ready for your review',
+        html: `
+          <!DOCTYPE html>
+          <html>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <!-- Header with logo -->
+              <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
+                <!-- Logo -->
+                <div style="margin-bottom: 20px;">
+                  <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
+                      alt="Feyza Logo" 
+                      style="height: 40px; width: auto; filter: brightness(0) invert(1);">
                 </div>
+                <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">📋 Loan Terms Ready</h1>
+                <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Review Your Loan Agreement</p>
+              </div>
+              
+              <!-- Content area -->
+              <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
+                <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${borrowerName},</p>
                 
-                <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e2e8f0;">
-                  <p style="font-size: 18px; color: #374151;">Hi ${borrowerName},</p>
+                <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
+                  Great news! Your lender has set the terms for your loan. Please review them carefully before proceeding.
+                </p>
+                
+                <!-- Loan Terms Summary Card -->
+                <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
+                  <h3 style="margin: 0 0 20px 0; color: #065f46; font-size: 20px; font-weight: 600; padding-bottom: 10px; border-bottom: 2px solid #f0fdf4;">
+                    📊 Loan Terms Summary
+                  </h3>
                   
-                  <p style="color: #374151;">
-                    Your lender has set the terms for your loan. Please review them:
-                  </p>
-                  
-                  <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Loan Amount:</span>
-                      <strong style="float: right;">${loan.currency} ${loan.amount.toLocaleString()}</strong>
+                  <div style="display: grid; gap: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0fdf4;">
+                      <span style="color: #047857; font-weight: 500;">Loan Amount:</span>
+                      <strong style="color: #059669; font-size: 18px;">${loan.currency} ${loan.amount.toLocaleString()}</strong>
                     </div>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Interest Rate:</span>
-                      <strong style="float: right;">${interest_rate || 0}% (${interest_type})</strong>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0fdf4;">
+                      <span style="color: #047857; font-weight: 500;">Interest Rate:</span>
+                      <strong style="color: #059669;">${interest_rate || 0}% (${interest_type})</strong>
                     </div>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Total to Repay:</span>
-                      <strong style="float: right; color: #2563eb;">${loan.currency} ${Math.round(totalAmount).toLocaleString()}</strong>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0fdf4;">
+                      <span style="color: #047857; font-weight: 500;">Total Repayment:</span>
+                      <strong style="color: #059669; font-size: 18px;">${loan.currency} ${Math.round(totalAmount).toLocaleString()}</strong>
                     </div>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Payment:</span>
-                      <strong style="float: right;">${loan.currency} ${Math.round(repaymentAmount).toLocaleString()} ${repayment_frequency}</strong>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0fdf4;">
+                      <span style="color: #047857; font-weight: 500;">Payment Amount:</span>
+                      <strong style="color: #059669;">${loan.currency} ${Math.round(repaymentAmount).toLocaleString()} ${repayment_frequency}</strong>
                     </div>
-                    <div>
-                      <span style="color: #6b7280;">First Payment:</span>
-                      <strong style="float: right;">${format(new Date(start_date), 'MMM d, yyyy')}</strong>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0;">
+                      <span style="color: #047857; font-weight: 500;">First Payment Due:</span>
+                      <strong style="color: #059669;">${format(new Date(start_date), 'MMM d, yyyy')}</strong>
                     </div>
                   </div>
                   
-                  <a href="${APP_URL}/borrower/${loan.borrower_access_token}" style="display: block; background: #2563eb; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
+                  <!-- Important Note -->
+                  <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; border-left: 4px solid #d97706;">
+                    <p style="color: #92400e; margin: 0; font-size: 14px; line-height: 1.5;">
+                      ⚠️ <strong>Important:</strong> Review all terms carefully. Once accepted, these terms become legally binding.
+                    </p>
+                  </div>
+                </div>
+                
+                <!-- Action Buttons -->
+                <div style="display: flex; gap: 15px; margin: 30px 0; flex-wrap: wrap;">
+                  <a href="${APP_URL}/borrower/${loan.borrower_access_token}" 
+                    style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
+                            color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
+                            font-weight: 600; text-align: center; font-size: 16px; flex: 1;
+                            box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease; min-width: 200px;"
+                    onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
+                    onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
                     Review & Accept Terms →
                   </a>
+                  
+                  <a href="${APP_URL}/help/loan-agreements" 
+                    style="display: inline-block; background: white; 
+                            color: #059669; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
+                            font-weight: 600; text-align: center; font-size: 16px; border: 2px solid #059669;
+                            box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1); transition: all 0.2s ease; flex: 1;
+                            min-width: 200px;"
+                    onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';this.style.background='#f0fdf4';"
+                    onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(5, 150, 105, 0.1)';this.style.background='white';">
+                    Need Help?
+                  </a>
                 </div>
-              </body>
-            </html>
-          `,
-        });
+                
+                <!-- Next Steps -->
+                <div style="background: #dcfce7; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #86efac;">
+                  <h4 style="color: #065f46; margin: 0 0 15px 0; font-weight: 600;">📝 What Happens Next:</h4>
+                  <ul style="margin: 0; padding-left: 20px; color: #065f46;">
+                    <li style="margin-bottom: 8px; line-height: 1.5;">Review all terms and conditions carefully</li>
+                    <li style="margin-bottom: 8px; line-height: 1.5;">Accept the terms to proceed with funding</li>
+                    <li style="line-height: 1.5;">Once accepted, funds will be disbursed according to the agreed timeline</li>
+                  </ul>
+                </div>
+                
+                <!-- Deadline Reminder -->
+                <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #d97706;">
+                  <div style="display: flex; align-items: center; gap: 10px;">
+                    <span style="color: #92400e; font-size: 18px;">⏰</span>
+                    <div>
+                      <p style="color: #92400e; margin: 0; font-weight: 600;">Response Required</p>
+                      <p style="color: #92400e; margin: 5px 0 0 0; font-size: 14px;">Please review and respond within 48 hours to avoid expiration of these terms.</p>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- Footer -->
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
+                  <p style="margin: 0 0 10px 0;">Questions about these terms?</p>
+                  <p style="margin: 0;">
+                    <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
+                      Contact our support team for assistance
+                    </a>
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Signature -->
+              <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
+                <p style="margin: 0;">Feyza • Secure Loan Management</p>
+              </div>
+            </body>
+          </html>
+        `,
+      });
       } catch (emailError) {
         console.error('Email send error:', emailError);
         // Don't fail the whole request if email fails

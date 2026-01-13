@@ -57,79 +57,87 @@ export function LoanCard({ loan, role }: LoanCardProps) {
   const awaitingPayment = loan.status === 'active' && !loan.funds_sent && role === 'borrower';
 
   return (
-    <Link href={`/loans/${loan.id}`}>
-      <Card hover className="group">
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <Avatar name={otherPartyName} size="md" />
-            <div>
-              <p className="font-medium text-neutral-900">{otherPartyName}</p>
-              <p className="text-sm text-neutral-500">
+    <Link href={`/loans/${loan.id}`} className="block h-full">
+      <Card hover className="group h-full flex flex-col">
+        {/* Header with Avatar and Badge */}
+        <div className="flex items-start justify-between gap-3 mb-3 sm:mb-4">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <Avatar name={otherPartyName} size="md" className="flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium text-neutral-900 truncate" title={otherPartyName}>
+                {otherPartyName}
+              </p>
+              <p className="text-xs sm:text-sm text-neutral-500">
                 {role === 'borrower' ? 'Lender' : 'Borrower'}
               </p>
             </div>
           </div>
-          <Badge variant={statusVariants[loan.status]}>
+          <Badge variant={statusVariants[loan.status]} className="flex-shrink-0">
             {statusLabels[loan.status]}
           </Badge>
         </div>
 
-        <div className="mb-4">
-          <div className="flex items-baseline justify-between mb-1">
-            <span className="text-2xl font-bold text-neutral-900">
+        {/* Amount Section */}
+        <div className="mb-3 sm:mb-4">
+          <div className="flex items-baseline justify-between gap-2 mb-1">
+            <span className="text-xl sm:text-2xl font-bold text-neutral-900 truncate">
               {formatCurrency(loan.amount, loan.currency)}
             </span>
-            <span className="text-sm text-neutral-500">
+            <span className="text-xs sm:text-sm text-neutral-500 flex-shrink-0">
               {role === 'borrower' ? 'borrowed' : 'lent'}
             </span>
           </div>
           {loan.purpose && (
-            <p className="text-sm text-neutral-600 line-clamp-1">{loan.purpose}</p>
+            <p className="text-xs sm:text-sm text-neutral-600 line-clamp-1">{loan.purpose}</p>
           )}
         </div>
 
-        {/* Action needed indicator */}
-        {needsPayment && (
-          <div className="mb-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-            <div className="flex items-center gap-2 text-sm text-yellow-800">
-              <AlertCircle className="w-4 h-4" />
-              <span className="font-medium">Action needed: Send PayPal payment</span>
+        {/* Flexible middle section */}
+        <div className="flex-grow">
+          {/* Action needed indicator */}
+          {needsPayment && (
+            <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-yellow-800">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="font-medium truncate">Action needed: Send PayPal payment</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {awaitingPayment && (
-          <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center gap-2 text-sm text-blue-800">
-              <AlertCircle className="w-4 h-4" />
-              <span className="font-medium">Waiting for lender's payment</span>
+          {awaitingPayment && (
+            <div className="mb-3 sm:mb-4 p-2 sm:p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-blue-800">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span className="font-medium truncate">Waiting for lender's payment</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Payment confirmed */}
-        {loan.status === 'active' && loan.funds_sent && (
-          <div className="mb-4">
-            <div className="flex items-center gap-2 text-sm text-green-600 mb-2">
-              <CheckCircle className="w-4 h-4" />
-              <span>Payment sent</span>
+          {/* Payment confirmed */}
+          {loan.status === 'active' && loan.funds_sent && (
+            <div className="mb-3 sm:mb-4">
+              <div className="flex items-center gap-2 text-xs sm:text-sm text-green-600 mb-2">
+                <CheckCircle className="w-4 h-4 flex-shrink-0" />
+                <span>Payment sent</span>
+              </div>
+              <div className="flex items-center justify-between text-xs sm:text-sm mb-2 gap-2">
+                <span className="text-neutral-500">Repaid</span>
+                <span className="font-medium text-neutral-700 truncate text-right">
+                  {formatCurrency(loan.amount_paid, loan.currency)} of {formatCurrency(loan.total_amount || loan.amount, loan.currency)}
+                </span>
+              </div>
+              <Progress value={progress} />
             </div>
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-neutral-500">Repaid</span>
-              <span className="font-medium text-neutral-700">
-                {formatCurrency(loan.amount_paid, loan.currency)} of {formatCurrency(loan.total_amount || loan.amount, loan.currency)}
-              </span>
-            </div>
-            <Progress value={progress} />
-          </div>
-        )}
+          )}
+        </div>
 
-        <div className="flex items-center justify-between pt-4 border-t border-neutral-100">
-          <div className="flex items-center gap-1 text-sm text-neutral-500">
-            <Calendar className="w-4 h-4" />
-            <span>{formatDate(loan.created_at)}</span>
+        {/* Footer - always at bottom */}
+        <div className="flex items-center justify-between pt-3 sm:pt-4 border-t border-neutral-100 mt-auto">
+          <div className="flex items-center gap-1 text-xs sm:text-sm text-neutral-500 min-w-0">
+            <Calendar className="w-4 h-4 flex-shrink-0" />
+            <span className="truncate">{formatDate(loan.created_at)}</span>
           </div>
-          <span className="flex items-center gap-1 text-sm font-medium text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="flex items-center gap-1 text-xs sm:text-sm font-medium text-primary-600 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             View details
             <ArrowRight className="w-4 h-4" />
           </span>

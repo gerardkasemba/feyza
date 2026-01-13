@@ -200,27 +200,40 @@ export function TierExplanation() {
 
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-neutral-900">Borrowing Tier System</h3>
-      <p className="text-sm text-neutral-600">
-        New borrowers start at $150. Complete 3 loans at your current tier to unlock the next level.
-      </p>
+      <h3 className="font-semibold text-neutral-900 dark:text-white">Borrowing Tier System</h3>
       
+      {/* Business Lenders Section */}
+      <div className="p-4 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-800 rounded-lg">
+        <h4 className="font-medium text-teal-800 dark:text-teal-300 mb-2">🏢 Business Lenders</h4>
+        <p className="text-sm text-teal-700 dark:text-teal-400">
+          When borrowing from business lenders, <strong>there are no fixed tier limits</strong>. 
+          Each business sets their own maximum loan amount for first-time borrowers. 
+          You'll be matched with lenders who support your requested amount.
+        </p>
+      </div>
+
+      {/* Personal Lenders Section */}
       <div className="space-y-2">
+        <h4 className="font-medium text-neutral-700 dark:text-neutral-300">👥 Personal Lending (Friends & Family)</h4>
+        <p className="text-sm text-neutral-600 dark:text-neutral-400">
+          For personal loans, tiers help build trust. Complete 3 loans at your current tier to unlock the next level.
+        </p>
+        
         {tiers.map((t) => (
-          <div key={t.tier} className={`flex items-center justify-between p-3 rounded-lg ${t.color}`}>
+          <div key={t.tier} className={`flex items-center justify-between p-3 rounded-lg ${t.color} dark:bg-opacity-20`}>
             <div className="flex items-center gap-2">
-              <span className="font-medium">{t.name}</span>
-              <span className="text-xs text-neutral-500">Tier {t.tier}</span>
+              <span className="font-medium text-neutral-900 dark:text-neutral-200">{t.name}</span>
+              <span className="text-xs text-neutral-500 dark:text-neutral-400">Tier {t.tier}</span>
             </div>
-            <span className="font-bold">
+            <span className="font-bold text-neutral-900 dark:text-neutral-200">
               {t.amount ? formatCurrency(t.amount) : 'Unlimited'}
             </span>
           </div>
         ))}
       </div>
 
-      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-        <p className="text-sm text-yellow-800">
+      <div className="p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+        <p className="text-sm text-yellow-800 dark:text-yellow-300">
           <strong>Note:</strong> If you have outstanding loans of $2,000 or more, you must pay 75% before applying for a new loan.
         </p>
       </div>

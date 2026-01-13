@@ -118,7 +118,7 @@ export default function AdminLayout({
             <Shield className="w-5 h-5 text-white" />
           </div>
           <div>
-            <span className="font-bold text-lg">LoanTrack</span>
+            <span className="font-bold text-lg">Feyza</span>
             <span className="text-xs text-neutral-400 block">Admin Panel</span>
           </div>
         </div>

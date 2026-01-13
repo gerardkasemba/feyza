@@ -44,6 +44,24 @@ export interface BusinessProfile {
   terms_accepted_at?: string;
   created_at: string;
   updated_at: string;
+  // Enhanced verification fields
+  ein_tax_id?: string;
+  state?: string;
+  business_entity_type?: string;
+  years_in_business?: number;
+  website_url?: string;
+  number_of_employees?: string;
+  annual_revenue_range?: string;
+  // Public profile
+  slug?: string;
+  public_profile_enabled?: boolean;
+  tagline?: string;
+  logo_url?: string;
+  // Verification status
+  verification_status?: 'pending' | 'approved' | 'rejected';
+  verification_notes?: string;
+  verified_at?: string;
+  verified_by?: string;
   // Relation
   owner?: User;
 }

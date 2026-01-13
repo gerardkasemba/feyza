@@ -80,6 +80,9 @@ export async function POST(request: NextRequest) {
       notify_on_match,
       notify_email,
       notify_sms,
+      // First-time borrower settings
+      first_time_borrower_limit,
+      allow_first_time_borrowers,
     } = body;
 
     // Validation
@@ -116,6 +119,9 @@ export async function POST(request: NextRequest) {
       notify_on_match: notify_on_match ?? true,
       notify_email: notify_email ?? true,
       notify_sms: notify_sms ?? false,
+      // First-time borrower settings
+      first_time_borrower_limit: first_time_borrower_limit ?? 500,
+      allow_first_time_borrowers: allow_first_time_borrowers ?? true,
     };
 
     // Check if existing preferences exist

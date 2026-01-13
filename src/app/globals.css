@@ -7,6 +7,11 @@
 :root {
   --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-body: 'DM Sans', system-ui, sans-serif;
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
 }
 
 * {
@@ -21,6 +26,11 @@ body {
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark mode body background */
+.dark body {
+  @apply bg-neutral-950 text-neutral-100;
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -136,4 +146,73 @@ h1, h2, h3, h4, h5, h6 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+/* Mobile improvements */
+@media (max-width: 640px) {
+  /* Larger tap targets on mobile */
+  button, a, input, select, textarea {
+    min-height: 44px;
+  }
+  
+  /* Better spacing for mobile forms */
+  input, select, textarea {
+    font-size: 16px; /* Prevents zoom on iOS */
+  }
+  
+  /* Prevent horizontal scroll */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Better card padding on mobile */
+  .mobile-card {
+    padding: 1rem;
+  }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) {
+  /* Remove hover effects on touch devices */
+  button:hover, a:hover {
+    transform: none;
+  }
+  
+  /* Active states for touch */
+  button:active, a:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+}
+
+/* Safe area padding for notched phones */
+@supports (padding: max(0px)) {
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .safe-area-top {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+}
+
+/* Improved focus for touch devices */
+@media (hover: none) {
+  *:focus-visible {
+    outline-width: 3px;
+  }
+}
+
+/* Swipe hint animation */
+@keyframes swipeHint {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-10px);
+  }
+}
+
+.animate-swipe-hint {
+  animation: swipeHint 1.5s ease-in-out infinite;
 }

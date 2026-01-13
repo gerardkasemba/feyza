@@ -20,6 +20,7 @@ import {
   Wallet,
   Clock,
   Star,
+  UserPlus,
 } from 'lucide-react';
 
 const COUNTRIES = [
@@ -61,6 +62,9 @@ interface Preferences {
   notify_on_match: boolean;
   notify_email: boolean;
   notify_sms: boolean;
+  // First-time borrower settings
+  first_time_borrower_limit: number;
+  allow_first_time_borrowers: boolean;
 }
 
 export default function LenderPreferencesPage() {
@@ -89,6 +93,9 @@ export default function LenderPreferencesPage() {
     notify_on_match: true,
     notify_email: true,
     notify_sms: false,
+    // First-time borrower settings
+    first_time_borrower_limit: 500,
+    allow_first_time_borrowers: true,
   });
 
   useEffect(() => {
@@ -496,6 +503,98 @@ export default function LenderPreferencesPage() {
                   }`} />
                 </button>
               </div>
+            </div>
+          </Card>
+
+          {/* First-Time Borrower Settings */}
+          <Card>
+            <div className="flex items-center gap-3 mb-4">
+              <UserPlus className="w-5 h-5 text-green-500" />
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">First-Time Borrower Settings</h2>
+            </div>
+            
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                <strong>💡 What is a first-time borrower?</strong> Someone who has never completed a loan on Feyza before. 
+                Set limits to manage your risk when lending to new users.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {/* Toggle for allowing first-time borrowers */}
+              <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
+                <div>
+                  <p className="font-medium text-neutral-900 dark:text-white">Accept First-Time Borrowers</p>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                    Allow loan requests from users with no repayment history
+                  </p>
+                </div>
+                <button
+                  onClick={() => setPreferences(p => ({ ...p, allow_first_time_borrowers: !p.allow_first_time_borrowers }))}
+                  className={`relative w-14 h-8 rounded-full transition-colors ${
+                    preferences.allow_first_time_borrowers ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
+                  }`}
+                >
+                  <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
+                    preferences.allow_first_time_borrowers ? 'translate-x-7' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {/* Conditional limit input - only show when first-time borrowers are allowed */}
+              {preferences.allow_first_time_borrowers && (
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    Maximum Loan for First-Time Borrowers
+                  </label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      type="number"
+                      value={preferences.first_time_borrower_limit}
+                      onChange={(e) => setPreferences(p => ({ 
+                        ...p, 
+                        first_time_borrower_limit: Math.min(parseFloat(e.target.value) || 0, p.max_amount) 
+                      }))}
+                      className="w-full pl-12 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
+                      min="0"
+                      max={preferences.max_amount}
+                      step="50"
+                    />
+                  </div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
+                    First-time borrowers can request up to <strong>${preferences.first_time_borrower_limit.toLocaleString()}</strong>. 
+                    Repeat borrowers with good history can request up to your regular maximum of <strong>${preferences.max_amount.toLocaleString()}</strong>.
+                  </p>
+                  
+                  {/* Quick preset buttons */}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {[100, 250, 500, 1000].map((amount) => (
+                      <button
+                        key={amount}
+                        onClick={() => setPreferences(p => ({ ...p, first_time_borrower_limit: amount }))}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          preferences.first_time_borrower_limit === amount
+                            ? 'bg-green-500 text-white'
+                            : 'bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-600'
+                        }`}
+                      >
+                        ${amount}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Warning when first-time borrowers are disabled */}
+              {!preferences.allow_first_time_borrowers && (
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    <strong>⚠️ Note:</strong> You won't be matched with first-time borrowers. 
+                    This significantly reduces your potential matches but may lower risk.
+                  </p>
+                </div>
+              )}
             </div>
           </Card>
 

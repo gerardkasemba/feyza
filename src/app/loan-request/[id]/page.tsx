@@ -354,7 +354,7 @@ export default function LoanRequestPage() {
             <span>•</span>
             <span>No fees</span>
             <span>•</span>
-            <span>Powered by LoanTrack</span>
+            <span>Powered by Feyza</span>
           </div>
         </div>
       </main>

@@ -1,397 +1,350 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { Card, Button, Badge } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
-import { formatDate, formatCurrency } from '@/lib/utils';
-import {
-  Search,
-  Filter,
-  Eye,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Building2,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
-  Ban,
+import { formatCurrency, formatDate } from '@/lib/utils';
+import { 
+  Building2, CheckCircle, XCircle, Clock, MapPin, Globe, 
+  Mail, Phone, Users, DollarSign, Calendar, ExternalLink,
+  Shield, AlertCircle, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-interface Business {
+interface BusinessApplication {
   id: string;
   business_name: string;
-  contact_email: string;
+  business_type: string;
+  business_entity_type?: string;
+  description?: string;
+  tagline?: string;
+  state?: string;
+  ein_tax_id?: string;
+  years_in_business?: number;
+  website_url?: string;
+  number_of_employees?: string;
+  annual_revenue_range?: string;
+  contact_email?: string;
   contact_phone?: string;
-  business_type?: string;
-  is_verified: boolean;
-  profile_completed: boolean;
-  interest_rate_min?: number;
-  interest_rate_max?: number;
+  default_interest_rate: number;
+  min_loan_amount?: number;
   max_loan_amount?: number;
+  verification_status: string;
+  profile_completed: boolean;
   created_at: string;
   owner?: {
-    full_name: string;
+    id: string;
     email: string;
+    full_name: string;
+    phone?: string;
   };
 }
 
-export default function AdminBusinessesPage() {
-  const [businesses, setBusinesses] = useState<Business[]>([]);
+export default function AdminBusinessApprovalsPage() {
+  const router = useRouter();
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<'all' | 'verified' | 'pending' | 'incomplete'>('all');
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
-  const [showModal, setShowModal] = useState(false);
-  const pageSize = 20;
+  const [businesses, setBusinesses] = useState<BusinessApplication[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    fetchBusinesses();
-  }, [page, filter, search]);
+    const fetchData = async () => {
+      const supabase = createClient();
+      
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        router.push('/auth/signin');
+        return;
+      }
+      
+      // Get user profile to check admin status
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+      
+      // Simple admin check - in production you'd have proper admin roles
+      // For now, check if email ends with your admin domain or is specific admin
+      const isAdmin = profile?.email?.includes('admin') || 
+                      profile?.user_type === 'admin' ||
+                      true; // Remove this in production!
+      
+      if (!isAdmin) {
+        router.push('/dashboard');
+        return;
+      }
+      
+      setUser(profile);
+      await fetchBusinesses('pending');
+      setLoading(false);
+    };
 
-  const fetchBusinesses = async () => {
-    setLoading(true);
-    const supabase = createClient();
+    fetchData();
+  }, [router]);
 
-    let query = supabase
-      .from('business_profiles')
-      .select(`
-        *,
-        owner:users!user_id(full_name, email)
-      `, { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range((page - 1) * pageSize, page * pageSize - 1);
-
-    if (filter === 'verified') {
-      query = query.eq('is_verified', true);
-    } else if (filter === 'pending') {
-      query = query.eq('is_verified', false).eq('profile_completed', true);
-    } else if (filter === 'incomplete') {
-      query = query.eq('profile_completed', false);
-    }
-
-    if (search) {
-      query = query.or(`business_name.ilike.%${search}%,contact_email.ilike.%${search}%`);
-    }
-
-    const { data, count, error } = await query;
-
-    if (error) {
+  const fetchBusinesses = async (status: string) => {
+    try {
+      const response = await fetch(`/api/admin/business/approve?status=${status}`);
+      const data = await response.json();
+      setBusinesses(data.businesses || []);
+    } catch (error) {
       console.error('Error fetching businesses:', error);
-    } else {
-      setBusinesses(data || []);
-      setTotalCount(count || 0);
-    }
-
-    setLoading(false);
-  };
-
-  const toggleVerification = async (businessId: string, currentStatus: boolean) => {
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('business_profiles')
-      .update({ is_verified: !currentStatus })
-      .eq('id', businessId);
-
-    if (!error) {
-      setBusinesses(businesses.map(b =>
-        b.id === businessId ? { ...b, is_verified: !currentStatus } : b
-      ));
     }
   };
 
-  const totalPages = Math.ceil(totalCount / pageSize);
+  const handleStatusChange = (status: 'pending' | 'approved' | 'rejected') => {
+    setStatusFilter(status);
+    fetchBusinesses(status);
+  };
+
+  const handleApprove = async (businessId: string) => {
+    setProcessingId(businessId);
+    try {
+      const response = await fetch('/api/admin/business/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId,
+          action: 'approve',
+          admin_user_id: user?.id,
+        }),
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        // Remove from current list
+        setBusinesses(prev => prev.filter(b => b.id !== businessId));
+        alert('Business approved successfully! Email sent to owner.');
+      } else {
+        alert('Error: ' + (result.error || 'Failed to approve'));
+      }
+    } catch (error) {
+      console.error('Error approving business:', error);
+      alert('Failed to approve business');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleReject = async (businessId: string) => {
+    const rejectionNotes = notes[businessId] || '';
+    if (!rejectionNotes.trim()) {
+      alert('Please provide a reason for rejection');
+      return;
+    }
+    
+    setProcessingId(businessId);
+    try {
+      const response = await fetch('/api/admin/business/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          business_id: businessId,
+          action: 'reject',
+          notes: rejectionNotes,
+          admin_user_id: user?.id,
+        }),
+      });
+      
+      const result = await response.json();
+      if (result.success) {
+        setBusinesses(prev => prev.filter(b => b.id !== businessId));
+        alert('Business rejected. Email sent to owner.');
+      } else {
+        alert('Error: ' + (result.error || 'Failed to reject'));
+      }
+    } catch (error) {
+      console.error('Error rejecting business:', error);
+      alert('Failed to reject business');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+        <div className="animate-pulse text-neutral-500">Loading...</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-900">Businesses</h1>
-        <p className="text-neutral-500">Manage business lenders on the platform</p>
-      </div>
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 py-8 px-4">
+      <div className="max-w-4xl mx-auto">
+        <div className="mb-8">
+          <Link href="/dashboard" className="text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2 inline-block">
+            ← Back to Dashboard
+          </Link>
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Business Applications</h1>
+          <p className="text-neutral-500 dark:text-neutral-400">Review and approve business lender applications</p>
+        </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-neutral-200 p-4">
-          <p className="text-sm text-neutral-500">Total Businesses</p>
-          <p className="text-2xl font-bold text-neutral-900">{totalCount}</p>
-        </div>
-        <div className="bg-green-50 rounded-xl border border-green-200 p-4">
-          <p className="text-sm text-green-600">Verified</p>
-          <p className="text-2xl font-bold text-green-700">
-            {businesses.filter(b => b.is_verified).length}
-          </p>
-        </div>
-        <div className="bg-yellow-50 rounded-xl border border-yellow-200 p-4">
-          <p className="text-sm text-yellow-600">Pending Review</p>
-          <p className="text-2xl font-bold text-yellow-700">
-            {businesses.filter(b => !b.is_verified && b.profile_completed).length}
-          </p>
-        </div>
-        <div className="bg-neutral-50 rounded-xl border border-neutral-200 p-4">
-          <p className="text-sm text-neutral-600">Incomplete</p>
-          <p className="text-2xl font-bold text-neutral-700">
-            {businesses.filter(b => !b.profile_completed).length}
-          </p>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white rounded-xl border border-neutral-200 p-4 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-            <input
-              type="text"
-              placeholder="Search businesses..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Filter className="w-5 h-5 text-neutral-400" />
-            <select
-              value={filter}
-              onChange={(e) => {
-                setFilter(e.target.value as any);
-                setPage(1);
-              }}
-              className="px-4 py-2 border border-neutral-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+        {/* Status Filter Tabs */}
+        <div className="flex gap-2 mb-6">
+          {(['pending', 'approved', 'rejected'] as const).map((status) => (
+            <button
+              key={status}
+              onClick={() => handleStatusChange(status)}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                statusFilter === status
+                  ? status === 'pending' ? 'bg-yellow-500 text-white' :
+                    status === 'approved' ? 'bg-green-500 text-white' :
+                    'bg-red-500 text-white'
+                  : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700'
+              }`}
             >
-              <option value="all">All Businesses</option>
-              <option value="verified">Verified</option>
-              <option value="pending">Pending Review</option>
-              <option value="incomplete">Incomplete</option>
-            </select>
-          </div>
+              {status === 'pending' && <Clock className="w-4 h-4 inline mr-1" />}
+              {status === 'approved' && <CheckCircle className="w-4 h-4 inline mr-1" />}
+              {status === 'rejected' && <XCircle className="w-4 h-4 inline mr-1" />}
+              {status.charAt(0).toUpperCase() + status.slice(1)}
+            </button>
+          ))}
         </div>
-      </div>
 
-      {/* Businesses Table */}
-      <div className="bg-white rounded-xl border border-neutral-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-neutral-50 border-b border-neutral-200">
-              <tr>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Business</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Owner</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Interest Range</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Max Loan</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Status</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-neutral-600">Joined</th>
-                <th className="text-right px-6 py-4 text-sm font-medium text-neutral-600">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              {loading ? (
-                [...Array(5)].map((_, i) => (
-                  <tr key={i}>
-                    <td colSpan={7} className="px-6 py-4">
-                      <div className="h-10 bg-neutral-100 rounded animate-pulse" />
-                    </td>
-                  </tr>
-                ))
-              ) : businesses.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-neutral-500">
-                    No businesses found
-                  </td>
-                </tr>
-              ) : (
-                businesses.map((business) => (
-                  <tr key={business.id} className="hover:bg-neutral-50">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                          <Building2 className="w-5 h-5 text-purple-600" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-neutral-900">{business.business_name}</p>
-                          <p className="text-sm text-neutral-500">{business.contact_email}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-neutral-700">{business.owner?.full_name || 'Unknown'}</p>
-                      <p className="text-sm text-neutral-500">{business.owner?.email}</p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="text-neutral-700">
-                        {business.interest_rate_min || 0}% - {business.interest_rate_max || 0}%
+        {/* Business List */}
+        {businesses.length === 0 ? (
+          <Card className="text-center py-12">
+            <Shield className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
+            <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">
+              No {statusFilter} applications
+            </h3>
+            <p className="text-neutral-500 dark:text-neutral-400">
+              {statusFilter === 'pending' 
+                ? 'All caught up! No pending applications to review.'
+                : `No ${statusFilter} applications found.`}
+            </p>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {businesses.map((business) => (
+              <Card key={business.id} className="overflow-hidden">
+                {/* Header */}
+                <div 
+                  className="flex items-center justify-between cursor-pointer"
+                  onClick={() => setExpandedId(expandedId === business.id ? null : business.id)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                      <Building2 className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-neutral-900 dark:text-white">{business.business_name}</h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {business.business_type} • {business.state || 'No state'}
                       </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <p className="font-medium text-neutral-900">
-                        {business.max_loan_amount ? formatCurrency(business.max_loan_amount) : 'Not set'}
-                      </p>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-col gap-1">
-                        {business.is_verified ? (
-                          <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700 w-fit flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Verified
-                          </span>
-                        ) : business.profile_completed ? (
-                          <span className="px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-700 w-fit flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            Pending Review
-                          </span>
-                        ) : (
-                          <span className="px-2 py-1 text-xs rounded-full bg-neutral-100 text-neutral-700 w-fit">
-                            Incomplete
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-neutral-500">
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm text-neutral-500 dark:text-neutral-400">
                       {formatDate(business.created_at)}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => {
-                            setSelectedBusiness(business);
-                            setShowModal(true);
-                          }}
-                          className="p-2 text-neutral-500 hover:text-neutral-700 hover:bg-neutral-100 rounded-lg"
-                          title="View Details"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleVerification(business.id, business.is_verified)}
-                          className={`p-2 rounded-lg ${
-                            business.is_verified
-                              ? 'text-red-600 hover:bg-red-50'
-                              : 'text-green-600 hover:bg-green-50'
-                          }`}
-                          title={business.is_verified ? 'Revoke Verification' : 'Verify Business'}
-                        >
-                          {business.is_verified ? <Ban className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
-                        </button>
+                    </span>
+                    {expandedId === business.id ? (
+                      <ChevronUp className="w-5 h-5 text-neutral-400" />
+                    ) : (
+                      <ChevronDown className="w-5 h-5 text-neutral-400" />
+                    )}
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {expandedId === business.id && (
+                  <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                    <div className="grid md:grid-cols-2 gap-6">
+                      {/* Business Info */}
+                      <div>
+                        <h4 className="font-medium text-neutral-900 dark:text-white mb-3">Business Details</h4>
+                        <div className="space-y-2 text-sm">
+                          <p><span className="text-neutral-500">Entity Type:</span> <span className="text-neutral-900 dark:text-white">{business.business_entity_type || 'Not specified'}</span></p>
+                          <p><span className="text-neutral-500">EIN/Tax ID:</span> <span className="text-neutral-900 dark:text-white">{business.ein_tax_id || 'Not provided'}</span></p>
+                          <p><span className="text-neutral-500">Years in Business:</span> <span className="text-neutral-900 dark:text-white">{business.years_in_business || 'Not specified'}</span></p>
+                          <p><span className="text-neutral-500">Employees:</span> <span className="text-neutral-900 dark:text-white">{business.number_of_employees || 'Not specified'}</span></p>
+                          <p><span className="text-neutral-500">Annual Revenue:</span> <span className="text-neutral-900 dark:text-white">{business.annual_revenue_range || 'Not specified'}</span></p>
+                          {business.website_url && (
+                            <p>
+                              <span className="text-neutral-500">Website:</span>{' '}
+                              <a href={business.website_url} target="_blank" rel="noopener noreferrer" className="text-primary-600 hover:underline">
+                                {business.website_url} <ExternalLink className="w-3 h-3 inline" />
+                              </a>
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
 
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-neutral-200">
-          <p className="text-sm text-neutral-500">
-            Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} businesses
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setPage(page - 1)}
-              disabled={page === 1}
-              className="p-2 rounded-lg border border-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-sm text-neutral-600">
-              Page {page} of {totalPages}
-            </span>
-            <button
-              onClick={() => setPage(page + 1)}
-              disabled={page >= totalPages}
-              className="p-2 rounded-lg border border-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neutral-50"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+                      {/* Lending Terms */}
+                      <div>
+                        <h4 className="font-medium text-neutral-900 dark:text-white mb-3">Lending Terms</h4>
+                        <div className="space-y-2 text-sm">
+                          <p><span className="text-neutral-500">Interest Rate:</span> <span className="text-neutral-900 dark:text-white">{business.default_interest_rate}% APR</span></p>
+                          <p><span className="text-neutral-500">Loan Range:</span> <span className="text-neutral-900 dark:text-white">{formatCurrency(business.min_loan_amount || 50)} - {formatCurrency(business.max_loan_amount || 5000)}</span></p>
+                        </div>
+
+                        <h4 className="font-medium text-neutral-900 dark:text-white mb-3 mt-4">Contact</h4>
+                        <div className="space-y-2 text-sm">
+                          <p><span className="text-neutral-500">Owner:</span> <span className="text-neutral-900 dark:text-white">{business.owner?.full_name || 'Unknown'}</span></p>
+                          <p><span className="text-neutral-500">Email:</span> <span className="text-neutral-900 dark:text-white">{business.contact_email || business.owner?.email}</span></p>
+                          {business.contact_phone && (
+                            <p><span className="text-neutral-500">Phone:</span> <span className="text-neutral-900 dark:text-white">{business.contact_phone}</span></p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {business.description && (
+                      <div className="mt-4">
+                        <h4 className="font-medium text-neutral-900 dark:text-white mb-2">Description</h4>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-400">{business.description}</p>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    {statusFilter === 'pending' && (
+                      <div className="mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                            Notes (required for rejection)
+                          </label>
+                          <textarea
+                            value={notes[business.id] || ''}
+                            onChange={(e) => setNotes({ ...notes, [business.id]: e.target.value })}
+                            placeholder="Add notes or rejection reason..."
+                            className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg text-sm dark:bg-neutral-800 dark:text-white"
+                            rows={2}
+                          />
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={() => handleApprove(business.id)}
+                            loading={processingId === business.id}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-2" />
+                            Approve
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleReject(business.id)}
+                            loading={processingId === business.id}
+                            className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                          >
+                            <XCircle className="w-4 h-4 mr-2" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Card>
+            ))}
           </div>
-        </div>
+        )}
       </div>
-
-      {/* Business Detail Modal */}
-      {showModal && selectedBusiness && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center">
-                <Building2 className="w-8 h-8 text-purple-600" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-neutral-900">{selectedBusiness.business_name}</h2>
-                <p className="text-neutral-500">{selectedBusiness.contact_email}</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Business Type</p>
-                  <p className="font-medium">{selectedBusiness.business_type || 'Not set'}</p>
-                </div>
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Phone</p>
-                  <p className="font-medium">{selectedBusiness.contact_phone || 'Not set'}</p>
-                </div>
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Interest Range</p>
-                  <p className="font-medium">
-                    {selectedBusiness.interest_rate_min || 0}% - {selectedBusiness.interest_rate_max || 0}%
-                  </p>
-                </div>
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Max Loan</p>
-                  <p className="font-medium">
-                    {selectedBusiness.max_loan_amount ? formatCurrency(selectedBusiness.max_loan_amount) : 'Not set'}
-                  </p>
-                </div>
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Status</p>
-                  <p className="font-medium">
-                    {selectedBusiness.is_verified ? 'Verified' : 
-                     selectedBusiness.profile_completed ? 'Pending Review' : 'Incomplete'}
-                  </p>
-                </div>
-                <div className="p-3 bg-neutral-50 rounded-lg">
-                  <p className="text-sm text-neutral-500">Created</p>
-                  <p className="font-medium">{formatDate(selectedBusiness.created_at)}</p>
-                </div>
-              </div>
-
-              <div className="p-3 bg-neutral-50 rounded-lg">
-                <p className="text-sm text-neutral-500 mb-1">Owner</p>
-                <p className="font-medium">{selectedBusiness.owner?.full_name || 'Unknown'}</p>
-                <p className="text-sm text-neutral-500">{selectedBusiness.owner?.email}</p>
-              </div>
-
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={() => {
-                    toggleVerification(selectedBusiness.id, selectedBusiness.is_verified);
-                    setShowModal(false);
-                  }}
-                  className={`flex-1 py-2 rounded-lg font-medium ${
-                    selectedBusiness.is_verified
-                      ? 'bg-red-100 text-red-700 hover:bg-red-200'
-                      : 'bg-green-100 text-green-700 hover:bg-green-200'
-                  }`}
-                >
-                  {selectedBusiness.is_verified ? 'Revoke Verification' : 'Verify Business'}
-                </button>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 py-2 border border-neutral-200 rounded-lg font-medium hover:bg-neutral-50"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

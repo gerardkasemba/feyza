@@ -309,7 +309,7 @@ export default function InvitePage() {
           <h1 className="text-2xl font-display font-bold text-neutral-900">
             Loan Request
           </h1>
-          <p className="text-neutral-500 mt-1">from LoanTrack</p>
+          <p className="text-neutral-500 mt-1">from Feyza</p>
         </div>
 
         {/* Progress Steps */}
@@ -670,7 +670,7 @@ export default function InvitePage() {
                   <li>• {borrower?.full_name} receives {formatCurrency(loan?.amount || 0, loan?.currency)} in their PayPal</li>
                   <li>• They will repay you {formatCurrency(repaymentAmount, loan?.currency)} {loan?.repayment_frequency}</li>
                   <li>• You'll receive payments to: {paypalEmail}</li>
-                  <li>• Both of you can track progress on LoanTrack</li>
+                  <li>• Both of you can track progress on Feyza</li>
                 </ul>
               </div>
             </>

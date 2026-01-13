@@ -9,3 +9,4 @@ export { Avatar } from './Avatar';
 export { Modal } from './Modal';
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { ToastProvider, useToast } from './Toast';
+export { Breadcrumbs } from './Breadcrumbs';

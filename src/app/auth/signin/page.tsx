@@ -65,7 +65,7 @@ export default function SignInPage() {
               <span className="text-white font-bold text-xl">L</span>
             </div>
             <h1 className="text-2xl font-display font-bold text-neutral-900">Welcome back</h1>
-            <p className="text-neutral-500 mt-1">Sign in to your LoanTrack account</p>
+            <p className="text-neutral-500 mt-1">Sign in to your Feyza account</p>
           </div>
 
           {error && (

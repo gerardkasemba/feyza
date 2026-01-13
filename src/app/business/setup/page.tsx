@@ -7,8 +7,84 @@ import { Card, Button, Input, Select } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
 import { 
   ArrowLeft, Building2, Percent, CreditCard, FileText, 
-  CheckCircle, ChevronRight, ChevronLeft, AlertCircle 
+  CheckCircle, ChevronRight, ChevronLeft, AlertCircle,
+  MapPin, Globe, Users, DollarSign, Calendar, Shield,
+  Upload, Image as ImageIcon, X
 } from 'lucide-react';
+
+const US_STATES = [
+  { value: '', label: 'Select state' },
+  { value: 'AL', label: 'Alabama' }, { value: 'AK', label: 'Alaska' },
+  { value: 'AZ', label: 'Arizona' }, { value: 'AR', label: 'Arkansas' },
+  { value: 'CA', label: 'California' }, { value: 'CO', label: 'Colorado' },
+  { value: 'CT', label: 'Connecticut' }, { value: 'DE', label: 'Delaware' },
+  { value: 'DC', label: 'District of Columbia' }, { value: 'FL', label: 'Florida' },
+  { value: 'GA', label: 'Georgia' }, { value: 'HI', label: 'Hawaii' },
+  { value: 'ID', label: 'Idaho' }, { value: 'IL', label: 'Illinois' },
+  { value: 'IN', label: 'Indiana' }, { value: 'IA', label: 'Iowa' },
+  { value: 'KS', label: 'Kansas' }, { value: 'KY', label: 'Kentucky' },
+  { value: 'LA', label: 'Louisiana' }, { value: 'ME', label: 'Maine' },
+  { value: 'MD', label: 'Maryland' }, { value: 'MA', label: 'Massachusetts' },
+  { value: 'MI', label: 'Michigan' }, { value: 'MN', label: 'Minnesota' },
+  { value: 'MS', label: 'Mississippi' }, { value: 'MO', label: 'Missouri' },
+  { value: 'MT', label: 'Montana' }, { value: 'NE', label: 'Nebraska' },
+  { value: 'NV', label: 'Nevada' }, { value: 'NH', label: 'New Hampshire' },
+  { value: 'NJ', label: 'New Jersey' }, { value: 'NM', label: 'New Mexico' },
+  { value: 'NY', label: 'New York' }, { value: 'NC', label: 'North Carolina' },
+  { value: 'ND', label: 'North Dakota' }, { value: 'OH', label: 'Ohio' },
+  { value: 'OK', label: 'Oklahoma' }, { value: 'OR', label: 'Oregon' },
+  { value: 'PA', label: 'Pennsylvania' }, { value: 'RI', label: 'Rhode Island' },
+  { value: 'SC', label: 'South Carolina' }, { value: 'SD', label: 'South Dakota' },
+  { value: 'TN', label: 'Tennessee' }, { value: 'TX', label: 'Texas' },
+  { value: 'UT', label: 'Utah' }, { value: 'VT', label: 'Vermont' },
+  { value: 'VA', label: 'Virginia' }, { value: 'WA', label: 'Washington' },
+  { value: 'WV', label: 'West Virginia' }, { value: 'WI', label: 'Wisconsin' },
+  { value: 'WY', label: 'Wyoming' },
+];
+
+const BUSINESS_ENTITY_TYPES = [
+  { value: '', label: 'Select entity type' },
+  { value: 'sole_proprietor', label: 'Sole Proprietorship' },
+  { value: 'llc', label: 'LLC (Limited Liability Company)' },
+  { value: 'corporation', label: 'Corporation (C-Corp or S-Corp)' },
+  { value: 'partnership', label: 'Partnership' },
+  { value: 'non_profit', label: 'Non-Profit Organization' },
+  { value: 'other', label: 'Other' },
+];
+
+const BUSINESS_TYPES = [
+  { value: '', label: 'Select business type' },
+  { value: 'microfinance', label: 'Microfinance Institution' },
+  { value: 'credit_union', label: 'Credit Union' },
+  { value: 'community_lender', label: 'Community Development Financial Institution (CDFI)' },
+  { value: 'fintech', label: 'FinTech / Online Lender' },
+  { value: 'peer_lending', label: 'Peer-to-Peer Lending Platform' },
+  { value: 'payday_lender', label: 'Licensed Payday Lender' },
+  { value: 'investment_club', label: 'Investment Club / Lending Circle' },
+  { value: 'other', label: 'Other' },
+];
+
+const EMPLOYEE_RANGES = [
+  { value: '', label: 'Select range' },
+  { value: '1', label: 'Just me (1)' },
+  { value: '2-5', label: '2-5 employees' },
+  { value: '6-10', label: '6-10 employees' },
+  { value: '11-25', label: '11-25 employees' },
+  { value: '26-50', label: '26-50 employees' },
+  { value: '51-100', label: '51-100 employees' },
+  { value: '100+', label: '100+ employees' },
+];
+
+const REVENUE_RANGES = [
+  { value: '', label: 'Select range' },
+  { value: 'under_50k', label: 'Under $50,000' },
+  { value: '50k_100k', label: '$50,000 - $100,000' },
+  { value: '100k_250k', label: '$100,000 - $250,000' },
+  { value: '250k_500k', label: '$250,000 - $500,000' },
+  { value: '500k_1m', label: '$500,000 - $1 million' },
+  { value: '1m_5m', label: '$1 million - $5 million' },
+  { value: '5m_plus', label: '$5 million+' },
+];
 
 export default function BusinessSetupPage() {
   const router = useRouter();
@@ -17,35 +93,39 @@ export default function BusinessSetupPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState(1); // 1: Business Info, 2: Interest Settings, 3: PayPal & Terms
+  const [step, setStep] = useState(1);
 
-  // Form state
+  // Step 1: Basic Info
   const [businessName, setBusinessName] = useState('');
   const [businessType, setBusinessType] = useState('');
+  const [businessEntityType, setBusinessEntityType] = useState('');
   const [description, setDescription] = useState('');
-  const [location, setLocation] = useState('');
+  const [tagline, setTagline] = useState('');
+  const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  
+  // Step 2: Verification Info
+  const [einTaxId, setEinTaxId] = useState('');
+  const [state, setState] = useState('');
+  const [yearsInBusiness, setYearsInBusiness] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
+  const [numberOfEmployees, setNumberOfEmployees] = useState('');
+  const [annualRevenueRange, setAnnualRevenueRange] = useState('');
   const [contactEmail, setContactEmail] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   
-  // Interest rate settings
+  // Step 3: Interest rate settings
   const [defaultInterestRate, setDefaultInterestRate] = useState('0');
   const [interestType, setInterestType] = useState('simple');
-  const [minLoanAmount, setMinLoanAmount] = useState('');
-  const [maxLoanAmount, setMaxLoanAmount] = useState('');
+  const [minLoanAmount, setMinLoanAmount] = useState('50');
+  const [maxLoanAmount, setMaxLoanAmount] = useState('5000');
+  const [firstTimeBorrowerLimit, setFirstTimeBorrowerLimit] = useState('500');
 
-  // PayPal & Terms
+  // Step 4: PayPal & Terms
   const [paypalEmail, setPaypalEmail] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
-
-  const businessTypes = [
-    { value: '', label: 'Select business type' },
-    { value: 'microfinance', label: 'Microfinance' },
-    { value: 'cooperative', label: 'Cooperative/Savings Group' },
-    { value: 'money_lender', label: 'Licensed Money Lender' },
-    { value: 'retail', label: 'Retail/Shop' },
-    { value: 'service', label: 'Service Provider' },
-    { value: 'other', label: 'Other' },
-  ];
+  const [publicProfileEnabled, setPublicProfileEnabled] = useState(true);
 
   const interestTypeOptions = [
     { value: 'simple', label: 'Simple Interest' },
@@ -65,7 +145,6 @@ export default function BusinessSetupPage() {
       setUser(user);
       setContactEmail(user.email || '');
       
-      // Get user profile to check for existing PayPal
       const { data: profile } = await supabase
         .from('users')
         .select('*')
@@ -79,20 +158,15 @@ export default function BusinessSetupPage() {
         }
       }
       
-      // Check if business profile already exists
-      try {
-        const { data: existing } = await supabase
-          .from('business_profiles')
-          .select('*')
-          .eq('user_id', user.id)
-          .single();
-        
-        if (existing) {
-          router.push('/business');
-          return;
-        }
-      } catch (error) {
-        // No existing profile, continue with setup
+      const { data: existing } = await supabase
+        .from('business_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (existing && existing.profile_completed) {
+        router.push('/business');
+        return;
       }
       
       setLoading(false);
@@ -110,20 +184,41 @@ export default function BusinessSetupPage() {
       setError('Please select a business type');
       return false;
     }
+    if (!businessEntityType) {
+      setError('Please select your business entity type');
+      return false;
+    }
     return true;
   };
 
   const validateStep2 = () => {
-    // Interest settings are optional, just validate if provided
-    const rate = parseFloat(defaultInterestRate);
-    if (rate < 0 || rate > 100) {
-      setError('Interest rate must be between 0 and 100');
+    if (!state) {
+      setError('Please select your state');
+      return false;
+    }
+    if (!contactEmail || !contactEmail.includes('@')) {
+      setError('Please enter a valid contact email');
       return false;
     }
     return true;
   };
 
   const validateStep3 = () => {
+    const rate = parseFloat(defaultInterestRate);
+    if (rate < 0 || rate > 100) {
+      setError('Interest rate must be between 0 and 100');
+      return false;
+    }
+    const minAmount = parseFloat(minLoanAmount) || 0;
+    const maxAmount = parseFloat(maxLoanAmount) || 0;
+    if (minAmount > maxAmount) {
+      setError('Minimum loan amount cannot exceed maximum');
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep4 = () => {
     if (!paypalEmail || !paypalEmail.includes('@')) {
       setError('Please enter a valid PayPal email address');
       return false;
@@ -137,20 +232,16 @@ export default function BusinessSetupPage() {
 
   const goToNextStep = () => {
     setError(null);
-    
     let isValid = false;
     if (step === 1) isValid = validateStep1();
     else if (step === 2) isValid = validateStep2();
-    
-    if (isValid) {
-      setStep(step + 1);
-    }
+    else if (step === 3) isValid = validateStep3();
+    if (isValid) setStep(step + 1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!validateStep3()) return;
+    if (!validateStep4()) return;
 
     setSaving(true);
     setError(null);
@@ -158,48 +249,112 @@ export default function BusinessSetupPage() {
     try {
       const supabase = createClient();
       
-      // Create business profile with profile_completed = true
-      const { error: insertError } = await supabase
+      // Upload logo if provided
+      let logoUrl: string | null = null;
+      if (logoFile) {
+        setUploadingLogo(true);
+        const fileExt = logoFile.name.split('.').pop();
+        const fileName = `${user.id}-${Date.now()}.${fileExt}`;
+        const filePath = `logos/${fileName}`;
+        
+        console.log('Uploading logo to:', filePath);
+        
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('business-assets')
+          .upload(filePath, logoFile, { upsert: true });
+        
+        if (uploadError) {
+          console.error('Logo upload error:', uploadError);
+          console.error('Error details:', JSON.stringify(uploadError, null, 2));
+          // Don't fail the whole process for logo upload, but show warning
+          setError('Logo upload failed: ' + uploadError.message + '. Your profile was saved without a logo.');
+        } else {
+          console.log('Upload successful:', uploadData);
+          const { data: urlData } = supabase.storage
+            .from('business-assets')
+            .getPublicUrl(filePath);
+          logoUrl = urlData.publicUrl;
+          console.log('Logo URL:', logoUrl);
+        }
+        setUploadingLogo(false);
+      }
+      
+      const { data: businessProfile, error: insertError } = await supabase
         .from('business_profiles')
         .insert({
           user_id: user.id,
           business_name: businessName,
           business_type: businessType,
+          business_entity_type: businessEntityType,
           description: description || null,
-          location: location || null,
+          tagline: tagline || null,
+          logo_url: logoUrl,
+          state: state,
+          location: `United States - ${US_STATES.find(s => s.value === state)?.label || state}`,
+          ein_tax_id: einTaxId || null,
+          years_in_business: yearsInBusiness ? parseInt(yearsInBusiness) : null,
+          website_url: websiteUrl || null,
+          number_of_employees: numberOfEmployees || null,
+          annual_revenue_range: annualRevenueRange || null,
           contact_email: contactEmail || null,
           contact_phone: contactPhone || null,
           default_interest_rate: parseFloat(defaultInterestRate) || 0,
           interest_type: interestType,
-          min_loan_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
-          max_loan_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
+          min_loan_amount: parseFloat(minLoanAmount) || 50,
+          max_loan_amount: parseFloat(maxLoanAmount) || 5000,
           paypal_email: paypalEmail,
           paypal_connected: true,
-          profile_completed: true, // Mark as completed
-          is_verified: false, // Still needs admin verification
-        });
+          profile_completed: true,
+          is_verified: false,
+          verification_status: 'pending',
+          terms_accepted: true,
+          terms_accepted_at: new Date().toISOString(),
+          public_profile_enabled: publicProfileEnabled,
+        })
+        .select()
+        .single();
 
       if (insertError) throw insertError;
 
-      // Update user profile with PayPal if not already set
-      const userUpdates: any = { 
-        user_type: 'business',
-        updated_at: new Date().toISOString(),
-      };
-      
-      // Only update PayPal if user doesn't have it yet
-      if (!userProfile?.paypal_email) {
-        userUpdates.paypal_email = paypalEmail;
-        userUpdates.paypal_connected = true;
-        userUpdates.paypal_connected_at = new Date().toISOString();
-      }
+      // Create lender_preferences (business lender - only set business_id, not user_id)
+      await supabase
+        .from('lender_preferences')
+        .upsert({
+          business_id: businessProfile.id,
+          // Note: don't set user_id - constraint requires either user_id OR business_id, not both
+          is_active: false,
+          interest_rate: parseFloat(defaultInterestRate) || 0,
+          interest_type: interestType,
+          min_amount: parseFloat(minLoanAmount) || 50,
+          max_amount: parseFloat(maxLoanAmount) || 5000,
+          first_time_borrower_limit: parseFloat(firstTimeBorrowerLimit) || 500,
+          allow_first_time_borrowers: true,
+          auto_accept: false,
+          preferred_currency: 'USD',
+          min_borrower_rating: 'neutral',
+          require_verified_borrower: false,
+          min_term_weeks: 1,
+          max_term_weeks: 52,
+          capital_pool: 0,
+          notify_on_match: true,
+          notify_email: true,
+        }, { onConflict: 'business_id' });
 
+      // Update user profile
       await supabase
         .from('users')
-        .update(userUpdates)
+        .update({ 
+          user_type: 'business',
+          updated_at: new Date().toISOString(),
+          ...(!userProfile?.paypal_email ? {
+            paypal_email: paypalEmail,
+            paypal_connected: true,
+            paypal_connected_at: new Date().toISOString(),
+          } : {}),
+        })
         .eq('id', user.id);
 
-      router.push('/business');
+      router.push('/business/setup/success');
     } catch (err: any) {
       setError(err.message || 'Failed to create business profile');
     } finally {
@@ -215,315 +370,252 @@ export default function BusinessSetupPage() {
     );
   }
 
-  const totalSteps = 3;
-  const progressPercent = (step / totalSteps) * 100;
+  const totalSteps = 4;
+  const progressPercent = ((step - 1) / (totalSteps - 1)) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 py-12 px-4">
-      <div className="max-w-lg mx-auto">
-        <Link
-          href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 mb-8 transition-colors"
-        >
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-teal-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 py-8 px-4">
+      <div className="max-w-2xl mx-auto">
+        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-6">
           <ArrowLeft className="w-4 h-4" />
           Back to dashboard
         </Link>
 
         <Card>
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-8 h-8 text-primary-600" />
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 to-teal-100 dark:from-primary-900/30 dark:to-teal-900/30 rounded-2xl flex items-center justify-center">
+              <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
             </div>
-            <h1 className="text-2xl font-display font-bold text-neutral-900">
-              Set Up Your Business
-            </h1>
-            <p className="text-neutral-500 mt-2">
-              Create a business profile to start accepting loan requests
-            </p>
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Business Lender Setup</h1>
+            <p className="text-neutral-500 dark:text-neutral-400 mt-2">Complete your profile to start lending on Feyza</p>
           </div>
 
-          {/* Progress Bar */}
-          <div className="mb-6">
-            <div className="flex justify-between text-sm text-neutral-500 mb-2">
+          <div className="mb-8">
+            <div className="flex justify-between text-xs text-neutral-500 dark:text-neutral-400 mb-2">
               <span>Step {step} of {totalSteps}</span>
               <span>{Math.round(progressPercent)}% complete</span>
             </div>
-            <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-primary-500 transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Step indicators */}
-          <div className="flex items-center justify-center gap-4 mb-6">
-            <div className={`flex items-center gap-2 text-sm ${step >= 1 ? 'text-primary-600' : 'text-neutral-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step > 1 ? 'bg-green-500 text-white' : step === 1 ? 'bg-primary-500 text-white' : 'bg-neutral-200'}`}>
-                {step > 1 ? <CheckCircle className="w-4 h-4" /> : '1'}
-              </div>
-              <span className="hidden sm:inline">Info</span>
-            </div>
-            <div className="w-8 h-0.5 bg-neutral-200" />
-            <div className={`flex items-center gap-2 text-sm ${step >= 2 ? 'text-primary-600' : 'text-neutral-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step > 2 ? 'bg-green-500 text-white' : step === 2 ? 'bg-primary-500 text-white' : 'bg-neutral-200'}`}>
-                {step > 2 ? <CheckCircle className="w-4 h-4" /> : '2'}
-              </div>
-              <span className="hidden sm:inline">Rates</span>
-            </div>
-            <div className="w-8 h-0.5 bg-neutral-200" />
-            <div className={`flex items-center gap-2 text-sm ${step >= 3 ? 'text-primary-600' : 'text-neutral-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${step === 3 ? 'bg-primary-500 text-white' : 'bg-neutral-200'}`}>
-                3
-              </div>
-              <span className="hidden sm:inline">PayPal</span>
+            <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+              <div className="h-full bg-primary-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+              <span className="text-sm text-red-700 dark:text-red-400">{error}</span>
             </div>
           )}
 
           <form onSubmit={handleSubmit}>
-            {/* Step 1: Business Info */}
             {step === 1 && (
               <div className="space-y-4 animate-fade-in">
-                <Input
-                  label="Business Name *"
-                  value={businessName}
-                  onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="e.g., ABC Microfinance"
-                />
-
-                <Select
-                  label="Business Type *"
-                  value={businessType}
-                  onChange={(e) => setBusinessType(e.target.value)}
-                  options={businessTypes}
-                />
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1.5">
-                    Description
-                  </label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Tell borrowers about your business..."
-                    rows={3}
-                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400"
-                  />
-                </div>
-
-                <Input
-                  label="Location"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g., Lagos, Nigeria"
-                />
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Contact Email"
-                    type="email"
-                    value={contactEmail}
-                    onChange={(e) => setContactEmail(e.target.value)}
-                    placeholder="business@example.com"
-                  />
-                  <Input
-                    label="Contact Phone"
-                    type="tel"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    placeholder="+234 800 000 0000"
-                  />
-                </div>
-
-                <div className="pt-4 flex justify-end">
-                  <Button type="button" onClick={goToNextStep}>
-                    Continue
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Step 2: Interest Rate Settings */}
-            {step === 2 && (
-              <div className="space-y-4 animate-fade-in">
-                <button
-                  type="button"
-                  onClick={() => { setStep(1); setError(null); }}
-                  className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Back
-                </button>
-
                 <div className="flex items-center gap-2 mb-4">
-                  <Percent className="w-5 h-5 text-primary-600" />
-                  <h3 className="font-semibold text-neutral-900">Interest Rate Settings</h3>
+                  <Building2 className="w-5 h-5 text-primary-600" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Business Information</h3>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Default Interest Rate (%)"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max="100"
-                    value={defaultInterestRate}
-                    onChange={(e) => setDefaultInterestRate(e.target.value)}
-                    placeholder="e.g., 15"
-                    helperText="Annual percentage rate"
-                  />
-                  <Select
-                    label="Interest Type"
-                    value={interestType}
-                    onChange={(e) => setInterestType(e.target.value)}
-                    options={interestTypeOptions}
-                  />
+                {/* Logo Upload */}
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">Business Logo (optional)</label>
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-xl border-2 border-dashed border-neutral-300 dark:border-neutral-600 flex items-center justify-center overflow-hidden bg-neutral-50 dark:bg-neutral-800">
+                      {logoPreview ? (
+                        <img src={logoPreview} alt="Logo preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="w-8 h-8 text-neutral-400" />
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            setLogoFile(file);
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setLogoPreview(reader.result as string);
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                        className="hidden"
+                        id="logo-upload"
+                      />
+                      <label
+                        htmlFor="logo-upload"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-600 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-sm font-medium text-neutral-700 dark:text-neutral-300"
+                      >
+                        <Upload className="w-4 h-4" />
+                        {logoFile ? 'Change Logo' : 'Upload Logo'}
+                      </label>
+                      {logoFile && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setLogoFile(null);
+                            setLogoPreview(null);
+                          }}
+                          className="ml-2 text-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">PNG, JPG up to 2MB. Square image recommended.</p>
+                    </div>
+                  </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <Input
-                    label="Min Loan Amount"
-                    type="number"
-                    min="0"
-                    value={minLoanAmount}
-                    onChange={(e) => setMinLoanAmount(e.target.value)}
-                    placeholder="e.g., 100"
-                  />
-                  <Input
-                    label="Max Loan Amount"
-                    type="number"
-                    min="0"
-                    value={maxLoanAmount}
-                    onChange={(e) => setMaxLoanAmount(e.target.value)}
-                    placeholder="e.g., 10000"
-                  />
+                
+                <Input label="Business Name *" value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="e.g., ABC Lending Company" />
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Select label="Business Type *" value={businessType} onChange={(e) => setBusinessType(e.target.value)} options={BUSINESS_TYPES} />
+                  <Select label="Entity Type *" value={businessEntityType} onChange={(e) => setBusinessEntityType(e.target.value)} options={BUSINESS_ENTITY_TYPES} />
                 </div>
-
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <p className="text-sm text-blue-800">
-                    <strong>Note:</strong> These settings will be applied to all loan requests you receive. 
-                    You can change them later in your business settings.
-                  </p>
+                <Input label="Tagline (optional)" value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="e.g., Fast, fair loans for everyone" helperText="A short description that appears on your public profile" />
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">Business Description (optional)</label>
+                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Tell borrowers about your lending services..." className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400" />
                 </div>
-
                 <div className="pt-4 flex justify-end">
-                  <Button type="button" onClick={goToNextStep}>
-                    Continue
-                    <ChevronRight className="w-4 h-4 ml-1" />
-                  </Button>
+                  <Button type="button" onClick={goToNextStep}>Continue<ChevronRight className="w-4 h-4 ml-1" /></Button>
                 </div>
               </div>
             )}
 
-            {/* Step 3: PayPal & Terms */}
+            {step === 2 && (
+              <div className="space-y-4 animate-fade-in">
+                <button type="button" onClick={() => { setStep(1); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                  <ChevronLeft className="w-4 h-4" />Back
+                </button>
+                <div className="flex items-center gap-2 mb-4">
+                  <Shield className="w-5 h-5 text-primary-600" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Verification Details</h3>
+                </div>
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-4">
+                  <p className="text-sm text-blue-700 dark:text-blue-300"><strong>Why we need this:</strong> This information helps us verify your business and ensures compliance with lending regulations.</p>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Select label="State *" value={state} onChange={(e) => setState(e.target.value)} options={US_STATES} />
+                  <Input label="EIN / Tax ID (optional)" value={einTaxId} onChange={(e) => setEinTaxId(e.target.value)} placeholder="XX-XXXXXXX" helperText="Your federal tax ID number" />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input label="Years in Business" type="number" min="0" value={yearsInBusiness} onChange={(e) => setYearsInBusiness(e.target.value)} placeholder="e.g., 5" />
+                  <Input label="Website URL" type="url" value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="https://yourcompany.com" />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Select label="Number of Employees" value={numberOfEmployees} onChange={(e) => setNumberOfEmployees(e.target.value)} options={EMPLOYEE_RANGES} />
+                  <Select label="Annual Revenue" value={annualRevenueRange} onChange={(e) => setAnnualRevenueRange(e.target.value)} options={REVENUE_RANGES} />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input label="Contact Email *" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} placeholder="business@example.com" />
+                  <Input label="Contact Phone" type="tel" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} placeholder="(555) 123-4567" />
+                </div>
+                <div className="pt-4 flex justify-end">
+                  <Button type="button" onClick={goToNextStep}>Continue<ChevronRight className="w-4 h-4 ml-1" /></Button>
+                </div>
+              </div>
+            )}
+
             {step === 3 && (
               <div className="space-y-4 animate-fade-in">
-                <button
-                  type="button"
-                  onClick={() => { setStep(2); setError(null); }}
-                  className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-2"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                  Back
+                <button type="button" onClick={() => { setStep(2); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                  <ChevronLeft className="w-4 h-4" />Back
                 </button>
+                <div className="flex items-center gap-2 mb-4">
+                  <Percent className="w-5 h-5 text-primary-600" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Lending Settings</h3>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input label="Default Interest Rate (%)" type="number" step="0.01" min="0" max="100" value={defaultInterestRate} onChange={(e) => setDefaultInterestRate(e.target.value)} placeholder="e.g., 15" helperText="Annual percentage rate" />
+                  <Select label="Interest Type" value={interestType} onChange={(e) => setInterestType(e.target.value)} options={interestTypeOptions} />
+                </div>
+                <div className="grid md:grid-cols-2 gap-4">
+                  <Input label="Min Loan Amount ($)" type="number" min="1" value={minLoanAmount} onChange={(e) => setMinLoanAmount(e.target.value)} placeholder="e.g., 50" />
+                  <Input label="Max Loan Amount ($)" type="number" min="1" value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} placeholder="e.g., 5000" />
+                </div>
+                <Input label="First-Time Borrower Limit ($)" type="number" min="1" value={firstTimeBorrowerLimit} onChange={(e) => setFirstTimeBorrowerLimit(e.target.value)} placeholder="e.g., 500" helperText="Maximum amount for borrowers with no repayment history" />
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                  <p className="text-sm text-blue-800 dark:text-blue-300"><strong>Note:</strong> These are your default settings. You can customize them further in Lender Preferences after setup.</p>
+                </div>
+                <div className="pt-4 flex justify-end">
+                  <Button type="button" onClick={goToNextStep}>Continue<ChevronRight className="w-4 h-4 ml-1" /></Button>
+                </div>
+              </div>
+            )}
 
-                {/* PayPal Section */}
+            {step === 4 && (
+              <div className="space-y-4 animate-fade-in">
+                <button type="button" onClick={() => { setStep(3); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                  <ChevronLeft className="w-4 h-4" />Back
+                </button>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-4">
                     <CreditCard className="w-5 h-5 text-primary-600" />
-                    <h3 className="font-semibold text-neutral-900">Payment Setup</h3>
+                    <h3 className="font-semibold text-neutral-900 dark:text-white">Payment Setup</h3>
                   </div>
-
                   {userProfile?.paypal_email ? (
-                    <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
                       <div className="flex items-center gap-3">
                         <CheckCircle className="w-5 h-5 text-green-600" />
                         <div>
-                          <p className="font-medium text-green-800">PayPal Already Connected</p>
-                          <p className="text-sm text-green-700">{userProfile.paypal_email}</p>
+                          <p className="font-medium text-green-800 dark:text-green-300">PayPal Already Connected</p>
+                          <p className="text-sm text-green-700 dark:text-green-400">{userProfile.paypal_email}</p>
                         </div>
                       </div>
                     </div>
                   ) : (
-                    <>
-                      <Input
-                        label="PayPal Email Address *"
-                        type="email"
-                        value={paypalEmail}
-                        onChange={(e) => setPaypalEmail(e.target.value)}
-                        placeholder="your@paypal.com"
-                        helperText="You'll receive loan repayments to this PayPal account"
-                      />
-                    </>
+                    <Input label="PayPal Email Address *" type="email" value={paypalEmail} onChange={(e) => setPaypalEmail(e.target.value)} placeholder="your@paypal.com" helperText="You'll send and receive payments through this PayPal account" />
                   )}
                 </div>
-
-                {/* Terms Section */}
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <p className="font-medium text-neutral-900 dark:text-white">Enable Public Profile</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">Allow borrowers to find you via a shareable link</p>
+                    </div>
+                    <button type="button" onClick={() => setPublicProfileEnabled(!publicProfileEnabled)} className={`relative w-14 h-8 rounded-full transition-colors ${publicProfileEnabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}>
+                      <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${publicProfileEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                    </button>
+                  </label>
+                </div>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-4">
                     <FileText className="w-5 h-5 text-primary-600" />
-                    <h3 className="font-semibold text-neutral-900">Terms & Conditions</h3>
+                    <h3 className="font-semibold text-neutral-900 dark:text-white">Terms & Conditions</h3>
                   </div>
-
-                  <div className="bg-neutral-50 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600">
-                    <h4 className="font-semibold text-neutral-900 mb-2">LoanTrack Business Terms</h4>
-                    <p className="mb-2">By creating a business account on LoanTrack, you agree to:</p>
+                  <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600 dark:text-neutral-400">
+                    <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Feyza Business Lender Agreement</h4>
+                    <p className="mb-2">By creating a business lender account on Feyza, you agree to:</p>
                     <ul className="list-disc pl-5 space-y-1">
                       <li>Provide accurate and truthful business information</li>
-                      <li>Comply with all applicable lending laws and regulations in your jurisdiction</li>
+                      <li>Comply with all applicable federal and state lending laws</li>
                       <li>Honor the loan terms agreed upon with borrowers</li>
-                      <li>Process loan disbursements in a timely manner</li>
+                      <li>Process loan disbursements within 24 hours of acceptance</li>
                       <li>Maintain fair and transparent lending practices</li>
-                      <li>Keep your PayPal account active for receiving and sending payments</li>
-                      <li>Respond to loan requests within a reasonable timeframe</li>
-                      <li>Not engage in predatory lending practices</li>
+                      <li>Not engage in predatory lending or discriminatory practices</li>
+                      <li>Keep your PayPal account active for transactions</li>
                       <li>Protect borrower information and privacy</li>
-                      <li>Allow LoanTrack to verify your business information</li>
+                      <li>Allow Feyza to verify your business information</li>
                     </ul>
-                    <p className="mt-4">
-                      LoanTrack reserves the right to suspend or terminate accounts that violate these terms.
-                    </p>
                   </div>
-
                   <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={termsAccepted}
-                      onChange={(e) => setTermsAccepted(e.target.checked)}
-                      className="mt-1 w-5 h-5 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
-                    />
-                    <span className="text-sm text-neutral-700">
-                      I have read and agree to the <strong>Terms & Conditions</strong> and confirm that my business complies with all applicable lending regulations.
-                    </span>
+                    <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 w-5 h-5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 focus:ring-primary-500" />
+                    <span className="text-sm text-neutral-700 dark:text-neutral-300">I have read and agree to the <strong>Terms & Conditions</strong> and confirm that my business complies with all applicable lending regulations in my state.</span>
                   </label>
                 </div>
-
                 <div className="pt-4">
-                  <Button 
-                    type="submit" 
-                    loading={saving} 
-                    className="w-full"
-                    disabled={!termsAccepted || (!userProfile?.paypal_email && !paypalEmail)}
-                  >
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Complete Business Setup
+                  <Button type="submit" loading={saving} className="w-full" disabled={!termsAccepted || (!userProfile?.paypal_email && !paypalEmail)}>
+                    <CheckCircle className="w-4 h-4 mr-2" />Submit for Review
                   </Button>
                 </div>
               </div>
             )}
           </form>
 
-          <p className="text-xs text-neutral-500 text-center mt-6">
-            Your business will be reviewed before appearing to borrowers. 
-            This usually takes 1-2 business days.
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center mt-6">
+            Your application will be reviewed within 1-2 business days. You'll receive an email once approved.
           </p>
         </Card>
       </div>

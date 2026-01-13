@@ -343,7 +343,7 @@ function getCashReadyEmail(data: {
           </div>
           
           <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-            Sent via LoanTrack • Simple loan tracking for everyone
+            Sent via Feyza • Simple loan tracking for everyone
           </p>
         </body>
       </html>
@@ -405,7 +405,7 @@ function getDisbursementCompletedEmail(data: {
           </div>
           
           <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-            Sent via LoanTrack • Simple loan tracking for everyone
+            Sent via Feyza • Simple loan tracking for everyone
           </p>
         </body>
       </html>
@@ -453,7 +453,7 @@ function getDisbursementFailedEmail(data: {
           </div>
           
           <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-            Sent via LoanTrack • Simple loan tracking for everyone
+            Sent via Feyza • Simple loan tracking for everyone
           </p>
         </body>
       </html>

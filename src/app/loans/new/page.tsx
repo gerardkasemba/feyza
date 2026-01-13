@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Button } from '@/components/ui';
@@ -9,12 +9,16 @@ import { LoanRequestForm, LoanRequestFormData } from '@/components/loans/LoanReq
 import { createClient } from '@/lib/supabase/client';
 import { BusinessProfile } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule } from '@/lib/utils';
-import { ArrowLeft, CreditCard, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CreditCard, AlertCircle, Building2, CheckCircle } from 'lucide-react';
 
-export default function NewLoanPage() {
+function NewLoanContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const lenderSlug = searchParams.get('lender'); // Direct lender link: ?lender=feyza-bank
+  
   const [user, setUser] = useState<any>(null);
   const [businesses, setBusinesses] = useState<BusinessProfile[]>([]);
+  const [preferredLender, setPreferredLender] = useState<BusinessProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showPayPalPrompt, setShowPayPalPrompt] = useState(false);
 
@@ -44,7 +48,7 @@ export default function NewLoanPage() {
       
       setUser(userData);
 
-      // Fetch available business lenders (only those with completed profiles and PayPal)
+      // Fetch available business lenders
       const { data: businessData } = await supabase
         .from('business_profiles')
         .select('*')
@@ -52,29 +56,39 @@ export default function NewLoanPage() {
         .eq('profile_completed', true);
 
       setBusinesses(businessData || []);
+
+      // If a lender slug is provided, look them up
+      if (lenderSlug) {
+        const { data: lenderData } = await supabase
+          .from('business_profiles')
+          .select('*')
+          .eq('slug', lenderSlug)
+          .eq('is_verified', true)
+          .eq('public_profile_enabled', true)
+          .single();
+        
+        if (lenderData) {
+          setPreferredLender(lenderData);
+        }
+      }
+
       setIsLoading(false);
     };
 
     fetchData();
-  }, [router]);
+  }, [router, lenderSlug]);
 
   const handleConnectPayPal = () => {
-    // Redirect to settings page for PayPal connection
     router.push('/settings?tab=payments');
   };
 
   const handleSubmit = async (data: LoanRequestFormData) => {
     const supabase = createClient();
 
-    // Generate invite token for personal loans
     const inviteToken = data.lenderType === 'personal' ? generateInviteToken() : null;
-
-    // For personal loans, interest is set by lender, so use 0 initially
-    // For auto-match, interest will be set by matched lender
     const interestRate = data.lenderType === 'business' ? (data.interestRate || 0) : 0;
     const interestType = data.interestType || 'simple';
     
-    // Calculate term in months
     const termMonths = data.totalInstallments * (
       data.repaymentFrequency === 'weekly' ? 0.25 :
       data.repaymentFrequency === 'biweekly' ? 0.5 : 1
@@ -94,7 +108,6 @@ export default function NewLoanPage() {
     const totalAmount = data.amount + totalInterest;
     const repaymentAmount = totalAmount / data.totalInstallments;
 
-    // Calculate repayment schedule
     const schedule = calculateRepaymentSchedule({
       amount: data.amount,
       repaymentAmount: repaymentAmount,
@@ -105,21 +118,15 @@ export default function NewLoanPage() {
       interestType: interestType,
     });
 
-    // Create the loan
-    console.log('Creating loan with disbursement info:', {
-      isForRecipient: data.isForRecipient,
-      recipientName: data.recipientName,
-      recipientPhone: data.recipientPhone,
-      recipientCountry: data.recipientCountry,
-      disbursementMethod: data.disbursementMethod,
-    });
+    // If we have a preferred lender (from ?lender=slug), pre-assign them
+    const targetLenderId = preferredLender?.id || null;
 
     const { data: loan, error } = await supabase
       .from('loans')
       .insert({
         borrower_id: user.id,
         lender_type: data.lenderType,
-        business_lender_id: null, // Will be set by matching engine
+        business_lender_id: targetLenderId, // Pre-assign if direct link
         invite_email: data.lenderType === 'personal' ? data.inviteEmail : null,
         invite_phone: data.lenderType === 'personal' ? data.invitePhone : null,
         invite_token: inviteToken,
@@ -127,45 +134,36 @@ export default function NewLoanPage() {
         amount: data.amount,
         currency: data.currency,
         purpose: data.purpose,
-        // Interest fields (lender will set these)
         interest_rate: interestRate,
         interest_type: interestType,
         total_interest: Math.round(totalInterest * 100) / 100,
         total_amount: Math.round(totalAmount * 100) / 100,
-        // Repayment
         repayment_frequency: data.repaymentFrequency,
         repayment_amount: Math.round(repaymentAmount * 100) / 100,
         total_installments: data.totalInstallments,
         start_date: data.startDate,
-        // Disbursement method
         disbursement_method: data.disbursementMethod,
-        // Mobile Money
         mobile_money_provider: data.mobileMoneyProvider,
         mobile_money_phone: data.mobileMoneyPhone,
         mobile_money_name: data.mobileMoneyName,
-        // Cash Pickup
         pickup_person_name: data.pickerFullName || data.recipientName,
         pickup_person_location: data.cashPickupLocation,
         pickup_person_phone: data.pickerPhone,
         pickup_person_id_type: data.pickerIdType,
         pickup_person_id_number: data.pickerIdNumber,
-        // Bank Transfer
         bank_name: data.bankName,
         bank_account_name: data.bankAccountName,
         bank_account_number: data.bankAccountNumber,
         bank_branch: data.bankBranch,
         bank_swift_code: data.bankSwiftCode,
-        // Recipient (borrowing for someone else)
         is_for_recipient: data.isForRecipient === true,
         recipient_name: data.recipientName || null,
         recipient_phone: data.recipientPhone || null,
         recipient_country: data.recipientCountry || null,
-        // Borrower signed the agreement
         borrower_signed: data.agreementSigned || false,
         borrower_signed_at: data.agreementSigned ? new Date().toISOString() : null,
-        // Status
         status: 'pending',
-        match_status: data.lenderType === 'business' ? 'pending' : 'manual',
+        match_status: data.lenderType === 'business' ? (targetLenderId ? 'direct' : 'pending') : 'manual',
         amount_paid: 0,
         amount_remaining: Math.round(totalAmount * 100) / 100,
       })
@@ -177,7 +175,6 @@ export default function NewLoanPage() {
       throw error;
     }
 
-    // Create payment schedule items
     const scheduleItems = schedule.map((item) => ({
       loan_id: loan.id,
       due_date: item.dueDate.toISOString(),
@@ -189,29 +186,41 @@ export default function NewLoanPage() {
 
     await supabase.from('payment_schedule').insert(scheduleItems);
 
-    // Handle based on lender type
     if (data.lenderType === 'business') {
-      // Business lender = auto-matching
-      const matchResponse = await fetch('/api/matching', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loan_id: loan.id }),
-      });
-
-      const matchResult = await matchResponse.json();
-      
-      if (matchResult.status === 'auto_accepted') {
-        // Loan was instantly matched!
-        router.push(`/loans/${loan.id}?matched=true`);
-      } else if (matchResult.status === 'pending_acceptance') {
-        // Loan is waiting for lender response
-        router.push(`/loans/${loan.id}?matching=true`);
+      // If direct link to lender, send notification to that lender
+      if (targetLenderId) {
+        // Notify the specific lender
+        await fetch('/api/notifications/payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'direct_loan_request',
+            loanId: loan.id,
+            businessId: targetLenderId,
+            borrowerName: user.full_name,
+            amount: data.amount,
+          }),
+        });
+        router.push(`/loans/${loan.id}?direct=true`);
       } else {
-        // No matching lenders found
-        router.push(`/loans/${loan.id}?no_match=true`);
+        // Regular matching
+        const matchResponse = await fetch('/api/matching', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ loan_id: loan.id }),
+        });
+
+        const matchResult = await matchResponse.json();
+        
+        if (matchResult.status === 'auto_accepted') {
+          router.push(`/loans/${loan.id}?matched=true`);
+        } else if (matchResult.status === 'pending_acceptance') {
+          router.push(`/loans/${loan.id}?matching=true`);
+        } else {
+          router.push(`/loans/${loan.id}?no_match=true`);
+        }
       }
     } else {
-      // Personal lender - send invite email
       await fetch('/api/invite/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -254,9 +263,34 @@ export default function NewLoanPage() {
             Back to dashboard
           </Link>
 
+          {/* Direct Lender Banner */}
+          {preferredLender && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-primary-50 to-teal-50 dark:from-primary-900/20 dark:to-teal-900/20 border border-primary-200 dark:border-primary-800 rounded-xl">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white dark:bg-neutral-800 rounded-xl flex items-center justify-center overflow-hidden shadow-sm">
+                  {preferredLender.logo_url ? (
+                    <img src={preferredLender.logo_url} alt={preferredLender.business_name} className="w-full h-full object-cover" />
+                  ) : (
+                    <Building2 className="w-6 h-6 text-primary-600" />
+                  )}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-neutral-900 dark:text-white">{preferredLender.business_name}</span>
+                    <CheckCircle className="w-4 h-4 text-green-600" />
+                  </div>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                    Your loan request will be sent directly to this lender
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
           <Card>
             <LoanRequestForm 
               businesses={businesses} 
+              preferredLender={preferredLender}
               userPayPalConnected={user?.paypal_connected || false}
               userVerificationStatus={user?.verification_status || 'pending'}
               userPaypalEmail={user?.paypal_email}
@@ -273,5 +307,18 @@ export default function NewLoanPage() {
 
       <Footer />
     </div>
+  );
+}
+
+// Wrap with Suspense for useSearchParams
+export default function NewLoanPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse text-neutral-500">Loading...</div>
+      </div>
+    }>
+      <NewLoanContent />
+    </Suspense>
   );
 }

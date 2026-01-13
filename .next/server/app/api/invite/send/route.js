@@ -1,0 +1,134 @@
+"use strict";(()=>{var e={};e.id=4847,e.ids=[4847],e.modules={72934:e=>{e.exports=require("next/dist/client/components/action-async-storage.external.js")},54580:e=>{e.exports=require("next/dist/client/components/request-async-storage.external.js")},45869:e=>{e.exports=require("next/dist/client/components/static-generation-async-storage.external.js")},20399:e=>{e.exports=require("next/dist/compiled/next-server/app-page.runtime.prod.js")},30517:e=>{e.exports=require("next/dist/compiled/next-server/app-route.runtime.prod.js")},61282:e=>{e.exports=require("child_process")},84770:e=>{e.exports=require("crypto")},80665:e=>{e.exports=require("dns")},17702:e=>{e.exports=require("events")},92048:e=>{e.exports=require("fs")},32615:e=>{e.exports=require("http")},35240:e=>{e.exports=require("https")},98216:e=>{e.exports=require("net")},19801:e=>{e.exports=require("os")},55315:e=>{e.exports=require("path")},76162:e=>{e.exports=require("stream")},82452:e=>{e.exports=require("tls")},17360:e=>{e.exports=require("url")},21764:e=>{e.exports=require("util")},71568:e=>{e.exports=require("zlib")},3534:(e,t,o)=>{o.r(t),o.d(t,{originalPathname:()=>m,patchFetch:()=>h,requestAsyncStorage:()=>x,routeModule:()=>c,serverHooks:()=>g,staticGenerationAsyncStorage:()=>u});var r={};o.r(r),o.d(r,{POST:()=>d});var i=o(49303),s=o(88716),n=o(60670),a=o(87070),l=o(65655),p=o(20471);async function d(e){try{let{loanId:t,inviteToken:o,email:r,phone:i,borrowerName:s,amount:n,currency:d,purpose:c,lenderType:x,businessId:u}=await e.json();if(console.log("Invite send request:",{lenderType:x,email:r,businessId:u,borrowerName:s}),"personal"===x&&r)try{let{subject:e,html:t}=(0,p.H5)({borrowerName:s||"Someone",amount:n||0,currency:d||"USD",inviteToken:o||"",purpose:c}),i=await (0,p.Cz)({to:r,subject:e,html:t});i.success?console.log("Invite email sent successfully to:",r):console.error("Failed to send invite email:",i.error)}catch(e){console.error("Email send error:",e)}if("business"===x&&u)try{let e=await (0,l.f)(),{data:o,error:r}=await e.from("business_profiles").select("*, owner:users!user_id(*)").eq("id",u).single();if(r&&console.error("Error fetching business:",r),o?.owner?.email){let e=function(e){let{businessName:t,borrowerName:o,amount:r,currency:i,purpose:s,loanId:n}=e,a="http://localhost:3000",l=`${a}/business`;return{subject:`New loan request from ${o}`,html:`
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <!-- Header with logo -->
+        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
+          <!-- Logo -->
+          <div style="margin-bottom: 15px;">
+            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
+                 alt="Feyza Logo" 
+                 style="height: 40px; width: auto; filter: brightness(0) invert(1);">
+          </div>
+          <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">📋 New Loan Request</h1>
+          <p style="color: rgba(255, 255, 255, 0.9); margin: 8px 0 0 0; font-size: 16px;">Ready for your review</p>
+        </div>
+        
+        <!-- Main content -->
+        <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
+          <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${t} team! 👋</p>
+          
+          <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
+            You have a new loan request from <strong style="color: #059669;">${o}</strong>:
+          </p>
+          
+          <!-- Loan details card -->
+          <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
+            <h3 style="margin: 0 0 20px 0; color: #065f46; font-size: 18px; font-weight: 600;">Request Details</h3>
+            
+            <div style="display: flex; align-items: center; margin-bottom: 15px;">
+              <div style="flex: 1;">
+                <span style="color: #047857; font-size: 14px; font-weight: 500;">Requested Amount:</span>
+              </div>
+              <div style="text-align: right;">
+                <span style="font-weight: bold; font-size: 28px; color: #059669;">${i} ${r.toLocaleString()}</span>
+              </div>
+            </div>
+            
+            ${s?`
+            <div style="border-top: 1px solid #bbf7d0; padding-top: 15px; margin-top: 15px;">
+              <div style="margin-bottom: 8px;">
+                <span style="color: #047857; font-size: 14px; font-weight: 500;">Purpose:</span>
+              </div>
+              <div style="background: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 4px solid #059669;">
+                <p style="margin: 0; color: #166534; line-height: 1.5;">${s}</p>
+              </div>
+            </div>
+            `:""}
+            
+            <!-- Quick stats (optional - add if you have more data) -->
+            <!--
+            <div style="border-top: 1px solid #bbf7d0; padding-top: 15px; margin-top: 15px;">
+              <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
+                <div>
+                  <span style="color: #047857; font-size: 12px; font-weight: 500;">Risk Score:</span>
+                  <div style="font-weight: 600; color: #166534;">Medium</div>
+                </div>
+                <div>
+                  <span style="color: #047857; font-size: 12px; font-weight: 500;">Borrower Rating:</span>
+                  <div style="font-weight: 600; color: #166534;">★★★★☆</div>
+                </div>
+              </div>
+            </div>
+            -->
+          </div>
+          
+          <!-- Action box -->
+          <div style="background: white; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
+            <h3 style="margin: 0 0 15px 0; color: #065f46; font-size: 18px; font-weight: 600;">Next Steps</h3>
+            <p style="color: #166534; font-size: 14px; line-height: 1.5; margin-bottom: 20px;">
+              Review this request in your business dashboard to accept or decline. 
+              Remember to check borrower details and risk assessment before making a decision.
+            </p>
+            
+            <!-- Timer/urgency (optional) -->
+            <!--
+            <div style="background: #fef3c7; padding: 12px; border-radius: 8px; border: 1px solid #fbbf24; margin-bottom: 20px;">
+              <div style="display: flex; align-items: center;">
+                <span style="color: #92400e; font-size: 14px; font-weight: 500;">⏰ Respond within:</span>
+                <span style="color: #92400e; font-weight: 600; margin-left: auto;">48 hours</span>
+              </div>
+            </div>
+            -->
+            
+            <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
+              <a href="${l}" 
+                 style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
+                        color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
+                        font-weight: 600; text-align: center; font-size: 16px; flex: 2; min-width: 200px;
+                        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
+                 onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
+                 onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
+                Review Request →
+              </a>
+              
+              <a href="${a}/business/requests" 
+                 style="display: inline-block; background: white; 
+                        color: #059669; text-decoration: none; padding: 16px 24px; border-radius: 8px; 
+                        font-weight: 600; text-align: center; font-size: 16px; border: 2px solid #059669;
+                        box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1); transition: all 0.2s ease; flex: 1;"
+                 onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';this.style.background='#f0fdf4';"
+                 onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(5, 150, 105, 0.1)';this.style.background='white';">
+                View All
+              </a>
+            </div>
+          </div>
+          
+          <!-- Footer -->
+          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
+            <p style="margin: 0 0 10px 0;">Need help reviewing loan requests?</p>
+            <p style="margin: 0;">
+              <a href="${a}/help/lender-guide" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
+                Lender Guide
+              </a>
+              <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
+                Contact Support
+              </a>
+            </p>
+          </div>
+        </div>
+        
+        <!-- Signature -->
+        <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
+          <p style="margin: 0;">Feyza • Automated Loan Matching System</p>
+          <p style="margin: 5px 0 0 0; font-size: 11px; color: #9ca3af;">
+            This is an automated notification. Please do not reply to this email.
+          </p>
+        </div>
+      </body>
+    </html>
+  `}}({businessName:o.business_name,borrowerName:s||"A user",amount:n||0,currency:d||"USD",purpose:c,loanId:t||""}),r=await (0,p.Cz)({to:o.owner.email,subject:e.subject,html:e.html});r.success?console.log("Business loan request email sent to:",o.owner.email):console.error("Failed to send business notification email:",r.error)}else console.log("No business owner email found for business:",u)}catch(e){console.error("Business email error:",e)}return i&&console.log("SMS invite requested for:",i,"- SMS not yet implemented"),a.NextResponse.json({success:!0})}catch(e){return console.error("Error in invite send:",e),a.NextResponse.json({error:"Internal server error",message:e instanceof Error?e.message:"Unknown error"},{status:500})}}let c=new i.AppRouteRouteModule({definition:{kind:s.x.APP_ROUTE,page:"/api/invite/send/route",pathname:"/api/invite/send",filename:"route",bundlePath:"app/api/invite/send/route"},resolvedPagePath:"C:\\Users\\GerardKasemba\\feyza\\src\\app\\api\\invite\\send\\route.ts",nextConfigOutput:"",userland:r}),{requestAsyncStorage:x,staticGenerationAsyncStorage:u,serverHooks:g}=c,m="/api/invite/send/route";function h(){return(0,n.patchFetch)({serverHooks:g,staticGenerationAsyncStorage:u})}},65655:(e,t,o)=>{o.d(t,{f:()=>s,k:()=>n});var r=o(67721),i=o(71615);async function s(){let e=await (0,i.cookies)();return(0,r.createServerClient)("https://mregojhoivbxdvgjrixz.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1yZWdvamhvaXZieGR2Z2pyaXh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njc1ODE1NDQsImV4cCI6MjA4MzE1NzU0NH0.I_jEMf00cFYAdF0akvD-HOqXWExxO3E0BV69EHEa5jI",{cookies:{getAll:()=>e.getAll(),setAll(t){try{t.forEach(({name:t,value:o,options:r})=>e.set(t,o,r))}catch{}}}})}async function n(){let e=await (0,i.cookies)();return(0,r.createServerClient)("https://mregojhoivbxdvgjrixz.supabase.co",process.env.SUPABASE_SERVICE_ROLE_KEY,{cookies:{getAll:()=>e.getAll(),setAll(t){try{t.forEach(({name:t,value:o,options:r})=>e.set(t,o,r))}catch{}}}})}}};var t=require("../../../../webpack-runtime.js");t.C(e);var o=e=>t(t.s=e),r=t.X(0,[9276,3786,9702,5972,5245,471],()=>o(3534));module.exports=r})();

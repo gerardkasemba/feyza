@@ -775,10 +775,10 @@ export default function VerificationPage() {
                   <p className="mb-2">By submitting this verification, you agree to:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>All information provided is accurate and truthful</li>
-                    <li>LoanTrack may verify this information with third parties</li>
+                    <li>Feyza may verify this information with third parties</li>
                     <li>Any false information may result in account suspension</li>
                     <li>You will repay any loans according to agreed terms</li>
-                    <li>LoanTrack may report defaulted loans to credit bureaus</li>
+                    <li>Feyza may report defaulted loans to credit bureaus</li>
                     <li>You are of legal age to enter into loan agreements</li>
                   </ul>
                 </div>

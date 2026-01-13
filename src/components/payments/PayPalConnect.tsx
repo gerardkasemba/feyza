@@ -132,7 +132,7 @@ export function PayPalConnect({ user, onConnect, onDisconnect }: PayPalConnectPr
 
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
             <p className="text-sm text-yellow-800">
-              <strong>Note:</strong> By connecting your PayPal, you authorize LoanTrack to:
+              <strong>Note:</strong> By connecting your PayPal, you authorize Feyza to:
             </p>
             <ul className="text-sm text-yellow-700 mt-2 space-y-1">
               <li>• Automatically charge your PayPal for loan repayments</li>

@@ -74,29 +74,25 @@ interface BorrowingEligibility {
 interface LoanRequestFormProps {
   businesses: BusinessProfile[];
   preferredLender?: BusinessProfile | null; // Direct lender from ?lender=slug
-  userPayPalConnected: boolean;
+  userBankConnected: boolean;
   userVerificationStatus?: string; // pending, submitted, verified, rejected
-  // User payment methods
-  userPaypalEmail?: string;
-  userCashappUsername?: string;
-  userVenmoUsername?: string;
-  userPreferredPaymentMethod?: 'paypal' | 'cashapp' | 'venmo' | null;
+  // User bank info
+  userBankName?: string;
+  userBankAccountMask?: string;
   onSubmit: (data: LoanRequestFormData) => Promise<void>;
-  onConnectPayPal: () => void;
+  onConnectBank: () => void;
   onStartVerification?: () => void;
 }
 
 export function LoanRequestForm({ 
   businesses, 
   preferredLender,
-  userPayPalConnected,
+  userBankConnected,
   userVerificationStatus,
-  userPaypalEmail,
-  userCashappUsername,
-  userVenmoUsername,
-  userPreferredPaymentMethod,
+  userBankName,
+  userBankAccountMask,
   onSubmit,
-  onConnectPayPal,
+  onConnectBank,
   onStartVerification,
 }: LoanRequestFormProps) {
   // If there's a preferred lender from direct link, auto-select business type
@@ -116,7 +112,7 @@ export function LoanRequestForm({
   
   // Disbursement state
   const [disbursementData, setDisbursementData] = useState<any>({
-    disbursement_method: 'paypal',
+    disbursement_method: 'bank_transfer',
   });
 
   // Smart schedule state
@@ -130,6 +126,7 @@ export function LoanRequestForm({
     getValues,
   } = useForm<LoanRequestFormData>({
     defaultValues: {
+      lenderType: preferredLender ? 'business' : undefined,
       currency: 'USD',
       repaymentFrequency: 'monthly',
       interestRate: 0,
@@ -200,6 +197,17 @@ export function LoanRequestForm({
     fetchBorrowingLimits();
   }, []);
 
+  // Sync lenderType state with form (important for preferredLender case)
+  useEffect(() => {
+    if (lenderType) {
+      setValue('lenderType', lenderType);
+    }
+    // Also set businessId if we have a preferred lender
+    if (preferredLender) {
+      setValue('businessId', preferredLender.id);
+    }
+  }, [lenderType, preferredLender, setValue]);
+
   // Update interest rate when business is selected
   useEffect(() => {
     if (selectedBusinessId) {
@@ -223,8 +231,8 @@ export function LoanRequestForm({
 
   // Step validation functions
   const validateStep1 = (): boolean => {
-    if (!userPayPalConnected) {
-      setStepError('Please connect your PayPal account first');
+    if (!userBankConnected) {
+      setStepError('Please connect your Bank account first');
       return false;
     }
     if (!lenderType) {
@@ -306,6 +314,11 @@ export function LoanRequestForm({
   };
 
   const validateStep4 = (): boolean => {
+    // If user has bank connected via Plaid, they're good to go
+    if (userBankConnected) {
+      return true;
+    }
+    
     if (!disbursementData.disbursement_method) {
       setStepError('Please select how you want to receive the money');
       return false;
@@ -334,7 +347,12 @@ export function LoanRequestForm({
       }
     }
 
-    // PayPal is default - no additional validation needed
+    // If no bank connected and no disbursement method selected
+    if (!userBankConnected) {
+      setStepError('Please connect your bank account in Settings, or select a disbursement method');
+      return false;
+    }
+
     return true;
   };
 
@@ -369,6 +387,17 @@ export function LoanRequestForm({
 
     const data = getValues();
     
+    // Ensure lenderType is set (fallback to state if form value is missing)
+    if (!data.lenderType && lenderType) {
+      data.lenderType = lenderType;
+    }
+    
+    // Final validation - lenderType is required
+    if (!data.lenderType) {
+      setSubmitError('Please select a lender type (Business or Personal)');
+      return;
+    }
+    
     setIsSubmitting(true);
     setSubmitError(null);
     
@@ -378,13 +407,13 @@ export function LoanRequestForm({
       const totalAmount = data.amount + totalInterest;
       data.repaymentAmount = totalAmount / data.totalInstallments;
       
-      // Add disbursement data - PayPal only
-      data.disbursementMethod = 'paypal';
+      // Add disbursement data - Bank only
+      data.disbursementMethod = 'bank_transfer';
       // Remove all diaspora/recipient fields
       data.isForRecipient = false;
       data.agreementSigned = true;
       
-      console.log('Form submit - Simple PayPal flow:', {
+      console.log('Form submit - Simple Bank flow:', {
         disbursementMethod: data.disbursementMethod,
         isForRecipient: data.isForRecipient,
       });
@@ -450,45 +479,45 @@ export function LoanRequestForm({
         </div>
       )}
 
-      {/* Step 1: PayPal Check & Lender Type */}
+      {/* Step 1: Bank Check & Lender Type */}
       {step === 1 && (
         <div className="space-y-6 animate-fade-in">
-          {/* PayPal Connection Check */}
-          {!userPayPalConnected && (
+          {/* Bank Connection Check */}
+          {!userBankConnected && (
             <Card className="bg-yellow-50 border-yellow-200">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
                   <CreditCard className="w-6 h-6 text-yellow-600" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900">Connect PayPal First</h3>
+                  <h3 className="font-semibold text-yellow-900">Connect Bank First</h3>
                   <p className="text-sm text-yellow-700 mt-1">
-                    You need to connect your PayPal account before requesting a loan. 
+                    You need to connect your Bank account before requesting a loan. 
                     This ensures secure payment processing.
                   </p>
                   <Button 
                     type="button" 
-                    onClick={onConnectPayPal}
+                    onClick={onConnectBank}
                     className="mt-3"
                     size="sm"
                   >
                     <CreditCard className="w-4 h-4 mr-2" />
-                    Connect PayPal
+                    Connect Bank
                   </Button>
                 </div>
               </div>
             </Card>
           )}
 
-          {userPayPalConnected && (
+          {userBankConnected && (
             <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
               <Check className="w-5 h-5 text-green-600" />
-              <span className="text-sm text-green-700">PayPal connected</span>
+              <span className="text-sm text-green-700">Bank connected</span>
             </div>
           )}
 
           {/* Borrowing Limit Card - Show based on lender type selection */}
-          {userPayPalConnected && !loadingLimit && (
+          {userBankConnected && !loadingLimit && (
             <>
               {/* Personal Lending Tier Card */}
               {(!lenderType || lenderType === 'personal') && borrowingLimit && (
@@ -630,9 +659,9 @@ export function LoanRequestForm({
               hover
               className={`cursor-pointer transition-all ${
                 lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''
-              } ${!userPayPalConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
+              } ${!userBankConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
-                if (userPayPalConnected && userVerificationStatus === 'verified') {
+                if (userBankConnected && userVerificationStatus === 'verified') {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -664,9 +693,9 @@ export function LoanRequestForm({
               hover
               className={`cursor-pointer transition-all ${
                 lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''
-              } ${!userPayPalConnected ? 'opacity-50 pointer-events-none' : ''}`}
+              } ${!userBankConnected ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
-                if (userPayPalConnected) {
+                if (userBankConnected) {
                   setLenderType('personal');
                   setValue('lenderType', 'personal');
                   setValue('interestRate', 0);
@@ -687,7 +716,7 @@ export function LoanRequestForm({
           </div>
 
           {/* Verification Required Banner */}
-          {userPayPalConnected && userVerificationStatus !== 'verified' && (
+          {userBankConnected && userVerificationStatus !== 'verified' && (
             <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
               <div className="flex items-start gap-3">
                 <Shield className="w-5 h-5 text-yellow-600 mt-0.5" />
@@ -718,7 +747,7 @@ export function LoanRequestForm({
             <Button 
               type="button" 
               onClick={() => goToNextStep(2)}
-              disabled={!lenderType || !userPayPalConnected}
+              disabled={!lenderType || !userBankConnected}
             >
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
@@ -1090,15 +1119,20 @@ export function LoanRequestForm({
             <p className="text-neutral-500">Choose how you or your recipient will receive the funds</p>
           </div>
 
-          <DisbursementMethodForm
-            value={disbursementData}
-            onChange={setDisbursementData}
-            showRecipientOption={true}
-            preferredMethod={userPreferredPaymentMethod}
-            paypalEmail={userPaypalEmail}
-            cashappUsername={userCashappUsername}
-            venmoUsername={userVenmoUsername}
-          />
+          {/* Bank Transfer Info */}
+          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl mb-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-green-100 dark:bg-green-900/40 rounded-lg flex items-center justify-center">
+                <Building2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="font-medium text-green-800 dark:text-green-300">Bank Transfer</p>
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  {userBankName ? `Funds will be sent to your ${userBankName} account (••••${userBankAccountMask})` : 'Funds will be sent directly to your connected bank account'}
+                </p>
+              </div>
+            </div>
+          </div>
 
           <div className="flex justify-end pt-4">
             <Button 

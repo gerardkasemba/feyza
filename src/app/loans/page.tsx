@@ -87,9 +87,33 @@ export default async function LoansPage() {
     user_type: user.user_metadata?.user_type || 'individual',
   };
 
-  const allLoans = [...borrowedLoans, ...lentLoans].sort(
+  // Combine and deduplicate loans by ID
+  const loanMap = new Map();
+  
+  // Add borrowed loans first
+  borrowedLoans.forEach(loan => {
+    loanMap.set(loan.id, { ...loan, _role: 'borrower' });
+  });
+  
+  // Add lent loans (won't overwrite since borrower can't be lender of same loan)
+  lentLoans.forEach(loan => {
+    if (!loanMap.has(loan.id)) {
+      loanMap.set(loan.id, { ...loan, _role: 'lender' });
+    }
+  });
+  
+  const allLoans = Array.from(loanMap.values()).sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+  
+  // Also deduplicate lentLoans in case user has both personal and business lender
+  const lentLoanMap = new Map();
+  lentLoans.forEach(loan => {
+    if (!lentLoanMap.has(loan.id)) {
+      lentLoanMap.set(loan.id, loan);
+    }
+  });
+  const uniqueLentLoans = Array.from(lentLoanMap.values());
 
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
@@ -116,7 +140,7 @@ export default async function LoansPage() {
             <TabsList className="mb-6">
               <TabsTrigger value="all">All ({allLoans.length})</TabsTrigger>
               <TabsTrigger value="borrowed">Borrowed ({borrowedLoans.length})</TabsTrigger>
-              <TabsTrigger value="lent">Lent ({lentLoans.length})</TabsTrigger>
+              <TabsTrigger value="lent">Lent ({uniqueLentLoans.length})</TabsTrigger>
             </TabsList>
 
             <TabsContent value="all">
@@ -126,7 +150,7 @@ export default async function LoansPage() {
                     <LoanCard
                       key={loan.id}
                       loan={loan}
-                      role={loan.borrower_id === user.id ? 'borrower' : 'lender'}
+                      role={loan._role || (loan.borrower_id === user.id ? 'borrower' : 'lender')}
                     />
                   ))}
                 </div>
@@ -148,9 +172,9 @@ export default async function LoansPage() {
             </TabsContent>
 
             <TabsContent value="lent">
-              {lentLoans.length > 0 ? (
+              {uniqueLentLoans.length > 0 ? (
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {lentLoans.map((loan) => (
+                  {uniqueLentLoans.map((loan) => (
                     <LoanCard key={loan.id} loan={loan} role="lender" />
                   ))}
                 </div>

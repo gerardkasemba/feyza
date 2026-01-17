@@ -18,7 +18,11 @@ import {
   Shield,
   CheckCircle,
   Building2,
+  Building,
 } from 'lucide-react';
+
+// Force dynamic rendering to always get fresh data
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -298,14 +302,14 @@ export default async function DashboardPage() {
 
           {/* Business Profile Banner - Show when user is business type but no profile */}
           {userProfile.user_type === 'business' && !businessProfile && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-green-50 to-primary-50 dark:from-green-900/20 dark:to-primary-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+            <div className="mb-6 p-4 bg-gradient-to-r from-teal-50 to-primary-50 dark:from-teal-900/20 dark:to-primary-900/20 border border-teal-200 dark:border-teal-800 rounded-xl">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Building2 className="w-6 h-6 text-green-600 dark:text-green-400" />
+                <div className="w-12 h-12 bg-teal-100 dark:bg-teal-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Building2 className="w-6 h-6 text-teal-600 dark:text-teal-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-green-800 dark:text-green-300 mb-1">Complete Your Business Profile</h3>
-                  <p className="text-sm text-green-700 dark:text-green-400 mb-3">
+                  <h3 className="font-semibold text-teal-800 dark:text-teal-300 mb-1">Complete Your Business Profile</h3>
+                  <p className="text-sm text-teal-700 dark:text-teal-400 mb-3">
                     Set up your business lender profile to start receiving loan requests from verified borrowers.
                   </p>
                   <Link href="/business/setup">
@@ -377,6 +381,29 @@ export default async function DashboardPage() {
                       Contact Support
                     </Button>
                   </a>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Bank Connection Banner */}
+          {!profile?.bank_connected && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
+                  <Building className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Connect Your Bank Account</h3>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                    Link your bank account to receive loan funds and make repayments securely. We use bank-level encryption to keep your information safe.
+                  </p>
+                  <Link href="/settings?tab=payments">
+                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white">
+                      <Building className="w-4 h-4 mr-2" />
+                      Connect Bank
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>

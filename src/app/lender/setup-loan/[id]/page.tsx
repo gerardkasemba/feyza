@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
@@ -14,10 +14,12 @@ import {
   CheckCircle,
   AlertCircle,
   Calculator,
-  CreditCard,
   Clock,
   ThumbsUp,
-  Edit3
+  Edit3,
+  Building,
+  Shield,
+  Loader2
 } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
@@ -29,9 +31,6 @@ interface LoanData {
   borrower_invite_email: string;
   borrower_name?: string;
   status: string;
-  // Borrower's preferred receive payment method
-  borrower_payment_method?: string;
-  borrower_payment_username?: string;
   // Proposed schedule from borrower
   proposed_frequency?: string;
   proposed_installments?: number;
@@ -62,9 +61,31 @@ export default function LenderSetupLoanPage() {
     new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   );
 
-  // Payment method
-  const [paymentMethod, setPaymentMethod] = useState<'paypal' | 'cashapp' | 'venmo' | ''>('');
-  const [paymentUsername, setPaymentUsername] = useState('');
+  // Lender details
+  const [lenderName, setLenderName] = useState('');
+  const [lenderEmail, setLenderEmail] = useState('');
+
+  // Bank connection state
+  const [bankConnected, setBankConnected] = useState(false);
+  const [bankInfo, setBankInfo] = useState<any>(null);
+  
+  // Plaid state
+  const [plaidLoaded, setPlaidLoaded] = useState(false);
+  const [plaidLoading, setPlaidLoading] = useState(false);
+  const [plaidConnecting, setPlaidConnecting] = useState(false);
+
+  // Load Plaid script
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !(window as any).Plaid) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      script.async = true;
+      script.onload = () => setPlaidLoaded(true);
+      document.body.appendChild(script);
+    } else {
+      setPlaidLoaded(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (loanId && token) {
@@ -90,12 +111,102 @@ export default function LenderSetupLoanPage() {
       if (data.loan.proposed_installments) {
         setTotalInstallments(String(data.loan.proposed_installments));
       }
+      // Use borrower's proposed start date if available
+      if (data.loan.proposed_start_date) {
+        setStartDate(data.loan.proposed_start_date);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
+
+  // Handle Plaid connection
+  const handleConnectBank = useCallback(async () => {
+    if (!lenderName || !lenderEmail) {
+      alert('Please enter your name and email first');
+      return;
+    }
+
+    if (!plaidLoaded || !(window as any).Plaid) {
+      alert('Bank connection is loading. Please try again.');
+      return;
+    }
+
+    setPlaidLoading(true);
+
+    try {
+      // Get link token
+      const tokenResponse = await fetch('/api/plaid/guest-link-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: lenderName, email: lenderEmail }),
+      });
+      
+      const tokenData = await tokenResponse.json();
+      
+      if (tokenData.error) {
+        alert(tokenData.error);
+        setPlaidLoading(false);
+        return;
+      }
+
+      // Open Plaid Link
+      const handler = (window as any).Plaid.create({
+        token: tokenData.link_token,
+        onSuccess: async (publicToken: string, metadata: any) => {
+          setPlaidConnecting(true);
+          try {
+            const accountId = metadata.accounts[0]?.id;
+            const institution = metadata.institution;
+            
+            const exchangeResponse = await fetch('/api/plaid/guest-exchange', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                public_token: publicToken,
+                account_id: accountId,
+                institution,
+                name: lenderName,
+                email: lenderEmail,
+              }),
+            });
+            
+            const exchangeData = await exchangeResponse.json();
+            
+            if (exchangeData.error) {
+              alert(exchangeData.error);
+            } else {
+              setBankConnected(true);
+              setBankInfo({
+                bank_name: exchangeData.bank_name,
+                account_mask: exchangeData.account_mask,
+                account_type: exchangeData.account_type,
+                dwolla_customer_url: exchangeData.dwolla_customer_url,
+                dwolla_customer_id: exchangeData.dwolla_customer_id,
+                dwolla_funding_source_url: exchangeData.dwolla_funding_source_url,
+                dwolla_funding_source_id: exchangeData.dwolla_funding_source_id,
+              });
+            }
+          } catch (err: any) {
+            alert(err.message || 'Failed to connect bank');
+          } finally {
+            setPlaidConnecting(false);
+          }
+        },
+        onExit: () => {
+          setPlaidLoading(false);
+        },
+      });
+      
+      handler.open();
+      setPlaidLoading(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to initialize bank connection');
+      setPlaidLoading(false);
+    }
+  }, [lenderName, lenderEmail, plaidLoaded]);
 
   // Calculate repayment details
   const calculateRepayment = () => {
@@ -126,9 +237,28 @@ export default function LenderSetupLoanPage() {
 
   const { totalInterest, totalAmount, repaymentAmount } = calculateRepayment();
 
+  // Email validation helper
+  const isValidEmail = (email: string) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  // Success state
+  const [success, setSuccess] = useState(false);
+  const [lenderToken, setLenderToken] = useState<string | null>(null);
+
   const handleSubmit = async () => {
-    if (!paymentMethod || !paymentUsername) {
-      alert('Please enter your payment method details');
+    if (!bankConnected) {
+      alert('Please connect your bank account first');
+      return;
+    }
+
+    if (!lenderName.trim()) {
+      alert('Please enter your full name');
+      return;
+    }
+
+    if (!lenderEmail.trim() || !isValidEmail(lenderEmail.trim())) {
+      alert('Please enter a valid email address');
       return;
     }
 
@@ -139,13 +269,20 @@ export default function LenderSetupLoanPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
+          lender_dwolla_customer_url: bankInfo?.dwolla_customer_url,
+          lender_dwolla_customer_id: bankInfo?.dwolla_customer_id,
+          lender_dwolla_funding_source_url: bankInfo?.dwolla_funding_source_url,
+          lender_dwolla_funding_source_id: bankInfo?.dwolla_funding_source_id,
+          lender_bank_name: bankInfo?.bank_name,
+          lender_bank_account_mask: bankInfo?.account_mask,
+          lender_name: lenderName.trim(),
+          lender_email: lenderEmail.trim().toLowerCase(),
           interest_rate: parseFloat(interestRate),
           interest_type: interestType,
           repayment_frequency: repaymentFrequency,
           total_installments: parseInt(totalInstallments),
           start_date: startDate,
-          payment_method: paymentMethod,
-          payment_username: paymentUsername,
+          bank_connected: true,
         }),
       });
 
@@ -155,8 +292,9 @@ export default function LenderSetupLoanPage() {
         throw new Error(data.error || 'Failed to save loan terms');
       }
 
-      // Redirect to lender view
-      router.push(`/lender/${data.lender_token}`);
+      // Show success state
+      setLenderToken(data.lender_token);
+      setSuccess(true);
     } catch (err: any) {
       alert(err.message);
     } finally {
@@ -196,6 +334,89 @@ export default function LenderSetupLoanPage() {
     );
   }
 
+  // Success screen after loan is funded
+  if (success) {
+    return (
+      <div className="min-h-screen flex flex-col bg-neutral-50">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-lg w-full text-center">
+            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-neutral-900 mb-2">Loan Funded! 🎉</h1>
+            <p className="text-neutral-600 mb-6">
+              Your loan of <strong>{formatCurrency(loan.amount, loan.currency)}</strong> has been sent to {loan.borrower_name || loan.borrower_invite_email}.
+            </p>
+            
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-center gap-2 text-green-700">
+                <Building className="w-5 h-5" />
+                <span className="font-medium">ACH Transfer Initiated</span>
+              </div>
+              <p className="text-sm text-green-600 mt-2">
+                The borrower will receive the funds in 1-3 business days.
+              </p>
+            </div>
+
+            <div className="bg-neutral-50 rounded-xl p-4 mb-6 text-left">
+              <h3 className="font-semibold text-neutral-900 mb-3">Loan Summary</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Amount Sent</span>
+                  <span className="font-medium">{formatCurrency(loan.amount, loan.currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Interest Rate</span>
+                  <span className="font-medium">{interestRate}% ({interestType})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Total to Receive</span>
+                  <span className="font-medium text-green-600">{formatCurrency(totalAmount, loan.currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Repayment</span>
+                  <span className="font-medium">{totalInstallments} {repaymentFrequency} payments</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">First Payment</span>
+                  <span className="font-medium">{new Date(startDate).toLocaleDateString()}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-700">
+                ✅ <strong>Auto-Pay Enabled</strong> — Repayments will be automatically deposited to your bank account on each due date.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {lenderToken && (
+                <Link href={`/lender/${lenderToken}`} className="w-full">
+                  <Button size="lg" className="w-full">
+                    Go to Loan Dashboard
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+              )}
+              <Link href="/" className="w-full">
+                <Button variant="outline" size="lg" className="w-full">
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
+
+            <p className="text-xs text-neutral-500 mt-6">
+              A confirmation email has been sent to {lenderEmail}
+            </p>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-neutral-50">
       <Navbar />
@@ -212,143 +433,168 @@ export default function LenderSetupLoanPage() {
 
           {/* Header */}
           <div className="text-center mb-8">
-            <Badge variant="success" className="mb-4">
-              <CheckCircle className="w-4 h-4 mr-2" />
-              You're setting up a loan
-            </Badge>
-            <h1 className="text-2xl font-bold text-neutral-900 mb-2">
-              Review & Set Loan Terms
-            </h1>
+            <h1 className="text-2xl font-bold text-neutral-900 mb-2">Set Loan Terms</h1>
             <p className="text-neutral-600">
-              The borrower has proposed terms. You can accept or adjust them.
+              You're setting up a loan for {loan.borrower_name || loan.borrower_invite_email}
             </p>
           </div>
 
-          {/* Loan Summary */}
-          <Card className="mb-6 bg-primary-50 border-primary-200">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-primary-100 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-7 h-7 text-primary-600" />
+          {/* Loan Overview */}
+          <Card className="mb-6 bg-gradient-to-br from-primary-500 to-accent-500 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-primary-100 text-sm">Loan Amount</p>
+                <p className="text-3xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
+                <p className="text-primary-100 text-sm mt-1">Purpose: {loan.purpose || 'Not specified'}</p>
+              </div>
+              <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center">
+                <DollarSign className="w-8 h-8" />
+              </div>
+            </div>
+          </Card>
+
+          {/* Lender Details */}
+          <Card className="mb-6">
+            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary-600" />
+              Your Details
+            </h2>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Your Full Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={lenderName}
+                  onChange={(e) => setLenderName(e.target.value)}
+                  placeholder="John Doe"
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${
+                    lenderName.trim() ? 'border-green-300 focus:ring-green-500' : 'border-neutral-200 focus:ring-primary-500'
+                  }`}
+                />
               </div>
               <div>
-                <p className="text-sm text-primary-600">Loan Amount</p>
-                <p className="text-2xl font-bold text-primary-700">
-                  {formatCurrency(loan.amount, loan.currency)}
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  Your Email Address <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  value={lenderEmail}
+                  onChange={(e) => setLenderEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${
+                    lenderEmail && isValidEmail(lenderEmail) 
+                      ? 'border-green-300 focus:ring-green-500' 
+                      : lenderEmail && !isValidEmail(lenderEmail)
+                        ? 'border-red-300 focus:ring-red-500'
+                        : 'border-neutral-200 focus:ring-primary-500'
+                  }`}
+                />
+                {lenderEmail && !isValidEmail(lenderEmail) && (
+                  <p className="text-xs text-red-500 mt-1">Please enter a valid email address</p>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Bank Connection */}
+          <Card className="mb-6">
+            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+              <Building className="w-5 h-5 text-green-600" />
+              Connect Your Bank
+            </h2>
+            
+            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
+              <p className="text-sm text-green-800">
+                💰 <strong>Why connect your bank?</strong> To send funds to {loan.borrower_name || 'the borrower'} and receive repayments automatically.
+              </p>
+            </div>
+
+            {bankConnected && bankInfo ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                      <Building className="w-6 h-6 text-green-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-neutral-900">{bankInfo.bank_name}</span>
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      </div>
+                      <p className="text-sm text-neutral-500">
+                        ••••{bankInfo.account_mask}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
+                  <Building className="w-8 h-8 text-neutral-400" />
+                </div>
+                <Button
+                  onClick={handleConnectBank}
+                  disabled={!plaidLoaded || plaidLoading || plaidConnecting || !lenderName || !lenderEmail}
+                >
+                  {plaidLoading || plaidConnecting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      {plaidConnecting ? 'Connecting...' : 'Loading...'}
+                    </>
+                  ) : (
+                    <>
+                      <Building className="w-4 h-4 mr-2" />
+                      Connect Bank Account
+                    </>
+                  )}
+                </Button>
+                {(!lenderName || !lenderEmail) && (
+                  <p className="text-neutral-500 text-sm mt-2">Enter your name and email first</p>
+                )}
+              </div>
+            )}
+
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-4">
+              <div className="flex items-start gap-2">
+                <Shield className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-700">
+                  We use Plaid to securely connect. We never see your login credentials.
                 </p>
               </div>
             </div>
           </Card>
 
-          {/* Borrower's Payment Method - How to Send Funds */}
-          {loan.borrower_payment_method && loan.borrower_payment_username && (
-            <Card className="mb-6 bg-green-50 border-green-200">
-              <div className="flex items-start gap-3 mb-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <CreditCard className="w-5 h-5 text-green-600" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-neutral-900">Where to Send the Loan</h3>
-                  <p className="text-sm text-neutral-600">
-                    The borrower wants to receive funds via:
-                  </p>
-                </div>
-              </div>
-              
-              <div className="p-4 bg-white rounded-xl border border-green-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-green-600 font-medium capitalize">
-                      {loan.borrower_payment_method === 'cashapp' ? 'Cash App' : loan.borrower_payment_method}
-                    </p>
-                    <p className="text-lg font-mono font-bold text-neutral-900">
-                      {loan.borrower_payment_method === 'paypal' ? loan.borrower_payment_username : 
-                       loan.borrower_payment_method === 'cashapp' ? `$${loan.borrower_payment_username}` :
-                       `@${loan.borrower_payment_username}`}
-                    </p>
-                  </div>
-                  {loan.borrower_payment_method === 'paypal' && (
-                    <a 
-                      href={`https://paypal.me/${loan.borrower_payment_username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
-                    >
-                      Send via PayPal
-                    </a>
-                  )}
-                  {loan.borrower_payment_method === 'cashapp' && (
-                    <a 
-                      href={`https://cash.app/$${loan.borrower_payment_username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700"
-                    >
-                      Send via Cash App
-                    </a>
-                  )}
-                  {loan.borrower_payment_method === 'venmo' && (
-                    <a 
-                      href={`https://venmo.com/${loan.borrower_payment_username}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm hover:bg-purple-700"
-                    >
-                      Send via Venmo
-                    </a>
-                  )}
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Borrower hasn't set payment method */}
-          {(!loan.borrower_payment_method || !loan.borrower_payment_username) && (
-            <Card className="mb-6 bg-amber-50 border-amber-200">
-              <div className="flex items-center gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600" />
-                <div>
-                  <h3 className="font-semibold text-neutral-900">Borrower Hasn't Set Payment Method</h3>
-                  <p className="text-sm text-neutral-600">
-                    The borrower hasn't specified how they want to receive the funds yet. They'll be notified to set this up.
-                  </p>
-                </div>
-              </div>
-            </Card>
-          )}
-
           {/* Borrower's Proposal */}
           {loan.proposed_frequency && loan.proposed_installments && (
-            <Card className="mb-6 border-2 border-accent-200 bg-accent-50">
-              <div className="flex items-start justify-between mb-4">
+            <Card className="mb-6">
+              <div className="flex items-start gap-3 mb-4">
+                <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <ThumbsUp className="w-5 h-5 text-amber-600" />
+                </div>
                 <div>
-                  <h2 className="font-semibold text-neutral-900 flex items-center gap-2">
-                    <User className="w-5 h-5 text-accent-600" />
-                    Borrower's Proposed Schedule
-                  </h2>
-                  <p className="text-sm text-neutral-600 mt-1">
+                  <h2 className="font-semibold text-neutral-900">Borrower's Proposal</h2>
+                  <p className="text-sm text-neutral-500">
                     {loan.borrower_name || 'The borrower'} suggested these terms
                   </p>
                 </div>
               </div>
-              
-              <div className="bg-white rounded-xl p-4 mb-4">
-                <div className="grid grid-cols-3 gap-4 text-center">
+
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-neutral-500">Frequency</p>
-                    <p className="font-bold text-neutral-900 capitalize">
-                      {loan.proposed_frequency}
+                    <p className="text-sm text-amber-700">Payment Schedule</p>
+                    <p className="font-semibold text-amber-900">
+                      {loan.proposed_installments} {loan.proposed_frequency} payments
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-neutral-500">Payments</p>
-                    <p className="font-bold text-neutral-900">
-                      {loan.proposed_installments}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-neutral-500">Each Payment</p>
-                    <p className="font-bold text-primary-600">
-                      {formatCurrency(loan.proposed_payment_amount || (loan.amount / loan.proposed_installments), loan.currency)}
+                    <p className="text-sm text-amber-700">Each Payment</p>
+                    <p className="font-semibold text-amber-900">
+                      {formatCurrency(loan.proposed_payment_amount || 0, loan.currency)}
                     </p>
                   </div>
                 </div>
@@ -356,41 +602,40 @@ export default function LenderSetupLoanPage() {
 
               <div className="flex gap-3">
                 <Button 
-                  className={`flex-1 ${useProposal ? '' : 'bg-neutral-200 text-neutral-700 hover:bg-neutral-300'}`}
-                  variant={useProposal ? 'primary' : 'outline'}
+                  variant={useProposal ? 'primary' : 'outline'} 
+                  size="sm"
                   onClick={() => {
                     setUseProposal(true);
-                    setRepaymentFrequency(loan.proposed_frequency as any);
-                    setTotalInstallments(String(loan.proposed_installments));
+                    if (loan.proposed_frequency) setRepaymentFrequency(loan.proposed_frequency as any);
+                    if (loan.proposed_installments) setTotalInstallments(String(loan.proposed_installments));
                   }}
                 >
-                  <ThumbsUp className="w-4 h-4 mr-2" />
+                  <CheckCircle className="w-4 h-4 mr-1" />
                   Accept Proposal
                 </Button>
                 <Button 
-                  variant={useProposal ? 'outline' : 'primary'}
-                  className="flex-1"
+                  variant={!useProposal ? 'primary' : 'outline'} 
+                  size="sm"
                   onClick={() => setUseProposal(false)}
                 >
-                  <Edit3 className="w-4 h-4 mr-2" />
+                  <Edit3 className="w-4 h-4 mr-1" />
                   Customize Terms
                 </Button>
               </div>
             </Card>
           )}
 
-          {/* Interest Settings - Always shown */}
+          {/* Interest Rate */}
           <Card className="mb-6">
             <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
               <Percent className="w-5 h-5 text-primary-600" />
-              Interest Settings
-              {useProposal && <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full ml-2">Optional for friends/family</span>}
+              Interest Rate
             </h2>
 
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Interest Rate (Annual %)
+                  Annual Interest Rate (%)
                 </label>
                 <input
                   type="number"
@@ -401,7 +646,9 @@ export default function LenderSetupLoanPage() {
                   step="0.5"
                   className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
                 />
-                <p className="text-xs text-neutral-500 mt-1">0% for family/friends loans</p>
+                <p className="text-xs text-neutral-500 mt-1">
+                  Enter 0 for no interest
+                </p>
               </div>
 
               <div>
@@ -474,7 +721,7 @@ export default function LenderSetupLoanPage() {
             </Card>
           )}
 
-          {/* Start Date - Only shown if using proposal (custom has its own) */}
+          {/* Start Date - Only shown if using proposal */}
           {useProposal && (
             <Card className="mb-6">
               <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
@@ -494,65 +741,19 @@ export default function LenderSetupLoanPage() {
             </Card>
           )}
 
-          {/* Payment Method - YOUR payment info for receiving repayments */}
-          <Card className="mb-6">
-            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-green-600" />
-              Where Should the Borrower Pay You?
-            </h2>
-            
-            {/* Explanation box */}
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
-              <p className="text-sm text-green-800">
-                💰 <strong>This is YOUR account info.</strong> When {loan.borrower_name || 'the borrower'} makes payments, they'll send money to this account.
-              </p>
-            </div>
-
-            <div className="space-y-3 mb-4">
-              {[
-                { value: 'paypal', label: 'PayPal', color: 'bg-blue-500' },
-                { value: 'cashapp', label: 'Cash App', color: 'bg-green-500' },
-                { value: 'venmo', label: 'Venmo', color: 'bg-blue-600' },
-              ].map((method) => (
-                <label
-                  key={method.value}
-                  className={`flex items-center gap-3 p-4 rounded-xl cursor-pointer border-2 transition-all ${
-                    paymentMethod === method.value 
-                      ? 'border-green-500 bg-green-50' 
-                      : 'border-neutral-200 hover:border-neutral-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="payment_method"
-                    value={method.value}
-                    checked={paymentMethod === method.value}
-                    onChange={(e) => setPaymentMethod(e.target.value as any)}
-                    className="w-4 h-4 text-green-600"
-                  />
-                  <div className={`w-2 h-2 rounded-full ${method.color}`} />
-                  <span className="font-medium">{method.label}</span>
-                </label>
-              ))}
-            </div>
-
-            {paymentMethod && (
+          {/* Auto-Pay Info */}
+          <Card className="mb-6 bg-green-50 border-green-200">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-5 h-5 text-green-600" />
+              </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
-                  Your {paymentMethod === 'paypal' ? 'PayPal Email' : `${paymentMethod === 'cashapp' ? 'Cash App' : 'Venmo'} Username`}
-                </label>
-                <input
-                  type={paymentMethod === 'paypal' ? 'email' : 'text'}
-                  value={paymentUsername}
-                  onChange={(e) => setPaymentUsername(e.target.value)}
-                  placeholder={paymentMethod === 'paypal' ? 'you@example.com' : '$username'}
-                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500"
-                />
-                <p className="text-xs text-neutral-500 mt-2">
-                  ✓ This is where you'll receive loan repayments
+                <h3 className="font-semibold text-green-800">Auto-Pay Enabled</h3>
+                <p className="text-sm text-green-700 mt-1">
+                  Payments will be automatically processed on each due date. The borrower's bank will be charged and funds will be sent directly to your account.
                 </p>
               </div>
-            )}
+            </div>
           </Card>
 
           {/* Calculation Summary */}
@@ -586,28 +787,35 @@ export default function LenderSetupLoanPage() {
             </div>
           </Card>
 
+          {/* Warning about funds being sent */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+            <p className="text-sm text-amber-800">
+              ⚠️ <strong>Important:</strong> Clicking the button below will immediately transfer <strong>{formatCurrency(loan.amount, loan.currency)}</strong> from your bank account to the borrower.
+            </p>
+          </div>
+
           {/* Submit Button */}
           <Button 
             size="lg" 
-            className="w-full" 
+            className="w-full bg-green-600 hover:bg-green-700" 
             onClick={handleSubmit}
-            disabled={saving || !paymentMethod || !paymentUsername}
+            disabled={saving || !bankConnected || !lenderName || !lenderEmail || !isValidEmail(lenderEmail)}
           >
             {saving ? (
               <>
-                <Clock className="w-4 h-4 mr-2 animate-spin" />
-                Setting up loan...
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Sending funds...
               </>
             ) : (
               <>
-                Confirm & Create Loan
-                <ArrowRight className="w-4 h-4 ml-2" />
+                <DollarSign className="w-4 h-4 mr-2" />
+                Send {formatCurrency(loan.amount, loan.currency)} to Borrower
               </>
             )}
           </Button>
 
           <p className="text-sm text-center text-neutral-500 mt-4">
-            The borrower will be notified and asked to review these terms
+            Funds will be sent via ACH transfer (1-3 business days)
           </p>
         </div>
       </main>

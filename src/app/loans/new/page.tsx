@@ -1,26 +1,41 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
-import { Card, Button } from '@/components/ui';
+import { Card, Button, Badge } from '@/components/ui';
 import { LoanRequestForm, LoanRequestFormData } from '@/components/loans/LoanRequestForm';
 import { createClient } from '@/lib/supabase/client';
 import { BusinessProfile } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule } from '@/lib/utils';
-import { ArrowLeft, CreditCard, AlertCircle, Building2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle, Building, AlertCircle, Loader2 } from 'lucide-react';
+import { usePlaidLink } from 'react-plaid-link';
+
+interface BankInfo {
+  dwolla_customer_url?: string;
+  dwolla_customer_id?: string;
+  dwolla_funding_source_url?: string;
+  dwolla_funding_source_id?: string;
+  bank_name?: string;
+  account_mask?: string;
+}
 
 function NewLoanContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const lenderSlug = searchParams.get('lender'); // Direct lender link: ?lender=feyza-bank
+  const lenderSlug = searchParams.get('lender');
   
   const [user, setUser] = useState<any>(null);
   const [businesses, setBusinesses] = useState<BusinessProfile[]>([]);
   const [preferredLender, setPreferredLender] = useState<BusinessProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [showPayPalPrompt, setShowPayPalPrompt] = useState(false);
+  
+  // Bank connection state
+  const [bankConnected, setBankConnected] = useState(false);
+  const [bankInfo, setBankInfo] = useState<BankInfo | null>(null);
+  const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [connectingBank, setConnectingBank] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,10 +58,22 @@ function NewLoanContent() {
         email: authUser.email,
         full_name: authUser.user_metadata?.full_name || 'User',
         user_type: authUser.user_metadata?.user_type || 'individual',
-        paypal_connected: false,
       };
       
       setUser(userData);
+
+      // Check if user already has bank connected
+      if (userData.dwolla_funding_source_url) {
+        setBankConnected(true);
+        setBankInfo({
+          dwolla_customer_url: userData.dwolla_customer_url,
+          dwolla_customer_id: userData.dwolla_customer_id,
+          dwolla_funding_source_url: userData.dwolla_funding_source_url,
+          dwolla_funding_source_id: userData.dwolla_funding_source_id,
+          bank_name: userData.bank_name,
+          account_mask: userData.bank_account_mask,
+        });
+      }
 
       // Fetch available business lenders
       const { data: businessData } = await supabase
@@ -78,9 +105,105 @@ function NewLoanContent() {
     fetchData();
   }, [router, lenderSlug]);
 
-  const handleConnectPayPal = () => {
-    router.push('/settings?tab=payments');
+  // Get Plaid link token for bank connection
+  const fetchLinkToken = useCallback(async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch('/api/plaid/create-link-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId: user.id,
+          userEmail: user.email,
+          userName: user.full_name,
+        }),
+      });
+      
+      const data = await response.json();
+      if (data.link_token) {
+        setLinkToken(data.link_token);
+      }
+    } catch (err) {
+      console.error('Error fetching link token:', err);
+    }
+  }, [user]);
+
+  // Plaid Link success handler
+  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    if (!user) return;
+    
+    setConnectingBank(true);
+    try {
+      const response = await fetch('/api/plaid/guest-exchange', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          public_token: publicToken,
+          account_id: metadata.accounts[0].id,
+          user_name: user.full_name,
+          user_email: user.email,
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        setBankConnected(true);
+        setBankInfo({
+          dwolla_customer_url: data.dwolla_customer_url,
+          dwolla_customer_id: data.dwolla_customer_id,
+          dwolla_funding_source_url: data.dwolla_funding_source_url,
+          dwolla_funding_source_id: data.dwolla_funding_source_id,
+          bank_name: data.bank_name,
+          account_mask: data.account_mask,
+        });
+
+        // Also update user profile with bank info
+        const supabase = createClient();
+        await supabase
+          .from('users')
+          .update({
+            dwolla_customer_url: data.dwolla_customer_url,
+            dwolla_customer_id: data.dwolla_customer_id,
+            dwolla_funding_source_url: data.dwolla_funding_source_url,
+            dwolla_funding_source_id: data.dwolla_funding_source_id,
+            bank_name: data.bank_name,
+            bank_account_mask: data.account_mask,
+            bank_connected: true,
+          })
+          .eq('id', user.id);
+      } else {
+        alert(data.error || 'Failed to connect bank');
+      }
+    } catch (err) {
+      console.error('Error exchanging token:', err);
+      alert('Failed to connect bank account');
+    } finally {
+      setConnectingBank(false);
+    }
+  }, [user]);
+
+  const { open: openPlaid, ready: plaidReady } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+  });
+
+  const handleConnectBank = async () => {
+    if (!linkToken) {
+      await fetchLinkToken();
+    }
+    if (plaidReady) {
+      openPlaid();
+    }
   };
+
+  // Fetch link token when user is ready
+  useEffect(() => {
+    if (user && !linkToken && !bankConnected) {
+      fetchLinkToken();
+    }
+  }, [user, linkToken, bankConnected, fetchLinkToken]);
 
   const handleSubmit = async (data: LoanRequestFormData) => {
     const supabase = createClient();
@@ -118,55 +241,70 @@ function NewLoanContent() {
       interestType: interestType,
     });
 
-    // If we have a preferred lender (from ?lender=slug), pre-assign them
     const targetLenderId = preferredLender?.id || null;
+
+    // Build loan insert data
+    const loanData: any = {
+      borrower_id: user.id,
+      lender_type: data.lenderType,
+      business_lender_id: targetLenderId,
+      invite_email: data.lenderType === 'personal' ? data.inviteEmail : null,
+      invite_phone: data.lenderType === 'personal' ? data.invitePhone : null,
+      invite_token: inviteToken,
+      invite_accepted: false,
+      amount: data.amount,
+      currency: data.currency,
+      purpose: data.purpose,
+      interest_rate: interestRate,
+      interest_type: interestType,
+      total_interest: Math.round(totalInterest * 100) / 100,
+      total_amount: Math.round(totalAmount * 100) / 100,
+      repayment_frequency: data.repaymentFrequency,
+      repayment_amount: Math.round(repaymentAmount * 100) / 100,
+      total_installments: data.totalInstallments,
+      start_date: data.startDate,
+      disbursement_method: data.disbursementMethod,
+      mobile_money_provider: data.mobileMoneyProvider,
+      mobile_money_phone: data.mobileMoneyPhone,
+      mobile_money_name: data.mobileMoneyName,
+      pickup_person_name: data.pickerFullName || data.recipientName,
+      pickup_person_location: data.cashPickupLocation,
+      pickup_person_phone: data.pickerPhone,
+      pickup_person_id_type: data.pickerIdType,
+      pickup_person_id_number: data.pickerIdNumber,
+      bank_name: data.bankName,
+      bank_account_name: data.bankAccountName,
+      bank_account_number: data.bankAccountNumber,
+      bank_branch: data.bankBranch,
+      bank_swift_code: data.bankSwiftCode,
+      is_for_recipient: data.isForRecipient === true,
+      recipient_name: data.recipientName || null,
+      recipient_phone: data.recipientPhone || null,
+      recipient_country: data.recipientCountry || null,
+      borrower_signed: data.agreementSigned || false,
+      borrower_signed_at: data.agreementSigned ? new Date().toISOString() : null,
+      status: 'pending',
+      match_status: data.lenderType === 'business' ? 'pending' : 'manual',
+      amount_paid: 0,
+      amount_remaining: Math.round(totalAmount * 100) / 100,
+      borrower_name: user.full_name,
+      auto_pay_enabled: true,
+    };
+
+    // Add borrower's Dwolla info for ACH disbursement
+    if (bankInfo) {
+      loanData.borrower_dwolla_customer_url = bankInfo.dwolla_customer_url;
+      loanData.borrower_dwolla_customer_id = bankInfo.dwolla_customer_id;
+      loanData.borrower_dwolla_funding_source_url = bankInfo.dwolla_funding_source_url;
+      loanData.borrower_dwolla_funding_source_id = bankInfo.dwolla_funding_source_id;
+      loanData.borrower_bank_name = bankInfo.bank_name;
+      loanData.borrower_bank_account_mask = bankInfo.account_mask;
+      loanData.borrower_bank_connected = true;
+    }
 
     const { data: loan, error } = await supabase
       .from('loans')
-      .insert({
-        borrower_id: user.id,
-        lender_type: data.lenderType,
-        business_lender_id: targetLenderId, // Pre-assign if direct link
-        invite_email: data.lenderType === 'personal' ? data.inviteEmail : null,
-        invite_phone: data.lenderType === 'personal' ? data.invitePhone : null,
-        invite_token: inviteToken,
-        invite_accepted: false,
-        amount: data.amount,
-        currency: data.currency,
-        purpose: data.purpose,
-        interest_rate: interestRate,
-        interest_type: interestType,
-        total_interest: Math.round(totalInterest * 100) / 100,
-        total_amount: Math.round(totalAmount * 100) / 100,
-        repayment_frequency: data.repaymentFrequency,
-        repayment_amount: Math.round(repaymentAmount * 100) / 100,
-        total_installments: data.totalInstallments,
-        start_date: data.startDate,
-        disbursement_method: data.disbursementMethod,
-        mobile_money_provider: data.mobileMoneyProvider,
-        mobile_money_phone: data.mobileMoneyPhone,
-        mobile_money_name: data.mobileMoneyName,
-        pickup_person_name: data.pickerFullName || data.recipientName,
-        pickup_person_location: data.cashPickupLocation,
-        pickup_person_phone: data.pickerPhone,
-        pickup_person_id_type: data.pickerIdType,
-        pickup_person_id_number: data.pickerIdNumber,
-        bank_name: data.bankName,
-        bank_account_name: data.bankAccountName,
-        bank_account_number: data.bankAccountNumber,
-        bank_branch: data.bankBranch,
-        bank_swift_code: data.bankSwiftCode,
-        is_for_recipient: data.isForRecipient === true,
-        recipient_name: data.recipientName || null,
-        recipient_phone: data.recipientPhone || null,
-        recipient_country: data.recipientCountry || null,
-        borrower_signed: data.agreementSigned || false,
-        borrower_signed_at: data.agreementSigned ? new Date().toISOString() : null,
-        status: 'pending',
-        match_status: data.lenderType === 'business' ? (targetLenderId ? 'direct' : 'pending') : 'manual',
-        amount_paid: 0,
-        amount_remaining: Math.round(totalAmount * 100) / 100,
-      })
+      .insert(loanData)
       .select()
       .single();
 
@@ -174,6 +312,16 @@ function NewLoanContent() {
       console.error('Error creating loan:', error);
       throw error;
     }
+
+    // Create notification for borrower
+    await supabase.from('notifications').insert({
+      user_id: user.id,
+      type: 'loan_created',
+      title: 'Loan Request Submitted',
+      message: `Your loan request for $${data.amount.toLocaleString()} has been submitted.`,
+      data: { loan_id: loan.id, amount: data.amount },
+      is_read: false,
+    });
 
     const scheduleItems = schedule.map((item) => ({
       loan_id: loan.id,
@@ -187,9 +335,7 @@ function NewLoanContent() {
     await supabase.from('payment_schedule').insert(scheduleItems);
 
     if (data.lenderType === 'business') {
-      // If direct link to lender, send notification to that lender
       if (targetLenderId) {
-        // Notify the specific lender
         await fetch('/api/notifications/payment', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -203,7 +349,6 @@ function NewLoanContent() {
         });
         router.push(`/loans/${loan.id}?direct=true`);
       } else {
-        // Regular matching
         const matchResponse = await fetch('/api/matching', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -287,18 +432,76 @@ function NewLoanContent() {
             </div>
           )}
 
+          {/* Bank Connection Card for ACH */}
+          <Card className="mb-6">
+            <h3 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
+              <Building className="w-5 h-5 text-primary-600" />
+              Your Bank Account
+            </h3>
+            <p className="text-sm text-neutral-600 mb-4">
+              Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
+            </p>
+
+            {bankConnected && bankInfo ? (
+              <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+                      <Building className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-neutral-900">{bankInfo.bank_name}</span>
+                        <CheckCircle className="w-4 h-4 text-green-600" />
+                      </div>
+                      <p className="text-sm text-neutral-500">Account ••••{bankInfo.account_mask}</p>
+                    </div>
+                  </div>
+                  <Badge variant="success">Connected</Badge>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-amber-800">Bank not connected</p>
+                    <p className="text-sm text-amber-700">
+                      Connect your bank to receive loan funds instantly when approved.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleConnectBank}
+                  disabled={connectingBank || !plaidReady}
+                  className="w-full"
+                >
+                  {connectingBank ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Connecting...
+                    </>
+                  ) : (
+                    <>
+                      <Building className="w-4 h-4 mr-2" />
+                      Connect Bank Account
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </Card>
+
           <Card>
             <LoanRequestForm 
               businesses={businesses} 
               preferredLender={preferredLender}
-              userPayPalConnected={user?.paypal_connected || false}
+              userBankConnected={bankConnected}
               userVerificationStatus={user?.verification_status || 'pending'}
-              userPaypalEmail={user?.paypal_email}
-              userCashappUsername={user?.cashapp_username}
-              userVenmoUsername={user?.venmo_username}
-              userPreferredPaymentMethod={user?.preferred_payment_method}
+              userBankName={bankInfo?.bank_name}
+              userBankAccountMask={bankInfo?.account_mask}
               onSubmit={handleSubmit}
-              onConnectPayPal={handleConnectPayPal}
+              onConnectBank={handleConnectBank}
               onStartVerification={() => router.push('/verify')}
             />
           </Card>
@@ -310,7 +513,6 @@ function NewLoanContent() {
   );
 }
 
-// Wrap with Suspense for useSearchParams
 export default function NewLoanPage() {
   return (
     <Suspense fallback={

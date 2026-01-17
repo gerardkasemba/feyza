@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
@@ -16,9 +16,11 @@ import {
   Sparkles,
   Users,
   Building2,
+  Building,
   Calendar,
   Clock,
-  CreditCard
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 
 const PURPOSES = [
@@ -32,17 +34,6 @@ const PURPOSES = [
 
 const CURRENCIES = [
   { value: 'USD', symbol: '$', label: 'US Dollar' },
-  { value: 'EUR', symbol: '€', label: 'Euro' },
-  { value: 'GBP', symbol: '£', label: 'British Pound' },
-  { value: 'NGN', symbol: '₦', label: 'Nigerian Naira' },
-  { value: 'GHS', symbol: '₵', label: 'Ghanaian Cedi' },
-  { value: 'KES', symbol: 'KSh', label: 'Kenyan Shilling' },
-];
-
-const PAYMENT_METHODS = [
-  { value: 'paypal', label: 'PayPal', icon: '💳', placeholder: 'your@email.com' },
-  { value: 'cashapp', label: 'Cash App', icon: '💵', placeholder: '$yourusername' },
-  { value: 'venmo', label: 'Venmo', icon: '💸', placeholder: '@yourusername' },
 ];
 
 export default function GuestLoanRequestForm() {
@@ -59,13 +50,32 @@ export default function GuestLoanRequestForm() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [description, setDescription] = useState('');
+  const [startDate, setStartDate] = useState('');
   
-  // Payment method - how borrower wants to receive funds
-  const [paymentMethod, setPaymentMethod] = useState<string>('');
-  const [paymentUsername, setPaymentUsername] = useState('');
+  // Bank connection state
+  const [bankConnected, setBankConnected] = useState(false);
+  const [bankInfo, setBankInfo] = useState<any>(null);
+  
+  // Plaid state
+  const [plaidLoaded, setPlaidLoaded] = useState(false);
+  const [plaidLoading, setPlaidLoading] = useState(false);
+  const [plaidConnecting, setPlaidConnecting] = useState(false);
   
   // Repayment schedule
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
+  
+  // Load Plaid script once
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !(window as any).Plaid) {
+      const script = document.createElement('script');
+      script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+      script.async = true;
+      script.onload = () => setPlaidLoaded(true);
+      document.body.appendChild(script);
+    } else {
+      setPlaidLoaded(true);
+    }
+  }, []);
   
   // Get smart presets based on amount
   const repaymentPresets = useMemo(() => {
@@ -76,11 +86,100 @@ export default function GuestLoanRequestForm() {
   
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
   const selectedCurrency = CURRENCIES.find(c => c.value === currency);
-  const selectedPaymentMethod = PAYMENT_METHODS.find(m => m.value === paymentMethod);
 
-  const handleSubmit = async () => {
-    if (!amount || !purpose || !fullName || !email || selectedPresetIndex === null || !paymentMethod || !paymentUsername) {
-      setError('Please fill in all required fields');
+  // Handle Plaid connection - memoized to prevent re-renders
+  const handleConnectBank = useCallback(async () => {
+    if (!fullName || !email) {
+      setError('Please enter your name and email first');
+      return;
+    }
+
+    if (!plaidLoaded || !(window as any).Plaid) {
+      setError('Bank connection is loading. Please try again.');
+      return;
+    }
+
+    setPlaidLoading(true);
+    setError('');
+
+    try {
+      // Get link token
+      const tokenResponse = await fetch('/api/plaid/guest-link-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: fullName, email }),
+      });
+      
+      const tokenData = await tokenResponse.json();
+      
+      if (tokenData.error) {
+        setError(tokenData.error);
+        setPlaidLoading(false);
+        return;
+      }
+
+      // Open Plaid Link
+      const handler = (window as any).Plaid.create({
+        token: tokenData.link_token,
+        onSuccess: async (publicToken: string, metadata: any) => {
+          setPlaidConnecting(true);
+          try {
+            const accountId = metadata.accounts[0]?.id;
+            const institution = metadata.institution;
+            
+            const exchangeResponse = await fetch('/api/plaid/guest-exchange', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                public_token: publicToken,
+                account_id: accountId,
+                institution,
+                name: fullName,
+                email,
+              }),
+            });
+            
+            const exchangeData = await exchangeResponse.json();
+            
+            if (exchangeData.error) {
+              setError(exchangeData.error);
+            } else {
+              setBankConnected(true);
+              // Store all Dwolla info for submission
+              setBankInfo({
+                bank_name: exchangeData.bank_name,
+                account_mask: exchangeData.account_mask,
+                account_type: exchangeData.account_type,
+                dwolla_customer_url: exchangeData.dwolla_customer_url,
+                dwolla_customer_id: exchangeData.dwolla_customer_id,
+                dwolla_funding_source_url: exchangeData.dwolla_funding_source_url,
+                dwolla_funding_source_id: exchangeData.dwolla_funding_source_id,
+                plaid_access_token: exchangeData.plaid_access_token,
+              });
+              setError('');
+            }
+          } catch (err: any) {
+            setError(err.message || 'Failed to connect bank');
+          } finally {
+            setPlaidConnecting(false);
+          }
+        },
+        onExit: () => {
+          setPlaidLoading(false);
+        },
+      });
+      
+      handler.open();
+      setPlaidLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to initialize bank connection');
+      setPlaidLoading(false);
+    }
+  }, [fullName, email, plaidLoaded]);
+
+  const handleSubmit = useCallback(async () => {
+    if (!amount || !purpose || !fullName || !email || selectedPresetIndex === null || !bankConnected || !startDate) {
+      setError('Please fill in all required fields and connect your bank');
       return;
     }
 
@@ -98,13 +197,20 @@ export default function GuestLoanRequestForm() {
           full_name: fullName,
           email,
           description,
-          // Include proposed repayment schedule
           proposed_frequency: selectedPreset?.frequency,
           proposed_installments: selectedPreset?.installments,
           proposed_payment_amount: selectedPreset?.paymentAmount,
-          // Include payment method for receiving funds
-          payment_method: paymentMethod,
-          payment_username: paymentUsername,
+          proposed_start_date: startDate,
+          bank_connected: true,
+          // Pass Dwolla info for storage on loan_request
+          borrower_dwolla_customer_url: bankInfo?.dwolla_customer_url,
+          borrower_dwolla_customer_id: bankInfo?.dwolla_customer_id,
+          borrower_dwolla_funding_source_url: bankInfo?.dwolla_funding_source_url,
+          borrower_dwolla_funding_source_id: bankInfo?.dwolla_funding_source_id,
+          borrower_plaid_access_token: bankInfo?.plaid_access_token,
+          borrower_bank_name: bankInfo?.bank_name,
+          borrower_bank_account_mask: bankInfo?.account_mask,
+          borrower_bank_account_type: bankInfo?.account_type,
         }),
       });
 
@@ -114,25 +220,24 @@ export default function GuestLoanRequestForm() {
         throw new Error(data.error || 'Failed to submit request');
       }
 
-      // Redirect to success/next steps page
       router.push(`/loan-request/success?email=${encodeURIComponent(email)}&id=${data.request_id}`);
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
-  };
+  }, [amount, purpose, fullName, email, description, selectedPresetIndex, selectedPreset, currency, bankConnected, bankInfo, startDate, router]);
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-3xl shadow-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white rounded-3xl shadow-2xl border border-neutral-200 overflow-hidden">
       {/* Loan Type Toggle */}
-      <div className="flex border-b border-neutral-200 dark:border-neutral-800">
+      <div className="flex border-b border-neutral-200">
         <button
           onClick={() => setLoanType('personal')}
           className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-all ${
             loanType === 'personal'
-              ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 border-b-2 border-primary-500 dark:border-primary-400'
-              : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              ? 'bg-primary-50 text-primary-600 border-b-2 border-primary-500'
+              : 'text-neutral-500 hover:bg-neutral-50'
           }`}
         >
           <Users className="w-5 h-5" />
@@ -142,8 +247,8 @@ export default function GuestLoanRequestForm() {
           onClick={() => setLoanType('business')}
           className={`flex-1 py-4 px-4 flex items-center justify-center gap-2 font-medium transition-all ${
             loanType === 'business'
-              ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 border-b-2 border-primary-500 dark:border-primary-400'
-              : 'text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800'
+              ? 'bg-primary-50 text-primary-600 border-b-2 border-primary-500'
+              : 'text-neutral-500 hover:bg-neutral-50'
           }`}
         >
           <Building2 className="w-5 h-5" />
@@ -155,13 +260,13 @@ export default function GuestLoanRequestForm() {
       {loanType === 'business' ? (
         <div className="p-8">
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+            <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Building2 className="w-8 h-8 text-primary-600" />
             </div>
-            <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">
+            <h3 className="text-xl font-bold text-neutral-900 mb-2">
               Business Loans
             </h3>
-            <p className="text-neutral-600 dark:text-neutral-300">
+            <p className="text-neutral-600">
               Get access to verified business lenders, larger loan amounts, and professional tools.
             </p>
           </div>
@@ -174,7 +279,7 @@ export default function GuestLoanRequestForm() {
               'Business credit building',
               'Dedicated support',
             ].map((feature) => (
-              <div key={feature} className="flex items-center gap-3 text-neutral-700 dark:text-neutral-300">
+              <div key={feature} className="flex items-center gap-3 text-neutral-700">
                 <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                 <span>{feature}</span>
               </div>
@@ -188,9 +293,9 @@ export default function GuestLoanRequestForm() {
             </Button>
           </Link>
 
-          <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-4">
+          <p className="text-center text-sm text-neutral-500 mt-4">
             Already have an account?{' '}
-            <Link href="/auth/signin" className="text-primary-600 dark:text-primary-400 hover:underline">
+            <Link href="/auth/signin" className="text-primary-600 hover:underline">
               Sign in
             </Link>
           </p>
@@ -198,98 +303,92 @@ export default function GuestLoanRequestForm() {
       ) : (
         <>
           {/* Header for Personal Loan */}
-          <div className="bg-gradient-to-r from-primary-500 to-accent-500 dark:from-primary-600 dark:to-accent-600 p-6 text-white">
+          <div className="bg-gradient-to-r from-primary-500 to-accent-500 p-6 text-white">
             <div className="flex items-center gap-3 mb-2">
               <Sparkles className="w-6 h-6" />
               <h3 className="text-xl font-bold">Request a Loan</h3>
             </div>
-            <p className="text-white/80 dark:text-white/90 text-sm">No account needed • Takes 1 minute</p>
+            <p className="text-primary-100">
+              Borrow from someone you trust — no credit check, no fees.
+            </p>
           </div>
 
           {/* Progress Steps */}
-          <div className="flex border-b border-neutral-100 dark:border-neutral-800">
-            {[
-              { num: 1, label: 'Amount' },
-              { num: 2, label: 'Purpose' },
-              { num: 3, label: 'Plan' },
-              { num: 4, label: 'Receive' },
-              { num: 5, label: 'Submit' },
-            ].map((s) => (
-              <div 
-                key={s.num}
-                className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
-                  step === s.num 
-                    ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400 border-b-2 border-primary-500 dark:border-primary-400' 
-                    : step > s.num 
-                      ? 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'
-                      : 'text-neutral-400 dark:text-neutral-500'
-                }`}
-              >
-                {step > s.num ? <CheckCircle className="w-3 h-3 inline mr-1" /> : null}
-                {s.label}
-              </div>
-            ))}
+          <div className="px-6 pt-6">
+            <div className="flex items-center justify-between mb-6">
+              {['Amount', 'Purpose', 'Schedule', 'Bank', 'Submit'].map((label, i) => (
+                <div key={label} className="flex flex-col items-center">
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                    i + 1 === step 
+                      ? 'bg-primary-500 text-white' 
+                      : i + 1 < step 
+                      ? 'bg-green-500 text-white'
+                      : 'bg-neutral-200 text-neutral-500'
+                  }`}>
+                    {i + 1 < step ? <CheckCircle className="w-4 h-4" /> : i + 1}
+                  </div>
+                  <span className={`text-xs mt-1 ${i + 1 === step ? 'text-primary-600 font-medium' : 'text-neutral-400'}`}>
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="p-6">
+          {/* Form Steps */}
+          <div className="p-6 pt-2">
             {/* Step 1: Amount */}
             {step === 1 && (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
                     How much do you need?
                   </label>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">
-                    💡 Choose your currency first, then enter the amount
-                  </p>
-                  <div className="flex gap-2">
-                    <select
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value)}
-                      className="px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl bg-neutral-50 dark:bg-neutral-800 font-medium text-neutral-900 dark:text-white"
-                    >
-                      {CURRENCIES.map((c) => (
-                        <option key={c.value} value={c.value} className="bg-white dark:bg-neutral-800">
-                          {c.symbol} {c.value}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="relative flex-1">
-                      <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-neutral-500" />
-                      <input
-                        type="number"
-                        value={amount}
-                        onChange={(e) => {
-                          setAmount(e.target.value);
-                          setError('');
-                        }}
-                        placeholder="5,000"
-                        min="1"
-                        className="w-full pl-12 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl text-xl font-bold focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
-                      />
-                    </div>
+                  <div className="relative">
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                    <input
+                      type="number"
+                      value={amount}
+                      onChange={(e) => setAmount(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full pl-12 pr-4 py-4 text-2xl font-bold border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
                   </div>
-                  <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2">
-                    Your lender will send this amount via PayPal, Cash App, or Venmo
-                  </p>
+                </div>
+
+                {/* Quick amounts */}
+                <div className="flex flex-wrap gap-2">
+                  {[100, 250, 500, 1000, 2500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setAmount(String(amt))}
+                      className={`px-4 py-2 rounded-lg border transition-all ${
+                        amount === String(amt)
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-neutral-200 hover:border-neutral-300'
+                      }`}
+                    >
+                      ${amt.toLocaleString()}
+                    </button>
+                  ))}
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
-                    {error}
-                  </div>
+                  <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
                 )}
 
                 <Button 
-                  className="w-full" 
+                  className="w-full mt-4" 
                   onClick={() => {
-                    const numAmount = parseFloat(amount);
-                    if (!amount || isNaN(numAmount) || numAmount <= 0) {
+                    if (!amount || parseFloat(amount) <= 0) {
                       setError('Please enter a valid amount');
                       return;
                     }
+                    setError('');
                     setStep(2);
                   }}
+                  disabled={!amount}
                 >
                   Continue
                   <ArrowRight className="w-4 h-4 ml-2" />
@@ -300,57 +399,33 @@ export default function GuestLoanRequestForm() {
             {/* Step 2: Purpose */}
             {step === 2 && (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    What's this loan for?
-                  </label>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">
-                    This helps your lender understand your situation
-                  </p>
-                </div>
+                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  What's this loan for?
+                </label>
+                
                 <div className="grid grid-cols-2 gap-3">
                   {PURPOSES.map((p) => (
                     <button
                       key={p.value}
-                      onClick={() => {
-                        setPurpose(p.value);
-                        setError('');
-                      }}
+                      type="button"
+                      onClick={() => setPurpose(p.value)}
                       className={`p-4 rounded-xl border-2 text-left transition-all ${
                         purpose === p.value
-                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30'
-                          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-neutral-200 hover:border-neutral-300'
                       }`}
                     >
-                      <span className="text-lg text-neutral-900 dark:text-white">{p.label}</span>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{p.desc}</p>
+                      <span className="text-lg">{p.label}</span>
+                      <p className="text-xs text-neutral-500 mt-1">{p.desc}</p>
                     </button>
                   ))}
                 </div>
 
-                {/* Show text field when "other" is selected */}
-                {purpose === 'other' && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                      Please describe what it's for
-                    </label>
-                    <input
-                      type="text"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="e.g., Wedding expenses, vacation, home improvement..."
-                      className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
-                    />
-                  </div>
-                )}
-
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
-                    {error}
-                  </div>
+                  <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
                 )}
 
-                <div className="flex gap-2 mt-6">
+                <div className="flex gap-2 mt-4">
                   <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
                     Back
                   </Button>
@@ -361,13 +436,10 @@ export default function GuestLoanRequestForm() {
                         setError('Please select a purpose');
                         return;
                       }
-                      if (purpose === 'other' && !description.trim()) {
-                        setError('Please describe what the loan is for');
-                        return;
-                      }
                       setError('');
                       setStep(3);
                     }}
+                    disabled={!purpose}
                   >
                     Continue
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -379,83 +451,80 @@ export default function GuestLoanRequestForm() {
             {/* Step 3: Repayment Schedule */}
             {step === 3 && (
               <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    How would you like to repay?
+                <div className="flex items-center gap-2 mb-2">
+                  <Calendar className="w-5 h-5 text-primary-600" />
+                  <label className="text-sm font-medium text-neutral-700">
+                    Propose a repayment schedule
                   </label>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                    Suggest a plan that works for you. Your lender can accept or propose changes.
-                  </p>
                 </div>
-
-                {/* Reassurance box */}
-                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 mb-4">
-                  <p className="text-sm text-blue-700 dark:text-blue-400">
-                    🤝 <strong>Don't worry!</strong> This is just your proposal. You and your lender will agree on the final terms together.
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {repaymentPresets.map((preset, index) => (
-                    <button
-                      key={index}
-                      onClick={() => {
-                        setSelectedPresetIndex(index);
-                        setError('');
-                      }}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        selectedPresetIndex === index
-                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30'
-                          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-800' : 'bg-neutral-100 dark:bg-neutral-700'
-                          }`}>
-                            <Calendar className={`w-5 h-5 ${
-                              selectedPresetIndex === index ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'
-                            }`} />
-                          </div>
+                <p className="text-xs text-neutral-500 mb-4">
+                  Your lender can adjust this later
+                </p>
+                
+                {repaymentPresets.length > 0 ? (
+                  <div className="space-y-3">
+                    {repaymentPresets.map((preset, index) => (
+                      <button
+                        key={index}
+                        type="button"
+                        onClick={() => setSelectedPresetIndex(index)}
+                        className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                          selectedPresetIndex === index
+                            ? 'border-primary-500 bg-primary-50'
+                            : 'border-neutral-200 hover:border-neutral-300'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
                           <div>
-                            <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                              {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'} payments
+                            <span className="font-semibold text-neutral-900">
+                              {preset.installments} {preset.frequency} payments
+                            </span>
+                            <p className="text-sm text-neutral-500 mt-1">
+                              {selectedCurrency?.symbol}{preset.paymentAmount.toLocaleString()} each
                             </p>
                           </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="w-4 h-4 text-neutral-400" />
+                            <span className="text-sm text-neutral-500">{preset.label}</span>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <p className="font-bold text-neutral-900 dark:text-white">
-                            {selectedCurrency?.symbol}{preset.paymentAmount.toLocaleString()}
-                          </p>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">per payment</p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-neutral-500">Enter an amount to see repayment options</p>
+                )}
+
+                {/* Start Date Picker */}
+                <div className="mt-6 pt-4 border-t border-neutral-200">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Calendar className="w-5 h-5 text-primary-600" />
+                    <label className="text-sm font-medium text-neutral-700">
+                      When can you start paying?
+                    </label>
+                  </div>
+                  <p className="text-xs text-neutral-500 mb-3">
+                    Select your preferred first payment date
+                  </p>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    min={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                    className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                  {startDate && (
+                    <p className="text-xs text-green-600 mt-2">
+                      ✓ First payment: {new Date(startDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  )}
                 </div>
 
-                {selectedPreset && (
-                  <div className="bg-primary-50 dark:bg-primary-900/30 rounded-xl p-4 mt-4">
-                    <div className="flex items-center gap-2 text-primary-700 dark:text-primary-400 text-sm">
-                      <Clock className="w-4 h-4" />
-                      <span>
-                        You'll pay {selectedCurrency?.symbol}{selectedPreset.paymentAmount.toLocaleString()}{' '}
-                        {selectedPreset.frequency} for {selectedPreset.installments}{' '}
-                        {selectedPreset.installments === 1 ? 'payment' : 'payments'}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
-                    {error}
-                  </div>
+                  <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm">{error}</div>
                 )}
 
-                <div className="flex gap-2 mt-6">
+                <div className="flex gap-2 mt-4">
                   <Button variant="outline" onClick={() => setStep(2)} className="flex-1">
                     Back
                   </Button>
@@ -466,9 +535,14 @@ export default function GuestLoanRequestForm() {
                         setError('Please select a repayment schedule');
                         return;
                       }
+                      if (!startDate) {
+                        setError('Please select when you want to start paying');
+                        return;
+                      }
                       setError('');
                       setStep(4);
                     }}
+                    disabled={selectedPresetIndex === null || !startDate}
                   >
                     Continue
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -477,90 +551,139 @@ export default function GuestLoanRequestForm() {
               </div>
             )}
 
-            {/* Step 4: How You Want to Receive Funds */}
+            {/* Step 4: Bank Connection */}
             {step === 4 && (
               <div className="space-y-4">
-                <div className="text-center mb-4">
-                  <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center mx-auto mb-3">
-                    <CreditCard className="w-6 h-6 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h3 className="font-semibold text-neutral-900 dark:text-white">Where should your lender send the money?</h3>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                    This makes it easy for your lender to pay you directly
+                <div className="flex items-center gap-2 mb-2">
+                  <Building className="w-5 h-5 text-primary-600" />
+                  <label className="text-sm font-medium text-neutral-700">
+                    Connect your bank to receive funds
+                  </label>
+                </div>
+
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                  <p className="text-sm text-amber-800">
+                    💡 <strong>Why connect your bank?</strong> When your lender accepts, they can send funds directly to your account — secure and fast!
                   </p>
                 </div>
 
-                {/* Why we ask this */}
-                <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-4">
-                  <p className="text-sm text-amber-800 dark:text-amber-400">
-                    💡 <strong>Why now?</strong> When your lender accepts, they'll see exactly where to send the funds — no back-and-forth needed!
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  {PAYMENT_METHODS.map((method) => (
-                    <button
-                      key={method.value}
-                      onClick={() => {
-                        setPaymentMethod(method.value);
-                        setPaymentUsername('');
-                        setError('');
-                      }}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        paymentMethod === method.value
-                          ? 'border-green-500 dark:border-green-400 bg-green-50 dark:bg-green-900/30'
-                          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-2xl">{method.icon}</span>
-                        <span className="font-medium text-neutral-900 dark:text-white">{method.label}</span>
-                        {paymentMethod === method.value && (
-                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 ml-auto" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {paymentMethod && (
-                  <div className="mt-4">
-                    <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                      Your {selectedPaymentMethod?.label} {paymentMethod === 'paypal' ? 'Email' : 'Username'}
+                {/* Name & Email inputs */}
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Your Full Name
                     </label>
-                    <input
-                      type={paymentMethod === 'paypal' ? 'email' : 'text'}
-                      value={paymentUsername}
-                      onChange={(e) => setPaymentUsername(e.target.value)}
-                      placeholder={selectedPaymentMethod?.placeholder}
-                      className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 dark:focus:ring-green-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
-                    />
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-                      ✓ Double-check this is correct — your lender will send money here
-                    </p>
+                    <div className="relative">
+                      <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                      <input
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="John Doe"
+                        className="w-full pl-12 pr-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-2">
+                      Your Email
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="w-full pl-12 pr-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bank Connection Status */}
+                {bankConnected && bankInfo ? (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+                          <Building className="w-6 h-6 text-green-600" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-neutral-900">{bankInfo.bank_name}</span>
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                          </div>
+                          <p className="text-sm text-neutral-500">
+                            ••••{bankInfo.account_mask}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-6">
+                    <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
+                      <Building className="w-8 h-8 text-neutral-400" />
+                    </div>
+                    <Button
+                      onClick={handleConnectBank}
+                      disabled={!plaidLoaded || plaidLoading || plaidConnecting || !fullName || !email}
+                      className="w-full max-w-xs"
+                    >
+                      {plaidLoading || plaidConnecting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          {plaidConnecting ? 'Connecting...' : 'Loading...'}
+                        </>
+                      ) : (
+                        <>
+                          <Building className="w-4 h-4 mr-2" />
+                          Connect Bank Account
+                        </>
+                      )}
+                    </Button>
+                    {(!fullName || !email) && (
+                      <p className="text-neutral-500 text-sm mt-2">Enter your name and email first</p>
+                    )}
                   </div>
                 )}
 
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-blue-800">Secure & Protected</h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        We use Plaid to securely connect to your bank. We never see your login credentials.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
+                  <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
                     {error}
                   </div>
                 )}
 
-                <div className="flex gap-2 mt-6">
+                <div className="flex gap-2 mt-4">
                   <Button variant="outline" onClick={() => setStep(3)} className="flex-1">
                     Back
                   </Button>
                   <Button 
                     className="flex-1" 
                     onClick={() => {
-                      if (!paymentMethod || !paymentUsername) {
-                        setError('Please select a payment method and enter your details');
+                      if (!bankConnected) {
+                        setError('Please connect your bank account');
                         return;
                       }
                       setError('');
                       setStep(5);
                     }}
+                    disabled={!bankConnected}
                   >
                     Continue
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -569,93 +692,67 @@ export default function GuestLoanRequestForm() {
               </div>
             )}
 
-            {/* Step 5: Your Details & Submit */}
+            {/* Step 5: Review & Submit */}
             {step === 5 && (
               <div className="space-y-4">
+                <h3 className="font-semibold text-neutral-900">Review Your Request</h3>
+                
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Your Full Name
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-neutral-500" />
-                    <input
-                      type="text"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="John Doe"
-                      className="w-full pl-12 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                    Your Email
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-neutral-500" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      className="w-full pl-12 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
-                    />
-                  </div>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                    We'll send you updates about your loan request
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 mb-2">
                     Brief Description (Optional)
                   </label>
-                  <div className="relative">
-                    <FileText className="absolute left-4 top-3 w-5 h-5 text-neutral-400 dark:text-neutral-500" />
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Tell potential lenders a bit more about why you need this loan..."
-                      rows={3}
-                      className="w-full pl-12 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white resize-none"
-                    />
-                  </div>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Tell potential lenders a bit more about why you need this loan..."
+                    rows={3}
+                    className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none"
+                  />
                 </div>
 
                 {/* Summary */}
-                <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl p-4 mt-4">
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">Request Summary</p>
+                <div className="bg-neutral-50 rounded-xl p-4 space-y-2">
+                  <p className="text-sm text-neutral-500 mb-2">Request Summary</p>
                   <div className="flex justify-between items-center">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">Amount</span>
-                    <span className="text-xl font-bold text-primary-600 dark:text-primary-400">
+                    <span className="font-medium">Amount</span>
+                    <span className="text-xl font-bold text-primary-600">
                       {selectedCurrency?.symbol}{parseFloat(amount || '0').toLocaleString()} {currency}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">Purpose</span>
-                    <span className="text-neutral-700 dark:text-neutral-300">
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Purpose</span>
+                    <span className="text-neutral-700">
                       {PURPOSES.find(p => p.value === purpose)?.label || '-'}
                     </span>
                   </div>
                   {selectedPreset && (
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="font-medium text-neutral-700 dark:text-neutral-300">Repayment</span>
-                      <span className="text-neutral-700 dark:text-neutral-300">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">Repayment</span>
+                      <span className="text-neutral-700">
                         {selectedCurrency?.symbol}{selectedPreset.paymentAmount.toLocaleString()} × {selectedPreset.installments} ({selectedPreset.frequency})
                       </span>
                     </div>
                   )}
-                  <div className="flex justify-between items-center mt-1">
-                    <span className="font-medium text-neutral-700 dark:text-neutral-300">Receive via</span>
-                    <span className="text-neutral-700 dark:text-neutral-300">
-                      {selectedPaymentMethod?.icon} {selectedPaymentMethod?.label}: {paymentUsername}
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Receive via</span>
+                    <span className="text-neutral-700 flex items-center gap-1">
+                      <Building className="w-4 h-4" />
+                      {bankInfo?.bank_name} ••••{bankInfo?.account_mask}
                     </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Borrower</span>
+                    <span className="text-neutral-700">{fullName}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-medium">Email</span>
+                    <span className="text-neutral-700">{email}</span>
                   </div>
                 </div>
 
                 {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-lg text-sm">
+                  <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
                     {error}
                   </div>
                 )}
@@ -667,7 +764,7 @@ export default function GuestLoanRequestForm() {
                   <Button 
                     className="flex-1" 
                     onClick={handleSubmit}
-                    disabled={loading || !fullName || !email}
+                    disabled={loading}
                   >
                     {loading ? (
                       <>
@@ -687,7 +784,7 @@ export default function GuestLoanRequestForm() {
           </div>
 
           {/* Footer */}
-          <div className="bg-neutral-50 dark:bg-neutral-800 px-6 py-4 text-center text-sm text-neutral-500 dark:text-neutral-400">
+          <div className="bg-neutral-50 px-6 py-4 text-center text-sm text-neutral-500">
             🔒 Your information is secure and never shared without your consent
           </div>
         </>

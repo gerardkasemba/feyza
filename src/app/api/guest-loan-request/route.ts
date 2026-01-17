@@ -25,8 +25,17 @@ export async function POST(request: NextRequest) {
       proposed_frequency,
       proposed_installments,
       proposed_payment_amount,
-      payment_method,
-      payment_username,
+      proposed_start_date,
+      bank_connected,
+      // Dwolla info from bank connection
+      borrower_dwolla_customer_url,
+      borrower_dwolla_customer_id,
+      borrower_dwolla_funding_source_url,
+      borrower_dwolla_funding_source_id,
+      borrower_plaid_access_token,
+      borrower_bank_name,
+      borrower_bank_account_mask,
+      borrower_bank_account_type,
     } = body;
 
     // Validation
@@ -44,9 +53,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!payment_method || !payment_username) {
+    if (!bank_connected) {
       return NextResponse.json(
-        { error: 'Please specify how you want to receive the loan' },
+        { error: 'Please connect your bank account to receive the loan' },
         { status: 400 }
       );
     }
@@ -62,7 +71,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if user exists with this email
+    // Check if user exists with this email (for linking if they have an account)
     const { data: existingUser } = await supabase
       .from('users')
       .select('id')
@@ -73,7 +82,7 @@ export async function POST(request: NextRequest) {
     const accessToken = generateToken();
     const tokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
 
-    // Create loan request record
+    // Create loan request record with Dwolla info
     const { data: loanRequest, error: createError } = await supabase
       .from('loan_requests')
       .insert({
@@ -91,9 +100,17 @@ export async function POST(request: NextRequest) {
         proposed_frequency: proposed_frequency || 'monthly',
         proposed_installments: proposed_installments || 1,
         proposed_payment_amount: proposed_payment_amount || amount,
-        // Borrower's receive payment method
-        borrower_payment_method: payment_method,
-        borrower_payment_username: payment_username,
+        proposed_start_date: proposed_start_date || null,
+        // Dwolla/bank info for receiving funds
+        borrower_dwolla_customer_url,
+        borrower_dwolla_customer_id,
+        borrower_dwolla_funding_source_url,
+        borrower_dwolla_funding_source_id,
+        borrower_plaid_access_token,
+        borrower_bank_name,
+        borrower_bank_account_mask,
+        borrower_bank_account_type,
+        borrower_bank_connected: bank_connected,
       })
       .select()
       .single();
@@ -111,145 +128,65 @@ export async function POST(request: NextRequest) {
         <!DOCTYPE html>
         <html>
           <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <!-- Header with logo -->
-            <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-              <!-- Logo -->
-              <div style="margin-bottom: 20px;">
-                <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                    alt="Feyza Logo" 
-                    style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-              </div>
-              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">✅ Request Submitted!</h1>
-              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Your loan request is now active</p>
+            <div style="background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
+              <h1 style="color: white; margin: 0;">✅ Request Submitted!</h1>
             </div>
             
-            <!-- Content area -->
-            <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-              <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${full_name},</p>
+            <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e2e8f0;">
+              <p style="font-size: 18px; color: #374151;">Hi ${full_name},</p>
               
-              <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-                Your loan request has been submitted successfully! Here's what happens next:
+              <p style="color: #374151;">
+                Your loan request has been submitted successfully! Your bank account is connected and ready to receive funds.
               </p>
               
-              <!-- Loan details card -->
-              <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
-                <div style="text-align: center;">
-                  <p style="color: #047857; margin: 0 0 8px 0; font-size: 14px; font-weight: 500;">REQUEST AMOUNT</p>
-                  <p style="font-size: 36px; font-weight: bold; color: #059669; margin: 0; line-height: 1.2;">
-                    ${currency} ${amount.toLocaleString()}
-                  </p>
-                  <div style="display: inline-block; background: #dcfce7; color: #065f46; padding: 6px 16px; border-radius: 20px; margin-top: 12px; font-weight: 500; font-size: 14px;">
-                    ${purpose.charAt(0).toUpperCase() + purpose.slice(1)}
-                  </div>
-                </div>
+              <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
+                <p style="color: #6b7280; margin: 0 0 10px 0;">Request Amount</p>
+                <p style="font-size: 32px; font-weight: bold; color: #2563eb; margin: 0;">
+                  ${currency} ${amount.toLocaleString()}
+                </p>
+                <p style="color: #6b7280; margin: 10px 0 0 0;">
+                  Purpose: ${purpose.charAt(0).toUpperCase() + purpose.slice(1)}
+                </p>
               </div>
               
-              <!-- Process steps -->
-              <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
-                <h3 style="color: #065f46; margin: 0 0 20px 0; font-size: 20px; font-weight: 600;">What's Next?</h3>
-                
-                <div style="display: flex; flex-direction: column; gap: 20px;">
-                  <!-- Step 1 -->
-                  <div style="display: flex; gap: 15px; align-items: flex-start;">
-                    <div style="background: #059669; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0;">1</div>
-                    <div>
-                      <p style="color: #065f46; margin: 0 0 5px 0; font-weight: 600;">Share Your Request</p>
-                      <p style="color: #166534; margin: 0; font-size: 14px; line-height: 1.5;">
-                        Send your request link to friends, family, or anyone who might be willing to lend you money.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <!-- Step 2 -->
-                  <div style="display: flex; gap: 15px; align-items: flex-start;">
-                    <div style="background: #059669; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0;">2</div>
-                    <div>
-                      <p style="color: #065f46; margin: 0 0 5px 0; font-weight: 600;">Wait for a Lender</p>
-                      <p style="color: #166534; margin: 0; font-size: 14px; line-height: 1.5;">
-                        When someone accepts your request, you'll receive an email notification immediately.
-                      </p>
-                    </div>
-                  </div>
-                  
-                  <!-- Step 3 -->
-                  <div style="display: flex; gap: 15px; align-items: flex-start;">
-                    <div style="background: #059669; color: white; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0;">3</div>
-                    <div>
-                      <p style="color: #065f46; margin: 0 0 5px 0; font-weight: 600;">Finalize the Loan</p>
-                      <p style="color: #166534; margin: 0; font-size: 14px; line-height: 1.5;">
-                        Set up your payment method to receive funds and start your repayment journey.
-                      </p>
-                    </div>
-                  </div>
-                </div>
+              <div style="background: #d1fae5; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
+                <p style="color: #065f46; margin: 0; font-size: 14px;">
+                  ✅ <strong>Bank Connected</strong> - When your loan is accepted, funds will be sent directly to your bank account via ACH transfer.
+                </p>
               </div>
               
-              <!-- Primary CTA -->
-              <a href="${APP_URL}/loan-request/${loanRequest.id}?token=${accessToken}" 
-                style="display: block; background: linear-gradient(to right, #059669, #047857); 
-                        color: white; text-decoration: none; padding: 18px 32px; border-radius: 8px; 
-                        font-weight: 600; text-align: center; margin: 24px 0; font-size: 16px;
-                        box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
-                onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-                onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
+              <h3 style="color: #374151; margin-top: 24px;">What's Next?</h3>
+              <ol style="color: #374151; padding-left: 20px;">
+                <li style="margin-bottom: 12px;">
+                  <strong>Share your request</strong> - Send the link below to friends, family, or anyone who might be willing to lend you money.
+                </li>
+                <li style="margin-bottom: 12px;">
+                  <strong>Wait for a lender</strong> - When someone accepts your request, they'll send money directly to your bank.
+                </li>
+                <li style="margin-bottom: 12px;">
+                  <strong>Receive funds</strong> - Money typically arrives in 1-3 business days via ACH transfer.
+                </li>
+              </ol>
+              
+              <a href="${APP_URL}/loan-request/${loanRequest.id}?token=${accessToken}" style="display: block; background: #2563eb; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
                 View & Share Your Request →
               </a>
               
-              <!-- Tip box -->
-              <div style="background: #dcfce7; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #86efac;">
-                <div style="display: flex; gap: 12px; align-items: flex-start;">
-                  <div style="color: #059669; font-size: 20px; flex-shrink: 0;">💡</div>
-                  <div>
-                    <p style="color: #065f46; margin: 0 0 8px 0; font-weight: 600;">Sharing Tip</p>
-                    <p style="color: #166534; margin: 0; font-size: 14px; line-height: 1.5;">
-                      Share your loan request link with people you trust. The more people see it, the faster you'll find a lender!
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Additional options -->
-              <div style="display: flex; gap: 15px; margin-top: 20px; flex-wrap: wrap;">
-                <a href="${APP_URL}/loans" 
-                  style="display: inline-block; background: white; 
-                          color: #059669; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
-                          font-weight: 500; text-align: center; font-size: 14px; border: 1px solid #059669;
-                          box-shadow: 0 2px 6px rgba(5, 150, 105, 0.1); transition: all 0.2s ease;
-                          flex: 1; min-width: 150px;"
-                  onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(5, 150, 105, 0.15)';this.style.background='#f0fdf4';"
-                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 6px rgba(5, 150, 105, 0.1)';this.style.background='white';">
-                  View All Loans
-                </a>
-                
-                <a href="${APP_URL}/help/loan-process" 
-                  style="display: inline-block; background: white; 
-                          color: #059669; text-decoration: none; padding: 12px 24px; border-radius: 8px; 
-                          font-weight: 500; text-align: center; font-size: 14px; border: 1px solid #059669;
-                          box-shadow: 0 2px 6px rgba(5, 150, 105, 0.1); transition: all 0.2s ease;
-                          flex: 1; min-width: 150px;"
-                  onmouseover="this.style.transform='translateY(-1px)';this.style.boxShadow='0 4px 8px rgba(5, 150, 105, 0.15)';this.style.background='#f0fdf4';"
-                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 6px rgba(5, 150, 105, 0.1)';this.style.background='white';">
-                  How It Works
-                </a>
-              </div>
-              
-              <!-- Footer -->
-              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-                <p style="margin: 0 0 10px 0;">If you have any questions, just reply to this email.</p>
-                <p style="margin: 0; font-size: 13px; color: #047857;">
-                  <strong>Note:</strong> This link expires in 7 days.
+              <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin-top: 20px;">
+                <p style="color: #92400e; margin: 0; font-size: 14px;">
+                  💡 <strong>Tip:</strong> Share your loan request link with people you trust. The more people see it, the faster you'll find a lender!
                 </p>
               </div>
-            </div>
-            
-            <!-- Signature -->
-            <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-              <p style="margin: 0;">Feyza • Loan Request System</p>
+              
+              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
+                If you have any questions, just reply to this email. This link expires in 7 days.
+              </p>
             </div>
           </body>
         </html>
       `,
     });
+
     return NextResponse.json({
       success: true,
       request_id: loanRequest.id,

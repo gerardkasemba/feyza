@@ -1,387 +1,415 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Card, Button, Input, Select } from '@/components/ui';
+import { Card, Button, Badge, Breadcrumbs } from '@/components/ui';
+import { Navbar, Footer } from '@/components/layout';
 import { 
-  DollarSign, Calendar, User, Mail, Phone, CheckCircle, XCircle, 
-  Clock, AlertCircle, TrendingUp, CreditCard, ArrowRight
+  DollarSign, Calendar, User, CheckCircle, Clock, AlertCircle, 
+  TrendingUp, Building, ArrowRight, ArrowUpRight, ArrowDownLeft,
+  Shield, Percent, PieChart, Download
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
-interface GuestLender {
+interface LoanData {
   id: string;
-  email: string;
-  full_name?: string;
-  phone?: string;
-  paypal_email?: string;
-  paypal_connected: boolean;
-  total_loans: number;
-  total_amount_lent: number;
-}
-
-interface LoanSummary {
-  id: string;
-  borrower_name: string;
   amount: number;
   currency: string;
+  purpose?: string;
   status: string;
   interest_rate: number;
+  interest_type: string;
+  total_interest: number;
   total_amount: number;
   amount_paid: number;
   amount_remaining: number;
+  repayment_frequency: string;
+  total_installments: number;
+  repayment_amount: number;
   start_date: string;
   created_at: string;
+  borrower_name?: string;
+  borrower_invite_email?: string;
+  borrower_bank_connected?: boolean;
+  lender_name?: string;
+  lender_email?: string;
+  lender_bank_name?: string;
+  lender_bank_account_mask?: string;
+  lender_bank_connected?: boolean;
+  disbursement_status?: string;
+  disbursed_at?: string;
+  auto_pay_enabled?: boolean;
+  schedule: Array<{
+    id: string;
+    due_date: string;
+    amount: number;
+    principal_amount?: number;
+    interest_amount?: number;
+    is_paid: boolean;
+    paid_at?: string;
+  }>;
+  transfers?: Array<{
+    id: string;
+    type: string;
+    amount: number;
+    status: string;
+    created_at: string;
+  }>;
 }
 
 export default function GuestLenderDashboard() {
   const params = useParams();
-  const router = useRouter();
   const token = params.token as string;
   
-  const [lender, setLender] = useState<GuestLender | null>(null);
-  const [loans, setLoans] = useState<LoanSummary[]>([]);
+  const [loan, setLoan] = useState<LoanData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showPayPalSetup, setShowPayPalSetup] = useState(false);
-  const [paypalEmail, setPaypalEmail] = useState('');
-  const [savingPayPal, setSavingPayPal] = useState(false);
 
   useEffect(() => {
     if (token) {
-      fetchLenderData();
+      fetchLoanData();
     }
   }, [token]);
 
-  const fetchLenderData = async () => {
+  const fetchLoanData = async () => {
     try {
       const response = await fetch(`/api/guest-lender/${token}`);
       if (!response.ok) {
         if (response.status === 404) {
           setError('Invalid or expired access link');
         } else {
-          setError('Failed to load your lending dashboard');
+          setError('Failed to load loan');
         }
         return;
       }
       
       const data = await response.json();
-      setLender(data.lender);
-      setLoans(data.loans || []);
-      setPaypalEmail(data.lender?.paypal_email || '');
+      setLoan(data.loan);
     } catch (err) {
-      console.error('Error fetching lender data:', err);
-      setError('Failed to load your lending dashboard');
+      console.error('Error fetching loan data:', err);
+      setError('Failed to load loan');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const savePayPalEmail = async () => {
-    if (!paypalEmail) return;
-    
-    setSavingPayPal(true);
-    try {
-      const response = await fetch(`/api/guest-lender/${token}/paypal`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paypalEmail }),
-      });
-      
-      if (response.ok) {
-        setLender(prev => prev ? { ...prev, paypal_email: paypalEmail, paypal_connected: true } : null);
-        setShowPayPalSetup(false);
-      }
-    } catch (err) {
-      console.error('Error saving PayPal:', err);
-    } finally {
-      setSavingPayPal(false);
     }
   };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-        <div className="animate-pulse text-neutral-500">Loading your dashboard...</div>
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-neutral-600">Loading your loan...</p>
+        </div>
       </div>
     );
   }
 
-  if (error) {
+  if (error || !loan) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
-        <Card className="max-w-md text-center">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h1 className="text-xl font-bold text-neutral-900 mb-2">{error}</h1>
-          <p className="text-neutral-500 mb-4">
-            This link may have expired or is no longer valid.
-          </p>
-          <Link href="/">
-            <Button>Go to Homepage</Button>
-          </Link>
-        </Card>
+      <div className="min-h-screen flex flex-col bg-neutral-50">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center p-4">
+          <Card className="max-w-md w-full text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-red-600" />
+            </div>
+            <h1 className="text-xl font-bold text-neutral-900 mb-2">Access Error</h1>
+            <p className="text-neutral-600 mb-6">{error || 'This link is invalid or has expired.'}</p>
+            <Link href="/">
+              <Button>Go to Homepage</Button>
+            </Link>
+          </Card>
+        </main>
+        <Footer />
       </div>
     );
   }
 
-  const activeLoans = loans.filter(l => l.status === 'active');
-  const pendingLoans = loans.filter(l => l.status === 'pending');
-  const completedLoans = loans.filter(l => l.status === 'completed');
-  const totalLent = loans.reduce((sum, l) => l.status !== 'declined' && l.status !== 'cancelled' ? sum + l.amount : sum, 0);
-  const totalEarned = loans.reduce((sum, l) => sum + l.amount_paid, 0);
+  const borrowerName = loan.borrower_name || loan.borrower_invite_email?.split('@')[0] || 'Borrower';
+  const progress = loan.total_amount > 0 ? (loan.amount_paid / loan.total_amount) * 100 : 0;
+  const paidPayments = loan.schedule?.filter(s => s.is_paid).length || 0;
+  const totalPayments = loan.schedule?.length || loan.total_installments;
+  const nextPayment = loan.schedule?.find(s => !s.is_paid);
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      {/* Header */}
-      <div className="bg-white border-b border-neutral-200">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-neutral-900">Your Lending Dashboard</h1>
-              <p className="text-neutral-500">Welcome back, {lender?.full_name || lender?.email}</p>
-            </div>
-            <div className="flex items-center gap-4">
-              {!lender?.paypal_connected && (
-                <Button onClick={() => setShowPayPalSetup(true)} variant="outline">
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Connect PayPal
-                </Button>
-              )}
-              <Link href="/auth/signup">
-                <Button>Create Full Account</Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div className="min-h-screen flex flex-col bg-neutral-50">
+      <Navbar />
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        {/* PayPal Setup Notice */}
-        {!lender?.paypal_connected && (
-          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
-            <div>
-              <p className="font-medium text-yellow-800">Connect PayPal to receive payments</p>
-              <p className="text-sm text-yellow-700">
-                You need to connect your PayPal account to receive loan repayments automatically.
-              </p>
-              <Button 
-                size="sm" 
-                className="mt-2"
-                onClick={() => setShowPayPalSetup(true)}
+      <main className="flex-1 py-8 px-4">
+        <div className="max-w-4xl mx-auto">
+          <Breadcrumbs 
+            items={[
+              { label: 'Lender Dashboard' },
+              { label: `Loan to ${borrowerName}` }
+            ]}
+          />
+
+          {/* Loan Header */}
+          <Card className="mb-6 bg-gradient-to-br from-green-600 to-emerald-700 text-white">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <p className="text-green-100 text-sm mb-1">You Lent</p>
+                <p className="text-4xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
+                <p className="text-green-100 mt-2">to {borrowerName}</p>
+              </div>
+              <Badge 
+                variant={loan.status === 'active' ? 'success' : loan.status === 'completed' ? 'default' : 'warning'}
+                className="bg-white/20 text-white border-0"
               >
-                Connect Now
-              </Button>
+                {loan.status}
+              </Badge>
             </div>
-          </div>
-        )}
 
-        {/* Stats */}
-        <div className="grid md:grid-cols-4 gap-4 mb-8">
-          <Card>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-green-600" />
+            <div className="mb-4">
+              <div className="flex justify-between text-sm text-green-100 mb-2">
+                <span>Repaid: {formatCurrency(loan.amount_paid, loan.currency)}</span>
+                <span>Remaining: {formatCurrency(loan.amount_remaining, loan.currency)}</span>
               </div>
-              <div>
-                <p className="text-sm text-neutral-500">Total Lent</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalLent)}</p>
+              <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-white rounded-full transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
+              <p className="text-center text-green-100 text-sm mt-2">
+                {paidPayments} of {totalPayments} payments received
+              </p>
             </div>
           </Card>
-          
-          <Card>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                <TrendingUp className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-neutral-500">Received Back</p>
-                <p className="text-2xl font-bold">{formatCurrency(totalEarned)}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                <Clock className="w-6 h-6 text-purple-600" />
-              </div>
-              <div>
-                <p className="text-sm text-neutral-500">Active Loans</p>
-                <p className="text-2xl font-bold">{activeLoans.length}</p>
-              </div>
-            </div>
-          </Card>
-          
-          <Card>
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                <AlertCircle className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm text-neutral-500">Pending Requests</p>
-                <p className="text-2xl font-bold">{pendingLoans.length}</p>
-              </div>
-            </div>
-          </Card>
-        </div>
 
-        {/* Pending Requests */}
-        {pendingLoans.length > 0 && (
-          <div className="mb-8">
-            <h2 className="text-lg font-semibold text-neutral-900 mb-4">Pending Requests</h2>
-            <div className="space-y-4">
-              {pendingLoans.map(loan => (
-                <Card key={loan.id} className="border-orange-200 bg-orange-50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
-                        <User className="w-6 h-6 text-orange-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-neutral-900">{loan.borrower_name}</p>
-                        <p className="text-sm text-neutral-500">
-                          Requested {formatCurrency(loan.amount, loan.currency)} • {formatDate(loan.created_at)}
-                        </p>
-                      </div>
-                    </div>
-                    <Link href={`/invite/${token}?loan=${loan.id}`}>
-                      <Button>
-                        Review Request
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </Link>
+          {/* Disbursement Status */}
+          {loan.disbursement_status && (
+            <Card className={`mb-6 ${loan.disbursement_status === 'processing' ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="flex items-center gap-3">
+                {loan.disbursement_status === 'processing' ? (
+                  <Clock className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <CheckCircle className="w-5 h-5 text-green-600" />
+                )}
+                <div>
+                  <h3 className="font-semibold text-neutral-900">
+                    {loan.disbursement_status === 'processing' ? 'Funds Being Transferred' : 'Funds Sent'}
+                  </h3>
+                  <p className="text-sm text-neutral-600">
+                    {loan.disbursement_status === 'processing' 
+                      ? `${formatCurrency(loan.amount, loan.currency)} is being transferred to ${borrowerName}. ACH transfers take 1-3 business days.`
+                      : `${formatCurrency(loan.amount, loan.currency)} was sent on ${loan.disbursed_at ? formatDate(loan.disbursed_at) : 'N/A'}`
+                    }
+                  </p>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Loan Details Grid */}
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
+            <Card>
+              <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+                <Percent className="w-5 h-5 text-primary-600" />
+                Loan Terms
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Principal</span>
+                  <span className="font-medium">{formatCurrency(loan.amount, loan.currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Interest Rate</span>
+                  <span className="font-medium">{loan.interest_rate}% ({loan.interest_type})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Total Interest</span>
+                  <span className="font-medium">{formatCurrency(loan.total_interest, loan.currency)}</span>
+                </div>
+                <div className="flex justify-between pt-2 border-t">
+                  <span className="text-neutral-900 font-medium">Total to Receive</span>
+                  <span className="font-bold text-green-600">{formatCurrency(loan.total_amount, loan.currency)}</span>
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary-600" />
+                Repayment Schedule
+              </h3>
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Frequency</span>
+                  <span className="font-medium capitalize">{loan.repayment_frequency}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Payment Amount</span>
+                  <span className="font-medium">{formatCurrency(loan.repayment_amount, loan.currency)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-neutral-600">Total Payments</span>
+                  <span className="font-medium">{loan.total_installments}</span>
+                </div>
+                {nextPayment && (
+                  <div className="flex justify-between pt-2 border-t">
+                    <span className="text-neutral-900 font-medium">Next Payment</span>
+                    <span className="font-bold text-primary-600">{formatDate(nextPayment.due_date)}</span>
                   </div>
-                </Card>
-              ))}
-            </div>
+                )}
+              </div>
+            </Card>
           </div>
-        )}
 
-        {/* Active Loans */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-neutral-900 mb-4">Active Loans</h2>
-          {activeLoans.length > 0 ? (
-            <div className="space-y-4">
-              {activeLoans.map(loan => (
-                <Card key={loan.id}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                        <User className="w-6 h-6 text-green-600" />
-                      </div>
+          {/* Auto-Pay Status */}
+          <Card className="mb-6 bg-green-50 border-green-200">
+            <div className="flex items-center gap-3">
+              <Shield className="w-6 h-6 text-green-600" />
+              <div>
+                <h3 className="font-semibold text-green-900">Auto-Pay Enabled</h3>
+                <p className="text-sm text-green-700">
+                  Payments will be automatically deposited to your bank account on each due date.
+                </p>
+              </div>
+            </div>
+            {loan.lender_bank_name && (
+              <div className="mt-4 pt-4 border-t border-green-200 flex items-center gap-3">
+                <Building className="w-5 h-5 text-green-600" />
+                <span className="text-green-800">
+                  <strong>{loan.lender_bank_name}</strong> ••••{loan.lender_bank_account_mask}
+                </span>
+              </div>
+            )}
+          </Card>
+
+          {/* Payment Schedule */}
+          <Card className="mb-6">
+            <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+              <PieChart className="w-5 h-5 text-primary-600" />
+              Payment Schedule
+            </h3>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-neutral-200">
+                    <th className="text-left py-3 text-sm font-medium text-neutral-500">#</th>
+                    <th className="text-left py-3 text-sm font-medium text-neutral-500">Due Date</th>
+                    <th className="text-right py-3 text-sm font-medium text-neutral-500">Amount</th>
+                    <th className="text-right py-3 text-sm font-medium text-neutral-500">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loan.schedule?.map((payment, index) => (
+                    <tr key={payment.id} className="border-b border-neutral-100">
+                      <td className="py-3 text-sm text-neutral-600">{index + 1}</td>
+                      <td className="py-3 text-sm">{formatDate(payment.due_date)}</td>
+                      <td className="py-3 text-sm text-right font-medium">
+                        {formatCurrency(payment.amount, loan.currency)}
+                      </td>
+                      <td className="py-3 text-right">
+                        {payment.is_paid ? (
+                          <Badge variant="success" className="text-xs">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Received
+                          </Badge>
+                        ) : new Date(payment.due_date) < new Date() ? (
+                          <Badge variant="danger" className="text-xs">
+                            Overdue
+                          </Badge>
+                        ) : (
+                          <Badge variant="default" className="text-xs">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Scheduled
+                          </Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          {/* Transfers History */}
+          {loan.transfers && loan.transfers.length > 0 && (
+            <Card className="mb-6">
+              <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+                <TrendingUp className="w-5 h-5 text-primary-600" />
+                Transfer History
+              </h3>
+              
+              <div className="space-y-3">
+                {loan.transfers.map((transfer) => (
+                  <div key={transfer.id} className="flex items-center justify-between p-3 bg-neutral-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      {transfer.type === 'disbursement' ? (
+                        <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center">
+                          <ArrowUpRight className="w-5 h-5 text-red-600" />
+                        </div>
+                      ) : (
+                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                          <ArrowDownLeft className="w-5 h-5 text-green-600" />
+                        </div>
+                      )}
                       <div>
-                        <p className="font-semibold text-neutral-900">{loan.borrower_name}</p>
-                        <p className="text-sm text-neutral-500">
-                          {formatCurrency(loan.amount, loan.currency)} @ {loan.interest_rate}% APR
+                        <p className="font-medium text-neutral-900">
+                          {transfer.type === 'disbursement' ? 'Loan Disbursement' : 'Payment Received'}
                         </p>
+                        <p className="text-sm text-neutral-500">{formatDate(transfer.created_at)}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-neutral-500">Remaining</p>
-                      <p className="text-lg font-bold text-primary-600">
-                        {formatCurrency(loan.amount_remaining, loan.currency)}
+                      <p className={`font-bold ${transfer.type === 'disbursement' ? 'text-red-600' : 'text-green-600'}`}>
+                        {transfer.type === 'disbursement' ? '-' : '+'}{formatCurrency(transfer.amount, loan.currency)}
                       </p>
-                      <div className="w-32 h-2 bg-neutral-200 rounded-full mt-2">
-                        <div 
-                          className="h-full bg-green-500 rounded-full"
-                          style={{ width: `${(loan.amount_paid / loan.total_amount) * 100}%` }}
-                        />
-                      </div>
+                      <Badge variant={transfer.status === 'processed' ? 'success' : 'default'} className="text-xs">
+                        {transfer.status}
+                      </Badge>
                     </div>
                   </div>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <Card className="text-center py-8">
-              <Clock className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
-              <p className="text-neutral-500">No active loans</p>
+                ))}
+              </div>
             </Card>
           )}
-        </div>
 
-        {/* Completed Loans */}
-        {completedLoans.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-900 mb-4">Completed Loans</h2>
-            <div className="space-y-4">
-              {completedLoans.map(loan => (
-                <Card key={loan.id} className="opacity-75">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-neutral-100 rounded-full flex items-center justify-center">
-                        <CheckCircle className="w-6 h-6 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-neutral-900">{loan.borrower_name}</p>
-                        <p className="text-sm text-neutral-500">
-                          {formatCurrency(loan.total_amount, loan.currency)} fully repaid
-                        </p>
-                      </div>
-                    </div>
-                    <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">
-                      Completed
-                    </span>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Create Account CTA */}
-        <Card className="mt-8 bg-gradient-to-r from-primary-500 to-primary-600 text-white">
-          <div className="text-center py-4">
-            <h3 className="text-xl font-bold mb-2">Want more features?</h3>
-            <p className="text-primary-100 mb-4">
-              Create a full account to track all your loans, set up automatic payments, and more.
-            </p>
-            <Link href="/auth/signup">
-              <Button variant="secondary">
-                Create Free Account
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </main>
-
-      {/* PayPal Setup Modal */}
-      {showPayPalSetup && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="max-w-md w-full">
-            <h3 className="text-lg font-bold text-neutral-900 mb-4">Connect PayPal</h3>
-            <p className="text-sm text-neutral-500 mb-4">
-              Enter your PayPal email address to receive loan repayments.
-            </p>
-            <Input
-              label="PayPal Email"
-              type="email"
-              value={paypalEmail}
-              onChange={(e) => setPaypalEmail(e.target.value)}
-              placeholder="your@email.com"
-            />
-            <div className="flex gap-3 mt-4">
-              <Button 
-                variant="outline" 
-                onClick={() => setShowPayPalSetup(false)}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button 
-                onClick={savePayPalEmail}
-                loading={savingPayPal}
-                className="flex-1"
-              >
-                Save
-              </Button>
+          {/* Borrower Info */}
+          <Card>
+            <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary-600" />
+              Borrower Information
+            </h3>
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 bg-primary-100 rounded-full flex items-center justify-center">
+                <User className="w-7 h-7 text-primary-600" />
+              </div>
+              <div>
+                <p className="font-semibold text-neutral-900">{borrowerName}</p>
+                {loan.borrower_invite_email && (
+                  <p className="text-sm text-neutral-500">{loan.borrower_invite_email}</p>
+                )}
+                <div className="flex items-center gap-2 mt-1">
+                  {loan.borrower_bank_connected ? (
+                    <Badge variant="success" className="text-xs">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      Bank Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="text-xs">
+                      Bank Not Connected
+                    </Badge>
+                  )}
+                </div>
+              </div>
             </div>
           </Card>
+
+          <div className="mt-8 text-center">
+            <p className="text-sm text-neutral-500 mb-2">Need help with your loan?</p>
+            <Link href="/support" className="text-primary-600 hover:underline text-sm">
+              Contact Support
+            </Link>
+          </div>
         </div>
-      )}
+      </main>
+
+      <Footer />
     </div>
   );
 }

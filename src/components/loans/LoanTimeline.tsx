@@ -9,11 +9,10 @@ import { Check, Clock, AlertCircle, Circle } from 'lucide-react';
 interface LoanTimelineProps {
   schedule: PaymentScheduleItem[];
   currency: string;
-  onMarkPaid?: (scheduleItem: PaymentScheduleItem) => void;
   showBreakdown?: boolean;
 }
 
-export function LoanTimeline({ schedule, currency, onMarkPaid, showBreakdown = true }: LoanTimelineProps) {
+export function LoanTimeline({ schedule, currency, showBreakdown = true }: LoanTimelineProps) {
   return (
     <div className="relative">
       {/* Timeline line */}
@@ -70,11 +69,9 @@ export function LoanTimeline({ schedule, currency, onMarkPaid, showBreakdown = t
               {/* Content */}
               <div
                 className={cn(
-                  'flex-1 bg-white rounded-xl border p-4 transition-all',
-                  status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-neutral-200',
-                  !item.is_paid && onMarkPaid && 'hover:border-primary-300 cursor-pointer'
+                  'flex-1 bg-white rounded-xl border p-4',
+                  status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-neutral-200'
                 )}
-                onClick={() => !item.is_paid && onMarkPaid && onMarkPaid(item)}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className={cn('text-sm font-medium', config.textColor)}>
@@ -95,9 +92,11 @@ export function LoanTimeline({ schedule, currency, onMarkPaid, showBreakdown = t
                       </div>
                     )}
                   </div>
-                  {!item.is_paid && onMarkPaid && (
-                    <span className="text-xs text-primary-600 font-medium">
-                      Click to mark as paid
+                  {/* Auto-pay indicator for unpaid items */}
+                  {!item.is_paid && (
+                    <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      Auto-pay
                     </span>
                   )}
                 </div>

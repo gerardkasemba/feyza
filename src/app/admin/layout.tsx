@@ -16,11 +16,13 @@ import {
   X,
   Shield,
   ChevronRight,
+  ClipboardCheck,
 } from 'lucide-react';
 
 const navItems = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/users', label: 'Users', icon: Users },
+  { href: '/admin/verification', label: 'Pending Verification', icon: ClipboardCheck },
   { href: '/admin/loans', label: 'Loans', icon: FileText },
   { href: '/admin/businesses', label: 'Businesses', icon: Building2 },
   { href: '/admin/settings', label: 'Settings', icon: Settings },

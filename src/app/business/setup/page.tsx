@@ -3,13 +3,14 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Card, Button, Input, Select } from '@/components/ui';
+import { Card, Button, Input, Select, InterestCalculatorModal } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
+import { PlaidLinkButton, ConnectedBank } from '@/components/payments/PlaidLink';
 import { 
-  ArrowLeft, Building2, Percent, CreditCard, FileText, 
+  ArrowLeft, Building2, Percent, Building, FileText, 
   CheckCircle, ChevronRight, ChevronLeft, AlertCircle,
   MapPin, Globe, Users, DollarSign, Calendar, Shield,
-  Upload, Image as ImageIcon, X
+  Upload, Image as ImageIcon, X, Calculator
 } from 'lucide-react';
 
 const US_STATES = [
@@ -121,9 +122,12 @@ export default function BusinessSetupPage() {
   const [minLoanAmount, setMinLoanAmount] = useState('50');
   const [maxLoanAmount, setMaxLoanAmount] = useState('5000');
   const [firstTimeBorrowerLimit, setFirstTimeBorrowerLimit] = useState('500');
+  const [showCalculator, setShowCalculator] = useState(false);
 
-  // Step 4: PayPal & Terms
-  const [paypalEmail, setPaypalEmail] = useState('');
+  // Step 4: Bank Connection & Terms
+  const [bankConnected, setBankConnected] = useState(false);
+  const [bankName, setBankName] = useState('');
+  const [bankAccountMask, setBankAccountMask] = useState('');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(true);
 
@@ -153,8 +157,10 @@ export default function BusinessSetupPage() {
       
       if (profile) {
         setUserProfile(profile);
-        if (profile.paypal_email) {
-          setPaypalEmail(profile.paypal_email);
+        if (profile.bank_connected) {
+          setBankConnected(true);
+          setBankName(profile.bank_name || '');
+          setBankAccountMask(profile.bank_account_mask || '');
         }
       }
       
@@ -196,6 +202,10 @@ export default function BusinessSetupPage() {
       setError('Please select your state');
       return false;
     }
+    if (!einTaxId || !einTaxId.trim()) {
+      setError('EIN / Tax ID is required for business verification');
+      return false;
+    }
     if (!contactEmail || !contactEmail.includes('@')) {
       setError('Please enter a valid contact email');
       return false;
@@ -219,8 +229,8 @@ export default function BusinessSetupPage() {
   };
 
   const validateStep4 = () => {
-    if (!paypalEmail || !paypalEmail.includes('@')) {
-      setError('Please enter a valid PayPal email address');
+    if (!bankConnected && !userProfile?.bank_connected) {
+      setError('Please connect your bank account to receive payments');
       return false;
     }
     if (!termsAccepted) {
@@ -302,8 +312,6 @@ export default function BusinessSetupPage() {
           interest_type: interestType,
           min_loan_amount: parseFloat(minLoanAmount) || 50,
           max_loan_amount: parseFloat(maxLoanAmount) || 5000,
-          paypal_email: paypalEmail,
-          paypal_connected: true,
           profile_completed: true,
           is_verified: false,
           verification_status: 'pending',
@@ -346,11 +354,6 @@ export default function BusinessSetupPage() {
         .update({ 
           user_type: 'business',
           updated_at: new Date().toISOString(),
-          ...(!userProfile?.paypal_email ? {
-            paypal_email: paypalEmail,
-            paypal_connected: true,
-            paypal_connected_at: new Date().toISOString(),
-          } : {}),
         })
         .eq('id', user.id);
 
@@ -498,7 +501,7 @@ export default function BusinessSetupPage() {
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <Select label="State *" value={state} onChange={(e) => setState(e.target.value)} options={US_STATES} />
-                  <Input label="EIN / Tax ID (optional)" value={einTaxId} onChange={(e) => setEinTaxId(e.target.value)} placeholder="XX-XXXXXXX" helperText="Your federal tax ID number" />
+                  <Input label="EIN / Tax ID *" value={einTaxId} onChange={(e) => setEinTaxId(e.target.value)} placeholder="XX-XXXXXXX" helperText="Your federal tax ID number (required)" />
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <Input label="Years in Business" type="number" min="0" value={yearsInBusiness} onChange={(e) => setYearsInBusiness(e.target.value)} placeholder="e.g., 5" />
@@ -528,7 +531,32 @@ export default function BusinessSetupPage() {
                   <h3 className="font-semibold text-neutral-900 dark:text-white">Lending Settings</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
-                  <Input label="Default Interest Rate (%)" type="number" step="0.01" min="0" max="100" value={defaultInterestRate} onChange={(e) => setDefaultInterestRate(e.target.value)} placeholder="e.g., 15" helperText="Annual percentage rate" />
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                        Default Interest Rate (%)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowCalculator(true)}
+                        className="p-1 text-primary-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        title="Calculate interest rate"
+                      >
+                        <Calculator className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      value={defaultInterestRate}
+                      onChange={(e) => setDefaultInterestRate(e.target.value)}
+                      placeholder="e.g., 15"
+                      className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-neutral-800 dark:text-white"
+                    />
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Annual percentage rate</p>
+                  </div>
                   <Select label="Interest Type" value={interestType} onChange={(e) => setInterestType(e.target.value)} options={interestTypeOptions} />
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
@@ -552,21 +580,32 @@ export default function BusinessSetupPage() {
                 </button>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-4">
-                    <CreditCard className="w-5 h-5 text-primary-600" />
-                    <h3 className="font-semibold text-neutral-900 dark:text-white">Payment Setup</h3>
+                    <Building className="w-5 h-5 text-primary-600" />
+                    <h3 className="font-semibold text-neutral-900 dark:text-white">Bank Account Setup</h3>
                   </div>
-                  {userProfile?.paypal_email ? (
-                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle className="w-5 h-5 text-green-600" />
-                        <div>
-                          <p className="font-medium text-green-800 dark:text-green-300">PayPal Already Connected</p>
-                          <p className="text-sm text-green-700 dark:text-green-400">{userProfile.paypal_email}</p>
-                        </div>
-                      </div>
-                    </div>
+                  {(userProfile?.bank_connected || bankConnected) ? (
+                    <ConnectedBank
+                      bankName={bankName || userProfile?.bank_name || 'Bank Account'}
+                      accountMask={bankAccountMask || userProfile?.bank_account_mask || '****'}
+                      accountType={userProfile?.bank_account_type}
+                    />
                   ) : (
-                    <Input label="PayPal Email Address *" type="email" value={paypalEmail} onChange={(e) => setPaypalEmail(e.target.value)} placeholder="your@paypal.com" helperText="You'll send and receive payments through this PayPal account" />
+                    <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
+                      <div className="w-12 h-12 mx-auto mb-3 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+                        <Building className="w-6 h-6 text-neutral-500" />
+                      </div>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                        Connect your bank account to receive loan repayments
+                      </p>
+                      <PlaidLinkButton
+                        onSuccess={(data) => {
+                          setBankConnected(true);
+                          setBankName(data.bank_name);
+                          setBankAccountMask(data.account_mask);
+                        }}
+                        buttonText="Connect Bank Account"
+                      />
+                    </div>
                   )}
                 </div>
                 <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
@@ -595,7 +634,7 @@ export default function BusinessSetupPage() {
                       <li>Process loan disbursements within 24 hours of acceptance</li>
                       <li>Maintain fair and transparent lending practices</li>
                       <li>Not engage in predatory lending or discriminatory practices</li>
-                      <li>Keep your PayPal account active for transactions</li>
+                      <li>Keep your bank account connected for transactions</li>
                       <li>Protect borrower information and privacy</li>
                       <li>Allow Feyza to verify your business information</li>
                     </ul>
@@ -606,7 +645,7 @@ export default function BusinessSetupPage() {
                   </label>
                 </div>
                 <div className="pt-4">
-                  <Button type="submit" loading={saving} className="w-full" disabled={!termsAccepted || (!userProfile?.paypal_email && !paypalEmail)}>
+                  <Button type="submit" loading={saving} className="w-full" disabled={!termsAccepted || (!userProfile?.bank_connected && !bankConnected)}>
                     <CheckCircle className="w-4 h-4 mr-2" />Submit for Review
                   </Button>
                 </div>
@@ -619,6 +658,13 @@ export default function BusinessSetupPage() {
           </p>
         </Card>
       </div>
+
+      {/* Interest Rate Calculator Modal */}
+      <InterestCalculatorModal
+        isOpen={showCalculator}
+        onClose={() => setShowCalculator(false)}
+        onSelectRate={(rate) => setDefaultInterestRate(String(rate))}
+      />
     </div>
   );
 }

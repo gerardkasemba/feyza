@@ -49,7 +49,8 @@ export async function POST(
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
-    // Update loan status
+    // Update loan status to active and set lender_id
+    // The lender will then need to go to the fund page to sign and send funds
     const { error: updateError } = await supabase
       .from('loans')
       .update({
@@ -106,7 +107,7 @@ export async function POST(
         loan_id: loanId,
         type: 'loan_accepted',
         title: 'Loan Accepted! 🎉',
-        message: `Your loan request for ${loan.currency} ${loan.amount} has been accepted.`,
+        message: `${lenderName} has accepted your loan request for ${loan.currency} ${loan.amount}. They will send the funds shortly.`,
       });
     } catch (notifError) {
       console.error('Error creating notification:', notifError);
@@ -129,7 +130,12 @@ export async function POST(
       }
     }
 
-    return NextResponse.json({ success: true, redirectUrl: loan.business_lender_id ? '/business' : `/loans/${loanId}` });
+    // Redirect to fund page so lender can sign and send funds
+    return NextResponse.json({ 
+      success: true, 
+      redirectUrl: `/loans/${loanId}/fund`,
+      message: 'Loan accepted! Please proceed to fund the loan.',
+    });
   } catch (error) {
     console.error('Error accepting loan:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

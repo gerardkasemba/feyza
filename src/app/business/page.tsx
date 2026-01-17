@@ -114,40 +114,6 @@ export default async function BusinessPage() {
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Profile Incomplete Banner */}
-          {isProfileIncomplete && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <AlertCircle className="w-5 h-5 text-yellow-600" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-800 mb-1">Complete Your Business Profile</h3>
-                  <p className="text-sm text-yellow-700 mb-3">
-                    {!businessProfile.paypal_connected 
-                      ? 'Connect your PayPal account to receive loan repayments from borrowers.'
-                      : 'Please complete your business profile to start receiving loan requests.'}
-                  </p>
-                  <Link href="/business/settings?tab=payments">
-                    <Button size="sm">
-                      {!businessProfile.paypal_connected ? (
-                        <>
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Connect PayPal
-                        </>
-                      ) : (
-                        <>
-                          <Settings className="w-4 h-4 mr-2" />
-                          Complete Profile
-                        </>
-                      )}
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Auto-Match Setup Prompt */}
           {!isProfileIncomplete && !hasLenderPrefs && (
             <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl">

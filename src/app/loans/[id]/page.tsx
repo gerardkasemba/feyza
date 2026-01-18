@@ -593,7 +593,7 @@ export default function LoanDetailPage() {
       <Navbar user={user} />
 
       <main className="flex-1">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Link
             href="/dashboard"
             className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 mb-6 transition-colors"
@@ -622,96 +622,6 @@ export default function LoanDetailPage() {
               </Badge>
             </div>
 
-            {/* Loan Status Summary */}
-            <div className="bg-neutral-100 rounded-xl p-4 mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className={`p-2 rounded-lg ${
-                    loan.status === 'completed' ? 'bg-green-100' :
-                    loan.status === 'active' ? 'bg-blue-100' :
-                    loan.status === 'pending_disbursement' || (loan as any).disbursement_status === 'processing' ? 'bg-blue-100' :
-                    loan.status === 'pending' || loan.status === 'pending_funds' ? 'bg-amber-100' :
-                    'bg-neutral-200'
-                  }`}>
-                    {loan.status === 'completed' ? (
-                      <CheckCircle className="w-5 h-5 text-green-600" />
-                    ) : loan.status === 'active' ? (
-                      <Banknote className="w-5 h-5 text-blue-600" />
-                    ) : loan.status === 'pending_disbursement' || (loan as any).disbursement_status === 'processing' ? (
-                      <Send className="w-5 h-5 text-blue-600" />
-                    ) : (
-                      <Clock className="w-5 h-5 text-amber-600" />
-                    )}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-neutral-900">
-                      {loan.status === 'completed' ? 'Loan Completed' :
-                       loan.status === 'active' && (loan as any).disbursement_status === 'completed' ? (
-                         loan.amount_paid >= loan.amount_remaining 
-                           ? 'Almost Done!' 
-                           : 'Loan In Progress'
-                       ) :
-                       loan.status === 'active' && (loan as any).disbursement_status === 'processing' ? 'Funds Being Transferred' :
-                       loan.status === 'pending_disbursement' || (loan as any).disbursement_status === 'processing' ? 'Funds Being Transferred' :
-                       loan.status === 'pending_funds' ? 'Awaiting Funding' :
-                       loan.status === 'pending' ? 'Pending Approval' :
-                       loan.status === 'declined' ? 'Loan Declined' :
-                       loan.status === 'active' ? 'Loan In Progress' :
-                       'Loan Cancelled'
-                      }
-                    </p>
-                    <p className="text-sm text-neutral-600">
-                      {loan.status === 'completed' ? 'All payments have been made' :
-                       loan.status === 'active' && (loan as any).disbursement_status === 'completed' ? (
-                         `${schedule.filter(s => s.is_paid).length} of ${schedule.length} payments completed`
-                       ) :
-                       loan.status === 'active' && (loan as any).disbursement_status === 'processing' ? (
-                         isBorrower 
-                           ? 'Funds on the way! Expect 1-3 business days' 
-                           : 'Funds will arrive in 1-3 business days'
-                       ) :
-                       loan.status === 'pending_disbursement' || (loan as any).disbursement_status === 'processing' ? (
-                         isBorrower 
-                           ? 'Funds on the way! Expect 1-3 business days' 
-                           : 'Funds will arrive in 1-3 business days'
-                       ) :
-                       loan.status === 'pending_funds' ? 'Waiting for lender to send funds' :
-                       loan.status === 'pending' ? (
-                         isBorrower ? 'Waiting for lender response' : 'Review and respond to this request'
-                       ) :
-                       loan.status === 'active' ? `${schedule.filter(s => s.is_paid).length} of ${schedule.length} payments completed` :
-                       ''
-                      }
-                    </p>
-                  </div>
-                </div>
-                
-                {/* Progress indicator for active loans with completed disbursement */}
-                {loan.status === 'active' && (loan as any).disbursement_status === 'completed' && schedule.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-2 bg-neutral-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-green-500 rounded-full transition-all"
-                        style={{ width: `${(schedule.filter(s => s.is_paid).length / schedule.length) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-neutral-700">
-                      {Math.round((schedule.filter(s => s.is_paid).length / schedule.length) * 100)}%
-                    </span>
-                  </div>
-                )}
-                
-                {/* Transfer in progress indicator */}
-                {(loan.status === 'pending_disbursement' || (loan as any).disbursement_status === 'processing') && (
-                  <div className="flex items-center gap-2 bg-blue-50 px-3 py-1.5 rounded-lg">
-                    <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                    <span className="text-sm font-medium text-blue-700">
-                      ACH Transfer in Progress
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
 
             {/* No Match Found Banner */}
             {loan.match_status === 'no_match' && loan.lender_type === 'business' && !loan.lender_id && !loan.business_lender_id && (
@@ -1418,7 +1328,7 @@ export default function LoanDetailPage() {
             )}
 
             {/* Payment Sent Confirmation */}
-            {/* {loan.status === 'active' && loan.funds_sent && !dismissedNotifications.has('payment-sent') && (
+            {loan.status === 'active' && loan.funds_sent && !dismissedNotifications.has('payment-sent') && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
                 <div className="flex items-start justify-between">
                   <div>
@@ -1443,7 +1353,7 @@ export default function LoanDetailPage() {
                   </button>
                 </div>
               </div>
-            )} */}
+            )}
 
             {/* Loan Amount & Progress */}
             <div className="bg-neutral-50 rounded-2xl p-6 mb-6">
@@ -1485,17 +1395,46 @@ export default function LoanDetailPage() {
                   </div>
                 </div>
               )}
-              
-              {loan.status === 'active' && (
-                <div className="mt-6">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-neutral-500">Progress</span>
-                    <span className="font-medium text-neutral-700">{progress}%</span>
-                  </div>
-                  <Progress value={progress} size="lg" />
-                </div>
-              )}
             </div>
+
+            {/* Loan Status Summary */}
+            {loan.status === 'active' && (loan as any).disbursement_status === 'completed' && schedule.length > 0 && (
+              <div className="bg-neutral-100 rounded-xl p-4 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-100">
+                      <Banknote className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-neutral-900">
+                        {schedule.filter(s => s.is_paid).length === schedule.length 
+                          ? '🎉 All Payments Complete!'
+                          : schedule.filter(s => s.is_paid).length > 0 
+                            ? 'Loan In Progress' 
+                            : 'Repayment Started'
+                        }
+                      </p>
+                      <p className="text-sm text-neutral-600">
+                        {schedule.filter(s => s.is_paid).length} of {schedule.length} payments completed
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Progress indicator */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 bg-neutral-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-green-500 rounded-full transition-all"
+                        style={{ width: `${(schedule.filter(s => s.is_paid).length / schedule.length) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-neutral-700">
+                      {Math.round((schedule.filter(s => s.is_paid).length / schedule.length) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Loan Details */}
             <div className="grid md:grid-cols-2 gap-4 text-sm">
@@ -1574,6 +1513,23 @@ export default function LoanDetailPage() {
                 schedule={schedule}
                 currency={loan.currency}
               />
+            </Card>
+          )}
+
+          {/* Borrower All Paid Section */}
+          {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && schedule.length > 0 && !schedule.some(s => !s.is_paid) && (
+            <Card className="bg-green-50 border-green-200">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-100 rounded-xl">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-green-900 text-lg">🎉 All Payments Complete!</h2>
+                  <p className="text-sm text-green-700">
+                    Congratulations! You've made all scheduled payments. Your loan will be marked as completed once the final transfer processes.
+                  </p>
+                </div>
+              </div>
             </Card>
           )}
 

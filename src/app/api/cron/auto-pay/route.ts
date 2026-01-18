@@ -124,22 +124,51 @@ export async function GET(request: NextRequest) {
         }
 
         // Update payment schedule
-        await supabase
+        const { error: scheduleUpdateError } = await supabase
           .from('payment_schedule')
           .update({
             is_paid: true,
-            paid_amount: payment.amount,
+            status: 'paid',
             transfer_id: transferId,
             paid_at: new Date().toISOString(),
           })
           .eq('id', payment.id);
+
+        if (scheduleUpdateError) {
+          console.error(`[Auto-Pay] Error updating payment_schedule ${payment.id}:`, scheduleUpdateError);
+          throw scheduleUpdateError;
+        }
+
+        // Create payment record in payments table
+        const { data: paymentRecord, error: paymentInsertError } = await supabase
+          .from('payments')
+          .insert({
+            loan_id: loan.id,
+            schedule_id: payment.id,
+            amount: payment.amount,
+            payment_date: new Date().toISOString(),
+            status: 'confirmed',
+            note: `Auto-pay ACH transfer - Transfer ID: ${transferId}`,
+          })
+          .select()
+          .single();
+
+        if (paymentInsertError) {
+          console.error(`[Auto-Pay] Error creating payment record:`, paymentInsertError);
+        } else if (paymentRecord) {
+          // Link payment record to schedule
+          await supabase
+            .from('payment_schedule')
+            .update({ payment_id: paymentRecord.id })
+            .eq('id', payment.id);
+        }
 
         // Update loan amounts
         const newAmountPaid = (loan.amount_paid || 0) + payment.amount;
         const newAmountRemaining = (loan.total_amount || loan.amount) - newAmountPaid;
         const isCompleted = newAmountRemaining <= 0;
         
-        await supabase
+        const { error: loanUpdateError } = await supabase
           .from('loans')
           .update({
             amount_paid: newAmountPaid,
@@ -148,6 +177,10 @@ export async function GET(request: NextRequest) {
             last_payment_at: new Date().toISOString(),
           })
           .eq('id', loan.id);
+
+        if (loanUpdateError) {
+          console.error(`[Auto-Pay] Error updating loan ${loan.id}:`, loanUpdateError);
+        }
 
         // Send payment received email to lender
         await sendPaymentReceivedEmail(loan, payment, newAmountRemaining, isCompleted);
@@ -392,6 +425,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if payment is already paid
+    if (payment.is_paid) {
+      return NextResponse.json(
+        { error: 'This payment has already been processed' },
+        { status: 400 }
+      );
+    }
+
     const loan = payment.loan;
 
     // Use loan-level Dwolla fields
@@ -443,23 +484,54 @@ export async function POST(request: NextRequest) {
         });
     }
 
-    // Update payment
-    await supabase
+    // Update payment_schedule
+    const { error: updateError } = await supabase
       .from('payment_schedule')
       .update({
         is_paid: true,
-        paid_amount: payment.amount,
+        status: 'paid',
         transfer_id: transferId,
         paid_at: new Date().toISOString(),
       })
       .eq('id', payment.id);
+
+    if (updateError) {
+      console.error('Error updating payment_schedule:', updateError);
+      throw new Error(`Failed to update payment: ${updateError.message}`);
+    }
+
+    // Create payment record in payments table
+    const { data: paymentRecord, error: paymentInsertError } = await supabase
+      .from('payments')
+      .insert({
+        loan_id: loan.id,
+        schedule_id: payment.id,
+        amount: payment.amount,
+        payment_date: new Date().toISOString(),
+        status: 'confirmed',
+        note: `ACH transfer initiated - Transfer ID: ${transferId}`,
+      })
+      .select()
+      .single();
+
+    if (paymentInsertError) {
+      console.error('Error creating payment record:', paymentInsertError);
+    } else {
+      // Link payment record to schedule
+      await supabase
+        .from('payment_schedule')
+        .update({ payment_id: paymentRecord.id })
+        .eq('id', payment.id);
+    }
+
+    console.log(`Payment ${payment.id} marked as paid`);
 
     // Update loan
     const newAmountPaid = (loan.amount_paid || 0) + payment.amount;
     const newAmountRemaining = (loan.total_amount || loan.amount) - newAmountPaid;
     const isCompleted = newAmountRemaining <= 0;
     
-    await supabase
+    const { error: loanUpdateError } = await supabase
       .from('loans')
       .update({
         amount_paid: newAmountPaid,
@@ -468,6 +540,12 @@ export async function POST(request: NextRequest) {
         last_payment_at: new Date().toISOString(),
       })
       .eq('id', loan.id);
+
+    if (loanUpdateError) {
+      console.error('Error updating loan:', loanUpdateError);
+    }
+
+    console.log(`Loan ${loan.id} updated - paid: ${newAmountPaid}, remaining: ${newAmountRemaining}`);
 
     // Send payment received email
     await sendPaymentReceivedEmail(loan, payment, Math.max(0, newAmountRemaining), isCompleted);

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Button, Input, Card } from '@/components/ui';
@@ -10,8 +10,11 @@ import { signInSchema, SignInFormData } from '@/lib/validations';
 import { createClient } from '@/lib/supabase/client';
 import { ArrowLeft } from 'lucide-react';
 
-export default function SignInPage() {
+function SignInContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectUrl = searchParams.get('redirect');
+  
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -39,7 +42,8 @@ export default function SignInPage() {
         return;
       }
 
-      router.push('/dashboard');
+      // Redirect to the specified URL or dashboard
+      router.push(redirectUrl || '/dashboard');
       router.refresh();
     } catch (err) {
       setError('An unexpected error occurred');
@@ -47,6 +51,11 @@ export default function SignInPage() {
       setIsLoading(false);
     }
   };
+
+  // Pass redirect to signup link if present
+  const signupHref = redirectUrl 
+    ? `/auth/signup?redirect=${encodeURIComponent(redirectUrl)}`
+    : '/auth/signup';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 flex items-center justify-center p-4">
@@ -62,7 +71,7 @@ export default function SignInPage() {
         <Card className="animate-fade-in">
           <div className="text-center mb-8">
             <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
-              <span className="text-white font-bold text-xl">L</span>
+              <span className="text-white font-bold text-xl">FZ</span>
             </div>
             <h1 className="text-2xl font-display font-bold text-neutral-900">Welcome back</h1>
             <p className="text-neutral-500 mt-1">Sign in to your Feyza account</p>
@@ -114,12 +123,24 @@ export default function SignInPage() {
 
           <p className="text-center text-sm text-neutral-500 mt-6">
             Don't have an account?{' '}
-            <Link href="/auth/signup" className="text-primary-600 hover:text-primary-700 font-medium">
+            <Link href={signupHref} className="text-primary-600 hover:text-primary-700 font-medium">
               Sign up
             </Link>
           </p>
         </Card>
       </div>
     </div>
+  );
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse text-neutral-500">Loading...</div>
+      </div>
+    }>
+      <SignInContent />
+    </Suspense>
   );
 }

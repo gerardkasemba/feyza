@@ -427,11 +427,16 @@ export default function LoanDetailPage() {
     }
   };
 
-  // Manually process a payment (useful for testing or triggering overdue auto-pay)
+  // Manually process a payment (works for both borrowers paying early and lenders processing overdue)
   const handleProcessPayment = async (paymentId: string) => {
-    if (!loan) return;
+    if (!loan || !user) return;
     
-    if (!confirm('Process this payment now? This will initiate an ACH transfer from the borrower\'s bank account.')) {
+    const isBorrowerForPayment = loan.borrower_id === user.id;
+    const confirmMessage = isBorrowerForPayment
+      ? 'Pay this installment now? This will initiate an ACH transfer from your bank account to the lender.'
+      : 'Process this payment now? This will initiate an ACH transfer from the borrower\'s bank account.';
+    
+    if (!confirm(confirmMessage)) {
       return;
     }
     
@@ -446,7 +451,10 @@ export default function LoanDetailPage() {
       const data = await response.json();
       
       if (response.ok) {
-        alert(`Payment processed successfully! Transfer ID: ${data.transfer_id}`);
+        const successMessage = isBorrowerForPayment
+          ? 'Payment submitted! The transfer will complete in 1-3 business days.'
+          : `Payment processed successfully! Transfer ID: ${data.transfer_id}`;
+        alert(successMessage);
         // Refresh data - refetch schedule and loan
         const supabase = createClient();
         const { data: scheduleData } = await supabase
@@ -1566,6 +1574,153 @@ export default function LoanDetailPage() {
                 schedule={schedule}
                 currency={loan.currency}
               />
+            </Card>
+          )}
+
+          {/* Borrower Pay Early Section */}
+          {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && schedule.some(s => !s.is_paid) && (
+            <Card>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-100 rounded-lg">
+                    <Banknote className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-neutral-900">Make a Payment</h2>
+                    <p className="text-sm text-neutral-500">Pay early to reduce interest & stay ahead</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next Payment Due */}
+              {(() => {
+                const nextPayment = schedule.find(s => !s.is_paid);
+                if (!nextPayment) return null;
+                
+                const dueDate = new Date(nextPayment.due_date);
+                const today = new Date();
+                const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                const isOverdue = daysUntilDue < 0;
+                const isDueToday = daysUntilDue === 0;
+                
+                return (
+                  <div className={`p-4 rounded-xl border mb-4 ${
+                    isOverdue ? 'bg-red-50 border-red-200' : 
+                    isDueToday ? 'bg-amber-50 border-amber-200' : 
+                    'bg-neutral-50 border-neutral-200'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className={`text-sm font-medium ${
+                          isOverdue ? 'text-red-700' : 
+                          isDueToday ? 'text-amber-700' : 
+                          'text-neutral-600'
+                        }`}>
+                          {isOverdue 
+                            ? `⚠️ Overdue by ${Math.abs(daysUntilDue)} days`
+                            : isDueToday 
+                            ? '📅 Due Today'
+                            : `Next payment in ${daysUntilDue} days`
+                          }
+                        </p>
+                        <p className="text-2xl font-bold text-neutral-900 mt-1">
+                          {formatCurrency(nextPayment.amount, loan.currency)}
+                        </p>
+                        <p className="text-sm text-neutral-500 mt-1">
+                          Due {formatDate(nextPayment.due_date)}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => handleProcessPayment(nextPayment.id)}
+                        disabled={processingPayment === nextPayment.id}
+                        className={isOverdue ? 'bg-red-600 hover:bg-red-700' : ''}
+                      >
+                        {processingPayment === nextPayment.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Pay Now
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                    
+                    {/* Payment breakdown */}
+                    {(nextPayment.principal_amount || nextPayment.interest_amount) && (
+                      <div className="flex gap-4 text-sm border-t pt-3 mt-3">
+                        <div>
+                          <span className="text-neutral-500">Principal: </span>
+                          <span className="font-medium">{formatCurrency(nextPayment.principal_amount || 0, loan.currency)}</span>
+                        </div>
+                        {nextPayment.interest_amount && nextPayment.interest_amount > 0 && (
+                          <div>
+                            <span className="text-neutral-500">Interest: </span>
+                            <span className="font-medium text-orange-600">{formatCurrency(nextPayment.interest_amount, loan.currency)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* All upcoming payments */}
+              {schedule.filter(s => !s.is_paid).length > 1 && (
+                <div className="border-t pt-4">
+                  <p className="text-sm font-medium text-neutral-700 mb-3">
+                    All Upcoming Payments ({schedule.filter(s => !s.is_paid).length} remaining)
+                  </p>
+                  <div className="space-y-2">
+                    {schedule.filter(s => !s.is_paid).slice(1, 4).map((payment) => {
+                      const dueDate = new Date(payment.due_date);
+                      const today = new Date();
+                      const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                      
+                      return (
+                        <div 
+                          key={payment.id}
+                          className="flex items-center justify-between p-3 bg-neutral-50 rounded-lg"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="text-sm">
+                              <p className="font-medium text-neutral-900">{formatCurrency(payment.amount, loan.currency)}</p>
+                              <p className="text-neutral-500">{formatDate(payment.due_date)}</p>
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleProcessPayment(payment.id)}
+                            disabled={processingPayment === payment.id}
+                          >
+                            {processingPayment === payment.id ? 'Processing...' : 'Pay Early'}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {schedule.filter(s => !s.is_paid).length > 4 && (
+                    <p className="text-sm text-neutral-500 mt-3 text-center">
+                      +{schedule.filter(s => !s.is_paid).length - 4} more payments
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Info about auto-pay */}
+              {(loan as any).auto_pay_enabled && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-sm text-green-700">
+                    <CheckCircle className="w-4 h-4" />
+                    <span>Auto-pay is enabled. Payments will be processed automatically on due dates.</span>
+                  </div>
+                </div>
+              )}
             </Card>
           )}
 

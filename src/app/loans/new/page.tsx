@@ -37,13 +37,19 @@ function NewLoanContent() {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [connectingBank, setConnectingBank] = useState(false);
 
+  const [verificationRequired, setVerificationRequired] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient();
       
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
-        router.push('/auth/signin');
+        // Preserve lender parameter when redirecting to sign in
+        const redirectUrl = lenderSlug 
+          ? `/loans/new?lender=${lenderSlug}`
+          : '/loans/new';
+        router.push(`/auth/signin?redirect=${encodeURIComponent(redirectUrl)}`);
         return;
       }
 
@@ -96,6 +102,13 @@ function NewLoanContent() {
         
         if (lenderData) {
           setPreferredLender(lenderData);
+          
+          // Check if business lender requires verified borrowers
+          // For now, we'll require verification for all business loans
+          const isUserVerified = userData.is_verified || userData.verification_status === 'verified';
+          if (!isUserVerified) {
+            setVerificationRequired(true);
+          }
         }
       }
 
@@ -432,7 +445,47 @@ function NewLoanContent() {
             </div>
           )}
 
-          {/* Bank Connection Card for ACH */}
+          {/* Verification Required Block */}
+          {verificationRequired && preferredLender && (
+            <Card className="mb-6 border-amber-200 bg-amber-50">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-amber-100 rounded-xl">
+                  <AlertCircle className="w-6 h-6 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-amber-900 mb-2">Identity Verification Required</h3>
+                  <p className="text-sm text-amber-800 mb-4">
+                    To borrow from <strong>{preferredLender.business_name}</strong>, you need to verify your identity first. 
+                    This helps protect both you and the lender.
+                  </p>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <CheckCircle className="w-4 h-4 text-amber-600" />
+                      <span>Takes less than 5 minutes</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <CheckCircle className="w-4 h-4 text-amber-600" />
+                      <span>Secure and encrypted</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-amber-700">
+                      <CheckCircle className="w-4 h-4 text-amber-600" />
+                      <span>Required for all business loans</span>
+                    </div>
+                  </div>
+                  <Link href={`/verify?redirect=${encodeURIComponent(`/loans/new?lender=${lenderSlug}`)}`}>
+                    <Button className="w-full sm:w-auto">
+                      Verify My Identity
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* Show form only if verification not required OR not a direct business loan */}
+          {(!verificationRequired || !preferredLender) && (
+            <>
+              {/* Bank Connection Card for ACH */}
           <Card className="mb-6">
             <h3 className="font-semibold text-neutral-900 mb-3 flex items-center gap-2">
               <Building className="w-5 h-5 text-primary-600" />
@@ -505,6 +558,8 @@ function NewLoanContent() {
               onStartVerification={() => router.push('/verify')}
             />
           </Card>
+            </>
+          )}
         </div>
       </main>
 

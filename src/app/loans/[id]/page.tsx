@@ -10,6 +10,7 @@ import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatDate, getLoanProgress } from '@/lib/utils';
 import { downloadICalFile } from '@/lib/calendar';
 import { Loan, PaymentScheduleItem, LoanStatus } from '@/types';
+import { FeeBreakdown, usePlatformFee } from '@/components/FeeBreakdown';
 import {
   ArrowLeft,
   Calendar,
@@ -72,6 +73,9 @@ export default function LoanDetailPage() {
   
   // Manual payment processing state
   const [processingPayment, setProcessingPayment] = useState<string | null>(null);
+
+  // Platform fee hook
+  const { settings: feeSettings, loading: feeLoading, calculateFee } = usePlatformFee();
 
   const loanId = params.id as string;
 
@@ -593,7 +597,7 @@ export default function LoanDetailPage() {
       <Navbar user={user} />
 
       <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <Link
             href="/dashboard"
             className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 mb-6 transition-colors"
@@ -622,6 +626,44 @@ export default function LoanDetailPage() {
               </Badge>
             </div>
 
+            {/* Loan Status Summary */}
+            {loan.status === 'active' && (loan as any).disbursement_status === 'completed' && schedule.length > 0 && (
+              <div className="bg-neutral-100 rounded-xl p-4 mb-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-blue-100">
+                      <Banknote className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-neutral-900">
+                        {schedule.filter(s => s.is_paid).length === schedule.length 
+                          ? '🎉 All Payments Complete!'
+                          : schedule.filter(s => s.is_paid).length > 0 
+                            ? 'Loan In Progress' 
+                            : 'Repayment Started'
+                        }
+                      </p>
+                      <p className="text-sm text-neutral-600">
+                        {schedule.filter(s => s.is_paid).length} of {schedule.length} payments completed
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {/* Progress indicator */}
+                  <div className="flex items-center gap-2">
+                    <div className="w-24 h-2 bg-neutral-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-green-500 rounded-full transition-all"
+                        style={{ width: `${(schedule.filter(s => s.is_paid).length / schedule.length) * 100}%` }}
+                      />
+                    </div>
+                    <span className="text-sm font-medium text-neutral-700">
+                      {Math.round((schedule.filter(s => s.is_paid).length / schedule.length) * 100)}%
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* No Match Found Banner */}
             {loan.match_status === 'no_match' && loan.lender_type === 'business' && !loan.lender_id && !loan.business_lender_id && (
@@ -1397,45 +1439,6 @@ export default function LoanDetailPage() {
               )}
             </div>
 
-            {/* Loan Status Summary */}
-            {loan.status === 'active' && (loan as any).disbursement_status === 'completed' && schedule.length > 0 && (
-              <div className="bg-neutral-100 rounded-xl p-4 mb-6">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-blue-100">
-                      <Banknote className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-neutral-900">
-                        {schedule.filter(s => s.is_paid).length === schedule.length 
-                          ? '🎉 All Payments Complete!'
-                          : schedule.filter(s => s.is_paid).length > 0 
-                            ? 'Loan In Progress' 
-                            : 'Repayment Started'
-                        }
-                      </p>
-                      <p className="text-sm text-neutral-600">
-                        {schedule.filter(s => s.is_paid).length} of {schedule.length} payments completed
-                      </p>
-                    </div>
-                  </div>
-                  
-                  {/* Progress indicator */}
-                  <div className="flex items-center gap-2">
-                    <div className="w-24 h-2 bg-neutral-200 rounded-full overflow-hidden">
-                      <div 
-                        className="h-full bg-green-500 rounded-full transition-all"
-                        style={{ width: `${(schedule.filter(s => s.is_paid).length / schedule.length) * 100}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium text-neutral-700">
-                      {Math.round((schedule.filter(s => s.is_paid).length / schedule.length) * 100)}%
-                    </span>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Loan Details */}
             <div className="grid md:grid-cols-2 gap-4 text-sm">
               {loan.purpose && (
@@ -1535,7 +1538,7 @@ export default function LoanDetailPage() {
 
           {/* Borrower Pay Early Section */}
           {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && schedule.some(s => !s.is_paid) && (
-            <Card className='mt-5'>
+            <Card>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 rounded-lg">
@@ -1620,6 +1623,23 @@ export default function LoanDetailPage() {
                         )}
                       </div>
                     )}
+                    
+                    {/* Platform fee breakdown */}
+                    {feeSettings?.enabled && !feeLoading && (() => {
+                      const feeCalc = calculateFee(nextPayment.amount);
+                      return feeCalc.platformFee > 0 ? (
+                        <div className="mt-3">
+                          <FeeBreakdown
+                            amount={feeCalc.grossAmount}
+                            platformFee={feeCalc.platformFee}
+                            netAmount={feeCalc.netAmount}
+                            feeLabel={feeCalc.feeLabel}
+                            feeDescription={feeCalc.feeDescription}
+                            variant="detailed"
+                          />
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 );
               })()}
@@ -1682,7 +1702,7 @@ export default function LoanDetailPage() {
 
           {/* Lender Reminder Section */}
           {loan.status === 'active' && isLender && loan.funds_sent && (
-            <Card className='my-5'>
+            <Card>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-amber-100 rounded-lg">
@@ -1904,7 +1924,7 @@ export default function LoanDetailPage() {
 
           {/* Pending Actions */}
           {loan.status === 'pending' && (
-            <Card className="bg-yellow-50 border-yellow-200 mt-5">
+            <Card className="bg-yellow-50 border-yellow-200">
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div className="p-3 bg-yellow-100 rounded-xl">
                   <Clock className="w-6 h-6 text-yellow-600" />

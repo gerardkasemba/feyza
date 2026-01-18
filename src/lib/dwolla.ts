@@ -1,5 +1,19 @@
 // Dwolla client library for ACH transfers
 // dwolla-v2 exports { Client } so we need to access .Client
+//
+// PLATFORM FEE SUPPORT
+// ====================
+// Feyza charges a configurable platform fee on transactions.
+// Fee settings are stored in the platform_settings table and can be
+// configured by admins via the admin dashboard.
+// 
+// The fee is deducted from the transfer amount, so the recipient
+// receives (amount - fee). The fee goes to Feyza's Master Account.
+
+import { calculatePlatformFee, type FeeCalculation } from './platformFee';
+
+// Re-export for convenience
+export type { FeeCalculation };
 
 let dwollaClient: any = null;
 
@@ -174,6 +188,7 @@ export async function removeFundingSource(fundingSourceUrl: string) {
 }
 
 // Initiate a transfer (payment)
+// NOTE: No platform fee is charged - the full amount goes to the destination
 export async function createTransfer(data: {
   sourceFundingSourceUrl: string;
   destinationFundingSourceUrl: string;
@@ -183,14 +198,15 @@ export async function createTransfer(data: {
 }): Promise<string | null> {
   const dwolla = await getDwolla();
   
-  console.log('Creating Dwolla transfer:', {
+  console.log('Creating Dwolla transfer (no platform fee):', {
     source: data.sourceFundingSourceUrl,
     destination: data.destinationFundingSourceUrl,
     amount: data.amount,
   });
   
   try {
-    const response = await dwolla.post('transfers', {
+    // Transfer body - NO fees array included, full amount goes to destination
+    const transferBody: any = {
       _links: {
         source: { href: data.sourceFundingSourceUrl },
         destination: { href: data.destinationFundingSourceUrl },
@@ -200,7 +216,11 @@ export async function createTransfer(data: {
         value: data.amount.toFixed(2),
       },
       metadata: data.metadata,
-    });
+      // NOTE: We explicitly do NOT include a 'fees' array here
+      // This ensures the full amount is transferred without any platform fee deduction
+    };
+    
+    const response = await dwolla.post('transfers', transferBody);
     
     const transferUrl = response.headers.get('location');
     console.log('Transfer created successfully:', transferUrl);
@@ -256,20 +276,42 @@ export async function getMasterAccountBalanceUrl(): Promise<string | null> {
 
 // Facilitated transfer - routes through Master Account for unverified-to-unverified transfers
 // This is required because Dwolla doesn't allow direct transfers between two unverified customers
+// Platform fee is deducted and kept in Master Account
 export async function createFacilitatedTransfer(data: {
   sourceFundingSourceUrl: string;
   destinationFundingSourceUrl: string;
   amount: number;
   currency?: string;
   metadata?: Record<string, string>;
-}): Promise<{ transferUrl: string | null; transferIds: string[] }> {
+  skipFee?: boolean; // Option to skip fee for certain transfers (e.g., disbursements)
+}): Promise<{ 
+  transferUrl: string | null; 
+  transferIds: string[];
+  feeInfo: FeeCalculation;
+}> {
   const dwolla = await getDwolla();
   const transferIds: string[] = [];
+  
+  // Calculate platform fee
+  const feeInfo = data.skipFee 
+    ? {
+        grossAmount: data.amount,
+        platformFee: 0,
+        netAmount: data.amount,
+        feeType: 'fixed' as const,
+        feeLabel: 'No Fee',
+        feeDescription: 'Fee skipped',
+        feeEnabled: false,
+      }
+    : await calculatePlatformFee(data.amount);
   
   console.log('Creating facilitated transfer through Master Account:', {
     source: data.sourceFundingSourceUrl,
     destination: data.destinationFundingSourceUrl,
-    amount: data.amount,
+    grossAmount: feeInfo.grossAmount,
+    platformFee: feeInfo.platformFee,
+    netAmount: feeInfo.netAmount,
+    feeEnabled: feeInfo.feeEnabled,
   });
   
   try {
@@ -281,8 +323,9 @@ export async function createFacilitatedTransfer(data: {
     
     console.log('Master Account Balance URL:', masterBalanceUrl);
     
-    // Step 1: Transfer FROM source TO Master Account Balance
-    console.log('Step 1: Transferring from source to Master Account Balance...');
+    // Step 1: Transfer FULL amount FROM source TO Master Account Balance
+    // This pulls the gross amount (including fee) from the source
+    console.log('Step 1: Transferring gross amount from source to Master Account Balance...');
     const step1Response = await dwolla.post('transfers', {
       _links: {
         source: { href: data.sourceFundingSourceUrl },
@@ -290,11 +333,13 @@ export async function createFacilitatedTransfer(data: {
       },
       amount: {
         currency: data.currency || 'USD',
-        value: data.amount.toFixed(2),
+        value: feeInfo.grossAmount.toFixed(2),
       },
       metadata: {
         ...data.metadata,
         step: 'source_to_balance',
+        gross_amount: feeInfo.grossAmount.toFixed(2),
+        platform_fee: feeInfo.platformFee.toFixed(2),
       },
     });
     
@@ -303,8 +348,9 @@ export async function createFacilitatedTransfer(data: {
     if (step1TransferId) transferIds.push(step1TransferId);
     console.log('Step 1 complete. Transfer URL:', step1TransferUrl);
     
-    // Step 2: Transfer FROM Master Account Balance TO destination
-    console.log('Step 2: Transferring from Master Account Balance to destination...');
+    // Step 2: Transfer NET amount FROM Master Account Balance TO destination
+    // The fee remains in the Master Account
+    console.log('Step 2: Transferring net amount from Master Account Balance to destination...');
     const step2Response = await dwolla.post('transfers', {
       _links: {
         source: { href: masterBalanceUrl },
@@ -312,11 +358,13 @@ export async function createFacilitatedTransfer(data: {
       },
       amount: {
         currency: data.currency || 'USD',
-        value: data.amount.toFixed(2),
+        value: feeInfo.netAmount.toFixed(2),
       },
       metadata: {
         ...data.metadata,
         step: 'balance_to_destination',
+        net_amount: feeInfo.netAmount.toFixed(2),
+        platform_fee_retained: feeInfo.platformFee.toFixed(2),
       },
     });
     
@@ -324,10 +372,12 @@ export async function createFacilitatedTransfer(data: {
     const step2TransferId = step2TransferUrl?.split('/').pop();
     if (step2TransferId) transferIds.push(step2TransferId);
     console.log('Step 2 complete. Transfer URL:', step2TransferUrl);
+    console.log(`Platform fee retained: $${feeInfo.platformFee.toFixed(2)}`);
     
     return {
       transferUrl: step2TransferUrl,
       transferIds,
+      feeInfo,
     };
   } catch (err: any) {
     console.error('Facilitated transfer error:', JSON.stringify(err.body || err.message, null, 2));

@@ -176,11 +176,11 @@ export default function AdminBusinessApprovalsPage() {
 
   return (
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 py-8 px-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <Link href="/dashboard" className="text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2 inline-block">
+          {/* <Link href="/dashboard" className="text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2 inline-block">
             ← Back to Dashboard
-          </Link>
+          </Link> */}
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Business Applications</h1>
           <p className="text-neutral-500 dark:text-neutral-400">Review and approve business lender applications</p>
         </div>

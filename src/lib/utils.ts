@@ -6,6 +6,29 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Convert Date to YYYY-MM-DD string (local date, no timezone)
+export function toDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Parse YYYY-MM-DD string to local Date
+export function parseDateString(dateStr: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const [year, month, day] = dateStr.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  // Handle ISO strings
+  if (dateStr.includes('T')) {
+    const datePart = dateStr.split('T')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  }
+  return new Date(dateStr);
+}
+
 export function formatCurrency(amount: number, currency: string = 'USD'): string {
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -16,11 +39,27 @@ export function formatCurrency(amount: number, currency: string = 'USD'): string
 }
 
 export function formatDate(date: string | Date): string {
+  // Handle date-only strings (YYYY-MM-DD) to avoid timezone issues
+  if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // Parse as local date by adding time component
+    const [year, month, day] = date.split('-').map(Number);
+    return format(new Date(year, month - 1, day), 'MMM d, yyyy');
+  }
+  
+  // Handle ISO strings that end with a date (from database)
+  if (typeof date === 'string' && date.includes('T')) {
+    // Extract just the date part and parse as local
+    const datePart = date.split('T')[0];
+    const [year, month, day] = datePart.split('-').map(Number);
+    return format(new Date(year, month - 1, day), 'MMM d, yyyy');
+  }
+  
   return format(new Date(date), 'MMM d, yyyy');
 }
 
 export function formatRelativeDate(date: string | Date): string {
-  return formatDistanceToNow(new Date(date), { addSuffix: true });
+  const parsedDate = typeof date === 'string' ? parseDateString(date) : date;
+  return formatDistanceToNow(parsedDate, { addSuffix: true });
 }
 
 export function formatPercentage(rate: number): string {
@@ -30,8 +69,9 @@ export function formatPercentage(rate: number): string {
 export function getPaymentStatus(dueDate: string, isPaid: boolean): 'paid' | 'upcoming' | 'due' | 'overdue' {
   if (isPaid) return 'paid';
   
-  const due = new Date(dueDate);
+  const due = parseDateString(dueDate);
   const today = new Date();
+  today.setHours(0, 0, 0, 0); // Reset time to start of day for comparison
   const threeDaysFromNow = addDays(today, 3);
   
   if (isBefore(due, today)) return 'overdue';
@@ -149,7 +189,15 @@ export function calculateRepaymentSchedule(params: {
   const principalPerInstallment = amount / totalInstallments;
   const amountPerInstallment = totalAmount / totalInstallments;
   
-  let currentDate = new Date(startDate);
+  // Parse startDate correctly - handle both YYYY-MM-DD and Date objects
+  let currentDate: Date;
+  if (typeof startDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+    // Parse date-only string as local date
+    const [year, month, day] = startDate.split('-').map(Number);
+    currentDate = new Date(year, month - 1, day);
+  } else {
+    currentDate = new Date(startDate);
+  }
   let remainingPrincipal = amount;
   let remainingInterest = totalInterest;
   

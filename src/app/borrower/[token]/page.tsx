@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Card, Button, Progress, Badge, Breadcrumbs } from '@/components/ui';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { downloadICalFile } from '@/lib/calendar';
+import { FeeBreakdown, usePlatformFee } from '@/components/FeeBreakdown';
 import {
   ArrowLeft,
   Calendar,
@@ -82,6 +83,9 @@ export default function GuestBorrowerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [processingPayment, setProcessingPayment] = useState<string | null>(null);
+
+  // Platform fee hook
+  const { settings: feeSettings, loading: feeLoading, calculateFee } = usePlatformFee();
 
   useEffect(() => {
     if (token) {
@@ -442,6 +446,23 @@ export default function GuestBorrowerPage() {
                       )}
                     </div>
                   )}
+                  
+                  {/* Platform fee breakdown */}
+                  {feeSettings?.enabled && !feeLoading && (() => {
+                    const feeCalc = calculateFee(nextPaymentItem.amount);
+                    return feeCalc.platformFee > 0 ? (
+                      <div className="mt-3">
+                        <FeeBreakdown
+                          amount={feeCalc.grossAmount}
+                          platformFee={feeCalc.platformFee}
+                          netAmount={feeCalc.netAmount}
+                          feeLabel={feeCalc.feeLabel}
+                          feeDescription={feeCalc.feeDescription}
+                          variant="detailed"
+                        />
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
               );
             })()}

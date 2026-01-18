@@ -289,9 +289,11 @@ export async function POST(
 
     // Process disbursement: Lender -> Master Account Balance -> Borrower
     // Using facilitated transfer because both parties are unverified customers
+    // NOTE: We skip the platform fee for disbursements (lender -> borrower)
+    // Fees are only charged on repayments (borrower -> lender)
     let disbursementTransferId = null;
     try {
-      const { transferUrl, transferIds } = await createFacilitatedTransfer({
+      const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
         sourceFundingSourceUrl: lender_dwolla_funding_source_url,
         destinationFundingSourceUrl: borrowerDwollaFundingSource,
         amount: principal,
@@ -300,6 +302,7 @@ export async function POST(
           loan_id: loanId,
           type: 'disbursement',
         },
+        skipFee: true, // No fee for disbursements
       });
 
       if (transferUrl && transferIds.length > 0) {
@@ -317,6 +320,10 @@ export async function POST(
               amount: principal,
               currency: 'USD',
               status: 'pending',
+              platform_fee: 0,
+              fee_type: 'none',
+              gross_amount: principal,
+              net_amount: principal,
             });
         }
 
@@ -330,7 +337,7 @@ export async function POST(
           })
           .eq('id', loanId);
           
-        console.log('Disbursement initiated (facilitated):', disbursementTransferId);
+        console.log('Disbursement initiated (facilitated, no fee):', disbursementTransferId);
       }
     } catch (disbErr: any) {
       console.error('Disbursement error (continuing anyway):', JSON.stringify(disbErr.body || disbErr, null, 2));
@@ -344,18 +351,45 @@ export async function POST(
       .eq('loan_id', loanId);
 
     // Generate payment schedule with principal and interest breakdown
+    // Use precise rounding to ensure total matches exactly
     const schedule = [];
     let currentDate = new Date(start_date);
-    const principalPerPayment = principal / total_installments;
-    const interestPerPayment = totalInterest / total_installments;
+    
+    // Calculate base amounts (rounded down to avoid overpayment)
+    const basePaymentAmount = Math.floor(totalAmount / total_installments * 100) / 100;
+    const basePrincipal = Math.floor(principal / total_installments * 100) / 100;
+    const baseInterest = Math.floor(totalInterest / total_installments * 100) / 100;
+    
+    // Calculate how much we'll collect with base amounts
+    const baseTotal = basePaymentAmount * total_installments;
+    const basePrincipalTotal = basePrincipal * total_installments;
+    const baseInterestTotal = baseInterest * total_installments;
+    
+    // Calculate remainder that needs to go into the last payment
+    const paymentRemainder = Math.round((totalAmount - baseTotal) * 100) / 100;
+    const principalRemainder = Math.round((principal - basePrincipalTotal) * 100) / 100;
+    const interestRemainder = Math.round((totalInterest - baseInterestTotal) * 100) / 100;
     
     for (let i = 0; i < total_installments; i++) {
+      const isLastPayment = i === total_installments - 1;
+      
+      // Last payment gets the remainder to ensure exact total
+      const paymentAmount = isLastPayment 
+        ? Math.round((basePaymentAmount + paymentRemainder) * 100) / 100
+        : basePaymentAmount;
+      const principalAmount = isLastPayment
+        ? Math.round((basePrincipal + principalRemainder) * 100) / 100
+        : basePrincipal;
+      const interestAmount = isLastPayment
+        ? Math.round((baseInterest + interestRemainder) * 100) / 100
+        : baseInterest;
+      
       schedule.push({
         loan_id: loanId,
         due_date: format(currentDate, 'yyyy-MM-dd'),
-        amount: Math.round(repaymentAmount * 100) / 100,
-        principal_amount: Math.round(principalPerPayment * 100) / 100,
-        interest_amount: Math.round(interestPerPayment * 100) / 100,
+        amount: paymentAmount,
+        principal_amount: principalAmount,
+        interest_amount: interestAmount,
         is_paid: false,
         status: 'pending',
       });

@@ -90,7 +90,8 @@ export async function GET(request: NextRequest) {
         console.log(`[Auto-Pay] Processing payment ${payment.id} - $${payment.amount}`);
 
         // Create Dwolla transfer: Borrower -> Master Account -> Lender (facilitated)
-        const { transferUrl, transferIds } = await createFacilitatedTransfer({
+        // Platform fee is deducted from the payment amount
+        const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
           sourceFundingSourceUrl: borrowerFundingSource,
           destinationFundingSourceUrl: lenderFundingSource,
           amount: payment.amount,
@@ -107,8 +108,10 @@ export async function GET(request: NextRequest) {
         }
 
         const transferId = transferIds[transferIds.length - 1];
+        
+        console.log(`[Auto-Pay] Fee info: gross=$${feeInfo.grossAmount}, fee=$${feeInfo.platformFee}, net=$${feeInfo.netAmount}`);
 
-        // Record all transfer steps
+        // Record all transfer steps with fee info
         for (const tid of transferIds) {
           await supabase
             .from('transfers')
@@ -120,10 +123,14 @@ export async function GET(request: NextRequest) {
               amount: payment.amount,
               currency: 'USD',
               status: 'pending',
+              platform_fee: feeInfo.platformFee,
+              fee_type: feeInfo.feeType,
+              gross_amount: feeInfo.grossAmount,
+              net_amount: feeInfo.netAmount,
             });
         }
 
-        // Update payment schedule
+        // Update payment schedule with fee info
         const { error: scheduleUpdateError } = await supabase
           .from('payment_schedule')
           .update({
@@ -131,6 +138,7 @@ export async function GET(request: NextRequest) {
             status: 'paid',
             transfer_id: transferId,
             paid_at: new Date().toISOString(),
+            platform_fee: feeInfo.platformFee,
           })
           .eq('id', payment.id);
 
@@ -148,7 +156,7 @@ export async function GET(request: NextRequest) {
             amount: payment.amount,
             payment_date: new Date().toISOString(),
             status: 'confirmed',
-            note: `Auto-pay ACH transfer - Transfer ID: ${transferId}`,
+            note: `Auto-pay ACH transfer - Transfer ID: ${transferId} | Fee: $${feeInfo.platformFee.toFixed(2)} | Net to lender: $${feeInfo.netAmount.toFixed(2)}`,
           })
           .select()
           .single();
@@ -163,16 +171,28 @@ export async function GET(request: NextRequest) {
             .eq('id', payment.id);
         }
 
+        // Check if all scheduled payments are now paid
+        const { data: unpaidPayments } = await supabase
+          .from('payment_schedule')
+          .select('id')
+          .eq('loan_id', loan.id)
+          .eq('is_paid', false);
+
         // Update loan amounts
         const newAmountPaid = (loan.amount_paid || 0) + payment.amount;
         const newAmountRemaining = (loan.total_amount || loan.amount) - newAmountPaid;
-        const isCompleted = newAmountRemaining <= 0;
+        
+        // Consider loan completed if:
+        // 1. All scheduled payments are paid, OR
+        // 2. Remaining amount is less than $0.50 (rounding tolerance)
+        const allPaymentsPaid = !unpaidPayments || unpaidPayments.length === 0;
+        const isCompleted = allPaymentsPaid || newAmountRemaining <= 0.50;
         
         const { error: loanUpdateError } = await supabase
           .from('loans')
           .update({
-            amount_paid: newAmountPaid,
-            amount_remaining: Math.max(0, newAmountRemaining),
+            amount_paid: isCompleted ? (loan.total_amount || loan.amount) : newAmountPaid,
+            amount_remaining: isCompleted ? 0 : Math.max(0, newAmountRemaining),
             status: isCompleted ? 'completed' : 'active',
             last_payment_at: new Date().toISOString(),
           })
@@ -181,6 +201,9 @@ export async function GET(request: NextRequest) {
         if (loanUpdateError) {
           console.error(`[Auto-Pay] Error updating loan ${loan.id}:`, loanUpdateError);
         }
+
+        // Update borrower stats
+        await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
         // Send payment received email to lender
         await sendPaymentReceivedEmail(loan, payment, newAmountRemaining, isCompleted);
@@ -234,6 +257,40 @@ async function handleMissedPayment(
       notes: `Payment failed: ${reason}`,
     })
     .eq('id', payment.id);
+
+  // Update borrower's missed payment count
+  if (loan.borrower_id) {
+    const { data: borrower } = await supabase
+      .from('users')
+      .select('payments_missed, borrower_rating')
+      .eq('id', loan.borrower_id)
+      .single();
+
+    if (borrower) {
+      const newMissedCount = (borrower.payments_missed || 0) + 1;
+      
+      // Downgrade rating if too many missed payments
+      let newRating = borrower.borrower_rating || 'neutral';
+      if (newMissedCount >= 3) {
+        newRating = 'worst';
+      } else if (newMissedCount >= 2) {
+        newRating = 'bad';
+      } else if (newMissedCount >= 1 && (newRating === 'good' || newRating === 'great')) {
+        newRating = 'neutral';
+      }
+
+      await supabase
+        .from('users')
+        .update({
+          payments_missed: newMissedCount,
+          borrower_rating: newRating,
+          borrower_rating_updated_at: new Date().toISOString(),
+        })
+        .eq('id', loan.borrower_id);
+
+      console.log(`[Auto-Pay] Updated borrower ${loan.borrower_id} missed count: ${newMissedCount}, rating: ${newRating}`);
+    }
+  }
 
   // Send email to lender
   const lenderEmail = loan.lender_email;
@@ -450,8 +507,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create Dwolla transfer (facilitated)
-    const { transferUrl, transferIds } = await createFacilitatedTransfer({
+    // Create Dwolla transfer (facilitated) with platform fee
+    const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
       sourceFundingSourceUrl: loan.borrower_dwolla_funding_source_url,
       destinationFundingSourceUrl: loan.lender_dwolla_funding_source_url,
       amount: payment.amount,
@@ -468,8 +525,10 @@ export async function POST(request: NextRequest) {
     }
 
     const transferId = transferIds[transferIds.length - 1];
+    
+    console.log(`[Manual Pay] Fee info: gross=$${feeInfo.grossAmount}, fee=$${feeInfo.platformFee}, net=$${feeInfo.netAmount}`);
 
-    // Record transfers
+    // Record transfers with fee info
     for (const tid of transferIds) {
       await supabase
         .from('transfers')
@@ -481,10 +540,14 @@ export async function POST(request: NextRequest) {
           amount: payment.amount,
           currency: 'USD',
           status: 'pending',
+          platform_fee: feeInfo.platformFee,
+          fee_type: feeInfo.feeType,
+          gross_amount: feeInfo.grossAmount,
+          net_amount: feeInfo.netAmount,
         });
     }
 
-    // Update payment_schedule
+    // Update payment_schedule with fee info
     const { error: updateError } = await supabase
       .from('payment_schedule')
       .update({
@@ -492,6 +555,7 @@ export async function POST(request: NextRequest) {
         status: 'paid',
         transfer_id: transferId,
         paid_at: new Date().toISOString(),
+        platform_fee: feeInfo.platformFee,
       })
       .eq('id', payment.id);
 
@@ -509,7 +573,7 @@ export async function POST(request: NextRequest) {
         amount: payment.amount,
         payment_date: new Date().toISOString(),
         status: 'confirmed',
-        note: `ACH transfer initiated - Transfer ID: ${transferId}`,
+        note: `ACH transfer initiated - Transfer ID: ${transferId} | Fee: $${feeInfo.platformFee.toFixed(2)} | Net to lender: $${feeInfo.netAmount.toFixed(2)}`,
       })
       .select()
       .single();
@@ -526,16 +590,28 @@ export async function POST(request: NextRequest) {
 
     console.log(`Payment ${payment.id} marked as paid`);
 
+    // Check if all scheduled payments are now paid
+    const { data: unpaidPayments } = await supabase
+      .from('payment_schedule')
+      .select('id')
+      .eq('loan_id', loan.id)
+      .eq('is_paid', false);
+
     // Update loan
     const newAmountPaid = (loan.amount_paid || 0) + payment.amount;
     const newAmountRemaining = (loan.total_amount || loan.amount) - newAmountPaid;
-    const isCompleted = newAmountRemaining <= 0;
+    
+    // Consider loan completed if:
+    // 1. All scheduled payments are paid, OR
+    // 2. Remaining amount is less than $0.50 (rounding tolerance)
+    const allPaymentsPaid = !unpaidPayments || unpaidPayments.length === 0;
+    const isCompleted = allPaymentsPaid || newAmountRemaining <= 0.50;
     
     const { error: loanUpdateError } = await supabase
       .from('loans')
       .update({
-        amount_paid: newAmountPaid,
-        amount_remaining: Math.max(0, newAmountRemaining),
+        amount_paid: isCompleted ? (loan.total_amount || loan.amount) : newAmountPaid,
+        amount_remaining: isCompleted ? 0 : Math.max(0, newAmountRemaining),
         status: isCompleted ? 'completed' : 'active',
         last_payment_at: new Date().toISOString(),
       })
@@ -547,6 +623,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`Loan ${loan.id} updated - paid: ${newAmountPaid}, remaining: ${newAmountRemaining}`);
 
+    // Update borrower stats
+    await updateBorrowerStats(supabase, loan, payment, isCompleted);
+
     // Send payment received email
     await sendPaymentReceivedEmail(loan, payment, Math.max(0, newAmountRemaining), isCompleted);
 
@@ -556,6 +635,13 @@ export async function POST(request: NextRequest) {
       transfer_id: transferId,
       amount: payment.amount,
       amount_remaining: Math.max(0, newAmountRemaining),
+      fee: {
+        platform_fee: feeInfo.platformFee,
+        gross_amount: feeInfo.grossAmount,
+        net_amount: feeInfo.netAmount,
+        fee_type: feeInfo.feeType,
+        fee_label: feeInfo.feeLabel,
+      },
     });
 
   } catch (error: any) {
@@ -564,5 +650,136 @@ export async function POST(request: NextRequest) {
       { error: error.message || 'Payment processing failed' },
       { status: 500 }
     );
+  }
+}
+
+// Update borrower stats after payment
+async function updateBorrowerStats(
+  supabase: any,
+  loan: any,
+  payment: any,
+  isLoanCompleted: boolean
+) {
+  try {
+    // Determine borrower - could be a user or guest
+    const borrowerId = loan.borrower_id;
+    if (!borrowerId) {
+      console.log('[Stats] No borrower_id, skipping stats update');
+      return;
+    }
+
+    // Get current borrower stats
+    const { data: borrower, error: borrowerError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', borrowerId)
+      .single();
+
+    if (borrowerError || !borrower) {
+      console.error('[Stats] Error fetching borrower:', borrowerError);
+      return;
+    }
+
+    // Determine if payment was early, on time, or late
+    const dueDate = new Date(payment.due_date);
+    const paidDate = new Date();
+    const daysDiff = Math.floor((dueDate.getTime() - paidDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    let paymentTiming: 'early' | 'on_time' | 'late';
+    if (daysDiff > 0) {
+      paymentTiming = 'early'; // Paid before due date
+    } else if (daysDiff >= -1) {
+      paymentTiming = 'on_time'; // Paid on due date or 1 day after
+    } else {
+      paymentTiming = 'late'; // Paid more than 1 day after due date
+    }
+
+    console.log(`[Stats] Payment timing: ${paymentTiming} (days diff: ${daysDiff})`);
+
+    // Calculate new stats
+    const newTotalPaymentsMade = (borrower.total_payments_made || 0) + 1;
+    const newPaymentsEarly = (borrower.payments_early || 0) + (paymentTiming === 'early' ? 1 : 0);
+    const newPaymentsOnTime = (borrower.payments_on_time || 0) + (paymentTiming === 'on_time' ? 1 : 0);
+    const newPaymentsLate = (borrower.payments_late || 0) + (paymentTiming === 'late' ? 1 : 0);
+    const newTotalAmountRepaid = (borrower.total_amount_repaid || 0) + payment.amount;
+    const newCurrentOutstanding = Math.max(0, (borrower.current_outstanding_amount || 0) - payment.amount);
+
+    // Prepare update object
+    const statsUpdate: any = {
+      total_payments_made: newTotalPaymentsMade,
+      payments_early: newPaymentsEarly,
+      payments_on_time: newPaymentsOnTime,
+      payments_late: newPaymentsLate,
+      total_amount_repaid: newTotalAmountRepaid,
+      current_outstanding_amount: newCurrentOutstanding,
+    };
+
+    // If loan is completed, update additional stats
+    if (isLoanCompleted) {
+      const newTotalLoansCompleted = (borrower.total_loans_completed || 0) + 1;
+      const newLoansAtCurrentTier = (borrower.loans_at_current_tier || 0) + 1;
+      
+      statsUpdate.total_loans_completed = newTotalLoansCompleted;
+      statsUpdate.loans_at_current_tier = newLoansAtCurrentTier;
+
+      // Calculate new rating based on payment history
+      const totalPayments = newTotalPaymentsMade;
+      const onTimeOrEarly = newPaymentsEarly + newPaymentsOnTime;
+      const onTimeRate = totalPayments > 0 ? onTimeOrEarly / totalPayments : 0;
+
+      let newRating = borrower.borrower_rating || 'neutral';
+      if (onTimeRate >= 0.95 && totalPayments >= 4) {
+        newRating = 'great';
+      } else if (onTimeRate >= 0.85 && totalPayments >= 3) {
+        newRating = 'good';
+      } else if (onTimeRate >= 0.7) {
+        newRating = 'neutral';
+      } else if (onTimeRate >= 0.5) {
+        newRating = 'poor';
+      } else if (totalPayments >= 3) {
+        newRating = 'bad';
+      }
+
+      if (newRating !== borrower.borrower_rating) {
+        statsUpdate.borrower_rating = newRating;
+        statsUpdate.borrower_rating_updated_at = new Date().toISOString();
+        console.log(`[Stats] Rating updated: ${borrower.borrower_rating} -> ${newRating}`);
+      }
+
+      // Check for tier upgrade (only for business loans)
+      if (loan.business_lender_id || loan.lender_type === 'business') {
+        const currentTier = borrower.borrowing_tier || 1;
+        const loansNeededPerTier = [0, 2, 3, 4, 5]; // Tier 1: 2 loans, Tier 2: 3 more, etc.
+        
+        // Only upgrade if rating is good enough
+        if (newRating === 'great' || newRating === 'good' || newRating === 'neutral') {
+          if (newLoansAtCurrentTier >= (loansNeededPerTier[currentTier] || 2) && currentTier < 5) {
+            const newTier = currentTier + 1;
+            const tierLimits = [0, 150, 300, 500, 1000, 2000];
+            
+            statsUpdate.borrowing_tier = newTier;
+            statsUpdate.max_borrowing_amount = tierLimits[newTier] || 2000;
+            statsUpdate.loans_at_current_tier = 0; // Reset for new tier
+            
+            console.log(`[Stats] Tier upgraded: ${currentTier} -> ${newTier}, max: $${tierLimits[newTier]}`);
+          }
+        }
+      }
+    }
+
+    // Update borrower
+    const { error: updateError } = await supabase
+      .from('users')
+      .update(statsUpdate)
+      .eq('id', borrowerId);
+
+    if (updateError) {
+      console.error('[Stats] Error updating borrower stats:', updateError);
+    } else {
+      console.log(`[Stats] Borrower ${borrowerId} stats updated successfully`);
+    }
+
+  } catch (error) {
+    console.error('[Stats] Error in updateBorrowerStats:', error);
   }
 }

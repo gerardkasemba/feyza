@@ -108,8 +108,10 @@ function SettingsContent() {
       
       setProfile({ ...profile, full_name: fullName, phone });
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Failed to update profile' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
     }
@@ -136,8 +138,10 @@ function SettingsContent() {
       if (error) throw error;
       
       setMessage({ type: 'success', text: 'Notification settings updated!' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Failed to update settings' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
     }

@@ -17,6 +17,8 @@ import {
   Shield,
   ChevronRight,
   ClipboardCheck,
+  Percent,
+  Globe,
 } from 'lucide-react';
 
 const navItems = [
@@ -25,6 +27,8 @@ const navItems = [
   { href: '/admin/verification', label: 'Pending Verification', icon: ClipboardCheck },
   { href: '/admin/loans', label: 'Loans', icon: FileText },
   { href: '/admin/businesses', label: 'Businesses', icon: Building2 },
+  { href: '/admin/countries', label: 'Countries', icon: Globe },
+  { href: '/admin/platform-fee', label: 'Platform Fees', icon: Percent },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 

@@ -91,7 +91,11 @@ export default async function DashboardPage() {
         .select('*')
         .eq('business_lender_id', businessProfile.id)
         .order('created_at', { ascending: false });
-      lentLoans = [...lentLoans, ...(businessLoans || [])];
+      
+      // Merge and deduplicate loans (a loan might have both lender_id and business_lender_id)
+      const existingIds = new Set(lentLoans.map(l => l.id));
+      const uniqueBusinessLoans = (businessLoans || []).filter(l => !existingIds.has(l.id));
+      lentLoans = [...lentLoans, ...uniqueBusinessLoans];
     }
   } catch (error) {
     // No business profile

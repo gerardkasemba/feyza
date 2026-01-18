@@ -82,6 +82,28 @@ export async function POST(request: NextRequest) {
                   funds_sent: true,
                 })
                 .eq('id', transfer.loan.id);
+
+              // Update borrower stats - add to total_amount_borrowed and current_outstanding
+              if (transfer.loan.borrower_id) {
+                const { data: borrower } = await supabase
+                  .from('users')
+                  .select('total_amount_borrowed, current_outstanding_amount')
+                  .eq('id', transfer.loan.borrower_id)
+                  .single();
+
+                if (borrower) {
+                  const loanAmount = transfer.loan.total_amount || transfer.loan.amount || transfer.amount;
+                  await supabase
+                    .from('users')
+                    .update({
+                      total_amount_borrowed: (borrower.total_amount_borrowed || 0) + loanAmount,
+                      current_outstanding_amount: (borrower.current_outstanding_amount || 0) + loanAmount,
+                    })
+                    .eq('id', transfer.loan.borrower_id);
+                  
+                  console.log(`[Sync Status] Updated borrower ${transfer.loan.borrower_id} - borrowed: +$${loanAmount}`);
+                }
+              }
             } else if (ourStatus === 'failed') {
               await supabase
                 .from('loans')
@@ -182,6 +204,13 @@ export async function GET(request: NextRequest) {
             
             // Update loan if disbursement completed
             if (transfer.type === 'disbursement' && newStatus === 'processed') {
+              // Get loan details first
+              const { data: loanDetails } = await supabase
+                .from('loans')
+                .select('borrower_id, amount, total_amount')
+                .eq('id', loanId)
+                .single();
+
               await supabase
                 .from('loans')
                 .update({
@@ -189,6 +218,28 @@ export async function GET(request: NextRequest) {
                   funds_sent: true,
                 })
                 .eq('id', loanId);
+
+              // Update borrower stats
+              if (loanDetails?.borrower_id) {
+                const { data: borrower } = await supabase
+                  .from('users')
+                  .select('total_amount_borrowed, current_outstanding_amount')
+                  .eq('id', loanDetails.borrower_id)
+                  .single();
+
+                if (borrower) {
+                  const loanAmount = loanDetails.total_amount || loanDetails.amount || transfer.amount;
+                  await supabase
+                    .from('users')
+                    .update({
+                      total_amount_borrowed: (borrower.total_amount_borrowed || 0) + loanAmount,
+                      current_outstanding_amount: (borrower.current_outstanding_amount || 0) + loanAmount,
+                    })
+                    .eq('id', loanDetails.borrower_id);
+                  
+                  console.log(`[Sync Status GET] Updated borrower ${loanDetails.borrower_id} - borrowed: +$${loanAmount}`);
+                }
+              }
             }
             
             updatedTransfers.push({ ...transfer, status: newStatus });

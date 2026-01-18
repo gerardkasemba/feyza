@@ -23,18 +23,11 @@ import {
   UserPlus,
 } from 'lucide-react';
 
-const COUNTRIES = [
-  { code: 'KE', name: 'Kenya' },
-  { code: 'UG', name: 'Uganda' },
-  { code: 'TZ', name: 'Tanzania' },
-  { code: 'NG', name: 'Nigeria' },
-  { code: 'GH', name: 'Ghana' },
-  { code: 'ZA', name: 'South Africa' },
-  { code: 'RW', name: 'Rwanda' },
-  { code: 'ET', name: 'Ethiopia' },
-  { code: 'ZM', name: 'Zambia' },
-  { code: 'MW', name: 'Malawi' },
-];
+interface Country {
+  code: string;
+  name: string;
+  enabled: boolean;
+}
 
 const RATINGS = [
   { value: 'great', label: 'Great ⭐', description: 'Only top borrowers' },
@@ -75,6 +68,7 @@ export default function LenderPreferencesPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isBusinessLender, setIsBusinessLender] = useState(false);
+  const [availableCountries, setAvailableCountries] = useState<Country[]>([]);
 
   const [preferences, setPreferences] = useState<Preferences>({
     is_active: true,
@@ -127,6 +121,17 @@ export default function LenderPreferencesPage() {
         user_type: authUser.user_metadata?.user_type || 'business',
       });
 
+      // Fetch supported countries
+      try {
+        const countriesRes = await fetch('/api/admin/countries');
+        if (countriesRes.ok) {
+          const countriesData = await countriesRes.json();
+          setAvailableCountries(countriesData.countries || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch countries:', err);
+      }
+
       // Fetch preferences
       const response = await fetch('/api/lender/preferences');
       if (response.ok) {
@@ -166,9 +171,11 @@ export default function LenderPreferencesPage() {
       }
 
       setSuccess(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
       setError(err.message);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
     }
@@ -186,7 +193,7 @@ export default function LenderPreferencesPage() {
   const selectAllCountries = () => {
     setPreferences(prev => ({
       ...prev,
-      countries: COUNTRIES.map(c => c.code),
+      countries: availableCountries.map(c => c.code),
     }));
   };
 
@@ -209,7 +216,7 @@ export default function LenderPreferencesPage() {
     <div className="min-h-screen bg-neutral-50">
       <Navbar user={user} />
       
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
@@ -434,7 +441,7 @@ export default function LenderPreferencesPage() {
             </p>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-              {COUNTRIES.map((country) => (
+              {availableCountries.map((country) => (
                 <button
                   key={country.code}
                   onClick={() => toggleCountry(country.code)}
@@ -449,7 +456,14 @@ export default function LenderPreferencesPage() {
               ))}
             </div>
 
-            {preferences.countries.length === 0 && (
+            {availableCountries.length === 0 && (
+              <p className="text-sm text-neutral-500 mt-4 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                No countries available. Contact admin to add supported countries.
+              </p>
+            )}
+
+            {availableCountries.length > 0 && preferences.countries.length === 0 && (
               <p className="text-sm text-yellow-600 mt-4 flex items-center gap-2">
                 <Info className="w-4 h-4" />
                 All countries selected (no filter applied)

@@ -1948,7 +1948,7 @@ export default function LoanDetailPage() {
 
           {/* Pending Actions */}
           {loan.status === 'pending' && (
-            <Card className="bg-yellow-50 border-yellow-200">
+            <Card className="bg-yellow-50 border-yellow-200 mt-5">
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                 <div className="p-3 bg-yellow-100 rounded-xl">
                   <Clock className="w-6 h-6 text-yellow-600" />

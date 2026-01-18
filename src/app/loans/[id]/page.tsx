@@ -1579,7 +1579,7 @@ export default function LoanDetailPage() {
 
           {/* Borrower Pay Early Section */}
           {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && schedule.some(s => !s.is_paid) && (
-            <Card className='mb-5'>
+            <Card className='mt-5'>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 rounded-lg">

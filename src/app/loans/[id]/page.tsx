@@ -1418,10 +1418,10 @@ export default function LoanDetailPage() {
             )}
 
             {/* Payment Sent Confirmation */}
-            {loan.status === 'active' && loan.funds_sent && !dismissedNotifications.has('payment-sent') && (
+            {/* {loan.status === 'active' && loan.funds_sent && !dismissedNotifications.has('payment-sent') && (
               <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
                 <div className="flex items-start justify-between">
-                  {/* <div>
+                  <div>
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle className="w-5 h-5 text-green-600" />
                       <span className="font-semibold text-green-800">
@@ -1434,7 +1434,7 @@ export default function LoanDetailPage() {
                         : `The lender sent you ${formatCurrency(loan.amount, loan.currency)}. Your repayment schedule starts ${formatDate(loan.start_date)}.`
                       }
                     </p>
-                  </div> */}
+                  </div>
                   <button 
                     onClick={() => dismissNotification('payment-sent')}
                     className="p-1 rounded-full text-green-400 hover:text-green-600 hover:bg-black/5"
@@ -1443,7 +1443,7 @@ export default function LoanDetailPage() {
                   </button>
                 </div>
               </div>
-            )}
+            )} */}
 
             {/* Loan Amount & Progress */}
             <div className="bg-neutral-50 rounded-2xl p-6 mb-6">
@@ -1579,7 +1579,7 @@ export default function LoanDetailPage() {
 
           {/* Borrower Pay Early Section */}
           {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && schedule.some(s => !s.is_paid) && (
-            <Card>
+            <Card className='mb-5'>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-green-100 rounded-lg">

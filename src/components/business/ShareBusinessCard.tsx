@@ -7,6 +7,7 @@ import {
   Twitter, Facebook, Linkedin, Link2,
   DollarSign, Users
 } from 'lucide-react';
+import { FaLightbulb } from 'react-icons/fa';
 
 interface ShareBusinessCardProps {
   businessName: string;
@@ -116,7 +117,7 @@ export function ShareBusinessCard({ businessName, slug, tagline, isApproved }: S
           <Button
             variant="outline"
             onClick={copyLink}
-            className="border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/30"
+            className="border-green-200 dark:border-green-800 hover:bg-green-50 dark:hover:bg-green-900/30 text-neutral-700 dark:text-neutral-300"
           >
             {copied ? (
               <>
@@ -133,7 +134,7 @@ export function ShareBusinessCard({ businessName, slug, tagline, isApproved }: S
           
           {/* View Profile */}
           <a href={profileUrl} target="_blank" rel="noopener noreferrer">
-            <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800">
+            <Button className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 dark:from-green-700 dark:to-green-800 dark:hover:from-green-800 dark:hover:to-green-900 text-white">
               <ExternalLink className="w-4 h-4 mr-2" />
               View Profile
             </Button>
@@ -161,7 +162,7 @@ export function ShareBusinessCard({ businessName, slug, tagline, isApproved }: S
       
       {/* Profile URL */}
       <div className="mt-4 flex items-center gap-2 p-3 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-        <Link2 className="w-4 h-4 text-neutral-400" />
+        <Link2 className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
         <code className="text-sm text-neutral-600 dark:text-neutral-300 flex-1 truncate">
           {profileUrl}
         </code>
@@ -169,7 +170,7 @@ export function ShareBusinessCard({ businessName, slug, tagline, isApproved }: S
           variant="ghost"
           size="sm"
           onClick={copyLink}
-          className="h-8 px-2"
+          className="h-8 px-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white"
         >
           {copied ? '✓' : 'Copy'}
         </Button>
@@ -178,7 +179,8 @@ export function ShareBusinessCard({ businessName, slug, tagline, isApproved }: S
       {/* Call to Action */}
       <div className="mt-4 p-3 bg-green-100 dark:bg-green-900/30 rounded-lg border border-green-200 dark:border-green-800">
         <p className="text-sm text-green-800 dark:text-green-300 text-center">
-          <strong>💡 Tip:</strong> Share regularly to reach people who need to borrow money!
+          <FaLightbulb className="inline-block mr-1 mb-0.5" />
+          <strong>Tip:</strong> Share regularly to reach people who need to borrow money!
         </p>
       </div>
     </Card>

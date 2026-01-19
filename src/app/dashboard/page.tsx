@@ -55,7 +55,11 @@ export default async function DashboardPage() {
   try {
     const { data } = await supabase
       .from('loans')
-      .select('*')
+      .select(`
+        *,
+        lender:users!lender_id(id, full_name, email, username),
+        business_lender:business_profiles!business_lender_id(id, business_name)
+      `)
       .eq('borrower_id', user.id)
       .order('created_at', { ascending: false });
     borrowedLoans = data || [];
@@ -67,7 +71,10 @@ export default async function DashboardPage() {
   try {
     const { data } = await supabase
       .from('loans')
-      .select('*')
+      .select(`
+        *,
+        borrower:users!borrower_id(id, full_name, email, username)
+      `)
       .eq('lender_id', user.id)
       .order('created_at', { ascending: false });
     lentLoans = data || [];
@@ -88,7 +95,10 @@ export default async function DashboardPage() {
     if (businessProfile) {
       const { data: businessLoans } = await supabase
         .from('loans')
-        .select('*')
+        .select(`
+          *,
+          borrower:users!borrower_id(id, full_name, email, username)
+        `)
         .eq('business_lender_id', businessProfile.id)
         .order('created_at', { ascending: false });
       
@@ -103,10 +113,12 @@ export default async function DashboardPage() {
 
   const activeLoansAsBorrower = borrowedLoans.filter((l) => l.status === 'active');
   const activeLoansAsLender = lentLoans.filter((l) => l.status === 'active');
-  const pendingLoans = borrowedLoans.filter((l) => l.status === 'pending');
+  const pendingLoansAsBorrower = borrowedLoans.filter((l) => l.status === 'pending');
+  const pendingLoansAsLender = lentLoans.filter((l) => l.status === 'pending');
 
   const totalBorrowed = activeLoansAsBorrower.reduce((sum, l) => sum + (l.amount_remaining || 0), 0);
   const totalLent = activeLoansAsLender.reduce((sum, l) => sum + (l.amount_remaining || 0), 0);
+  const totalPendingCount = pendingLoansAsBorrower.length + pendingLoansAsLender.length;
 
   // Helper function to get Monday of current week
   const getMonday = (date: Date) => {
@@ -207,7 +219,7 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={userProfile} />
 
       <main className="flex-1">
@@ -215,10 +227,10 @@ export default async function DashboardPage() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-2xl font-display font-bold text-neutral-900">
+              <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
                 Welcome back, {userProfile.full_name?.split(' ')[0]} 👋
               </h1>
-              <p className="text-neutral-500 mt-1">Here&apos;s your loan overview</p>
+              <p className="text-neutral-500 dark:text-neutral-400 mt-1">Here&apos;s your loan overview</p>
             </div>
             <Link href="/loans/new">
               <Button>
@@ -232,51 +244,51 @@ export default async function DashboardPage() {
           {userProfile.user_type === 'individual' && profile?.verification_status !== 'verified' && (
             <div className={`mb-6 p-4 rounded-xl border ${
               profile?.verification_status === 'submitted' 
-                ? 'bg-blue-50 border-blue-200'
+                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
                 : profile?.verification_status === 'rejected'
-                ? 'bg-red-50 border-red-200'
-                : 'bg-yellow-50 border-yellow-200'
+                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
             }`}>
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   profile?.verification_status === 'submitted'
-                    ? 'bg-blue-100'
+                    ? 'bg-blue-100 dark:bg-blue-900/30'
                     : profile?.verification_status === 'rejected'
-                    ? 'bg-red-100'
-                    : 'bg-yellow-100'
+                    ? 'bg-red-100 dark:bg-red-900/30'
+                    : 'bg-yellow-100 dark:bg-yellow-900/30'
                 }`}>
                   <Shield className={`w-5 h-5 ${
                     profile?.verification_status === 'submitted'
-                      ? 'text-blue-600'
+                      ? 'text-blue-600 dark:text-blue-400'
                       : profile?.verification_status === 'rejected'
-                      ? 'text-red-600'
-                      : 'text-yellow-600'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-yellow-600 dark:text-yellow-400'
                   }`} />
                 </div>
                 <div className="flex-1">
                   {profile?.verification_status === 'submitted' ? (
                     <>
-                      <h3 className="font-semibold text-blue-800 mb-1">Verification In Progress</h3>
-                      <p className="text-sm text-blue-700">
+                      <h3 className="font-semibold text-blue-800 dark:text-blue-300 mb-1">Verification In Progress</h3>
+                      <p className="text-sm text-blue-700 dark:text-blue-400">
                         Your documents are being reviewed. This usually takes 1-2 business days.
                       </p>
                     </>
                   ) : profile?.verification_status === 'rejected' ? (
                     <>
-                      <h3 className="font-semibold text-red-800 mb-1">Verification Rejected</h3>
-                      <p className="text-sm text-red-700 mb-3">
+                      <h3 className="font-semibold text-red-800 dark:text-red-300 mb-1">Verification Rejected</h3>
+                      <p className="text-sm text-red-700 dark:text-red-400 mb-3">
                         {profile?.verification_notes || 'Your verification was rejected. Please resubmit with valid documents.'}
                       </p>
                       <Link href="/verify">
-                        <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-100">
+                        <Button size="sm" variant="outline" className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30">
                           Resubmit Verification
                         </Button>
                       </Link>
                     </>
                   ) : (
                     <>
-                      <h3 className="font-semibold text-yellow-800 mb-1">Complete Your Verification</h3>
-                      <p className="text-sm text-yellow-700 mb-3">
+                      <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Complete Your Verification</h3>
+                      <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-3">
                         Verify your identity, employment, and address to start borrowing. This helps lenders trust you.
                       </p>
                       <Link href="/verify">
@@ -294,10 +306,10 @@ export default async function DashboardPage() {
 
           {/* Verification Complete Banner */}
           {userProfile.user_type === 'individual' && profile?.verification_status === 'verified' && (
-            <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+            <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
               <div className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600" />
-                <span className="text-sm text-green-700 font-medium">
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <span className="text-sm text-green-700 dark:text-green-400 font-medium">
                   ✓ Your identity is verified - You can now request loans from businesses
                 </span>
               </div>
@@ -337,7 +349,7 @@ export default async function DashboardPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Application Under Review</h3>
                   <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                    Your business profile for <strong>{businessProfile.business_name}</strong> is being reviewed. 
+                    Your business profile for <strong className="text-yellow-900 dark:text-yellow-300">{businessProfile.business_name}</strong> is being reviewed. 
                     This usually takes 1-2 business days. We'll email you once it's approved!
                   </p>
                 </div>
@@ -352,7 +364,7 @@ export default async function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
                   <span className="text-sm text-green-700 dark:text-green-400 font-medium">
-                    ✓ <strong>{businessProfile.business_name}</strong> is verified and active
+                    ✓ <strong className="text-green-800 dark:text-green-300">{businessProfile.business_name}</strong> is verified and active
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -377,11 +389,11 @@ export default async function DashboardPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-red-800 dark:text-red-300 mb-1">Business Application Not Approved</h3>
                   <p className="text-sm text-red-700 dark:text-red-400 mb-3">
-                    Your application for <strong>{businessProfile.business_name}</strong> was not approved. 
+                    Your application for <strong className="text-red-900 dark:text-red-300">{businessProfile.business_name}</strong> was not approved. 
                     Please contact support for more information or to resubmit.
                   </p>
                   <a href="mailto:support@feyza.app">
-                    <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30">
+                    <Button variant="outline" size="sm" className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30">
                       Contact Support
                     </Button>
                   </a>
@@ -403,7 +415,7 @@ export default async function DashboardPage() {
                     Link your bank account to receive loan funds and make repayments securely. We use bank-level encryption to keep your information safe.
                   </p>
                   <Link href="/settings?tab=payments">
-                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white">
+                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700 text-white">
                       <Building className="w-4 h-4 mr-2" />
                       Connect Bank
                     </Button>
@@ -455,7 +467,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="borrowed" className="relative">
                 Borrowed
                 {activeLoansAsBorrower.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-primary-100 text-primary-700 rounded-full">
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full">
                     {activeLoansAsBorrower.length}
                   </span>
                 )}
@@ -463,16 +475,16 @@ export default async function DashboardPage() {
               <TabsTrigger value="lent" className="relative">
                 Lent
                 {activeLoansAsLender.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
                     {activeLoansAsLender.length}
                   </span>
                 )}
               </TabsTrigger>
               <TabsTrigger value="pending" className="relative">
                 Pending
-                {pendingLoans.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
-                    {pendingLoans.length}
+                {totalPendingCount > 0 && (
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full">
+                    {totalPendingCount}
                   </span>
                 )}
               </TabsTrigger>
@@ -518,18 +530,46 @@ export default async function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="pending">
-              {pendingLoans.length > 0 ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {pendingLoans.map((loan) => (
-                    <LoanCard
-                      key={loan.id}
-                      loan={{
-                        ...loan,
-                        lender: loan.lender || loan.business_lender,
-                      }}
-                      role="borrower"
-                    />
-                  ))}
+              {totalPendingCount > 0 ? (
+                <div className="space-y-6">
+                  {/* Pending requests you sent (as borrower) */}
+                  {pendingLoansAsBorrower.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                        Requests You Sent ({pendingLoansAsBorrower.length})
+                      </h3>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {pendingLoansAsBorrower.map((loan) => (
+                          <LoanCard
+                            key={loan.id}
+                            loan={{
+                              ...loan,
+                              lender: loan.lender || loan.business_lender,
+                            }}
+                            role="borrower"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pending requests you received (as lender) */}
+                  {pendingLoansAsLender.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                        Requests You Received ({pendingLoansAsLender.length})
+                      </h3>
+                      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {pendingLoansAsLender.map((loan) => (
+                          <LoanCard
+                            key={loan.id}
+                            loan={loan}
+                            role="lender"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <EmptyState
@@ -545,14 +585,14 @@ export default async function DashboardPage() {
             <Link href="/loans/new">
               <Card hover className="group">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-primary-100 rounded-xl group-hover:bg-primary-200 transition-colors">
-                    <Plus className="w-6 h-6 text-primary-600" />
+                  <div className="p-3 bg-primary-100 dark:bg-primary-900/30 rounded-xl group-hover:bg-primary-200 dark:group-hover:bg-primary-900/50 transition-colors">
+                    <Plus className="w-6 h-6 text-primary-600 dark:text-primary-500" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-neutral-900">Request a Loan</h3>
-                    <p className="text-sm text-neutral-500">From business or personal network</p>
+                    <h3 className="font-semibold text-neutral-900 dark:text-white">Request a Loan</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">From business or personal network</p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-primary-600 transition-colors" />
+                  <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
                 </div>
               </Card>
             </Link>
@@ -560,14 +600,14 @@ export default async function DashboardPage() {
             <Link href="/loans">
               <Card hover className="group">
                 <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-100 rounded-xl group-hover:bg-blue-200 transition-colors">
-                    <FileText className="w-6 h-6 text-blue-600" />
+                  <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
+                    <FileText className="w-6 h-6 text-blue-600 dark:text-blue-500" />
                   </div>
                   <div className="flex-1">
-                    <h3 className="font-semibold text-neutral-900">View All Loans</h3>
-                    <p className="text-sm text-neutral-500">See your complete history</p>
+                    <h3 className="font-semibold text-neutral-900 dark:text-white">View All Loans</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">See your complete history</p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-blue-600 transition-colors" />
+                  <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-blue-600 dark:group-hover:text-blue-500 transition-colors" />
                 </div>
               </Card>
             </Link>
@@ -576,14 +616,14 @@ export default async function DashboardPage() {
               <Link href="/business">
                 <Card hover className="group">
                   <div className="flex items-center gap-4">
-                    <div className="p-3 bg-accent-100 rounded-xl group-hover:bg-accent-200 transition-colors">
-                      <TrendingUp className="w-6 h-6 text-accent-600" />
+                    <div className="p-3 bg-accent-100 dark:bg-accent-900/30 rounded-xl group-hover:bg-accent-200 dark:group-hover:bg-accent-900/50 transition-colors">
+                      <TrendingUp className="w-6 h-6 text-accent-600 dark:text-accent-500" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-neutral-900">Business Dashboard</h3>
-                      <p className="text-sm text-neutral-500">Manage your lending business</p>
+                      <h3 className="font-semibold text-neutral-900 dark:text-white">Business Dashboard</h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">Manage your lending business</p>
                     </div>
-                    <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-accent-600 transition-colors" />
+                    <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-accent-600 dark:group-hover:text-accent-500 transition-colors" />
                   </div>
                 </Card>
               </Link>
@@ -609,10 +649,10 @@ function EmptyState({
   actionHref?: string;
 }) {
   return (
-    <Card className="text-center py-12">
-      <FileText className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
-      <h3 className="font-semibold text-neutral-900 mb-2">{title}</h3>
-      <p className="text-neutral-500 mb-6">{description}</p>
+    <Card className="text-center py-12 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+      <FileText className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
+      <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">{title}</h3>
+      <p className="text-neutral-500 dark:text-neutral-400 mb-6">{description}</p>
       {actionLabel && actionHref && (
         <Link href={actionHref}>
           <Button>{actionLabel}</Button>

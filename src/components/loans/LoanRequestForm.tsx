@@ -10,7 +10,7 @@ import { DisbursementMethodForm } from './DisbursementMethodForm';
 import { 
   Building2, Users, ChevronRight, ChevronLeft, MapPin, Percent, Info, 
   AlertCircle, FileText, CreditCard, Check, AlertTriangle, Shield,
-  TrendingUp, Lock, Star, Zap, Calendar, Clock, Edit3
+  TrendingUp, Lock, Star, Zap, Calendar, Clock, Edit3, Search, AtSign, Loader2
 } from 'lucide-react';
 
 // Full form data type
@@ -19,6 +19,7 @@ export interface LoanRequestFormData {
   businessId?: string;
   inviteEmail?: string;
   invitePhone?: string;
+  inviteUsername?: string;
   amount: number;
   currency: string;
   purpose?: string;
@@ -142,7 +143,14 @@ export function LoanRequestForm({
   const interestType = watch('interestType') || 'simple';
   const inviteEmail = watch('inviteEmail');
   const invitePhone = watch('invitePhone');
+  const inviteUsername = watch('inviteUsername');
   const startDate = watch('startDate');
+
+  // Username search state
+  const [usernameSearch, setUsernameSearch] = useState('');
+  const [usernameSearching, setUsernameSearching] = useState(false);
+  const [usernameFound, setUsernameFound] = useState<{ username: string; displayName: string } | null>(null);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
 
   // Calculate loan summary
   const termMonths = calculateLoanTermMonths(totalInstallments || 1, repaymentFrequency);
@@ -258,8 +266,9 @@ export function LoanRequestForm({
     } else if (lenderType === 'personal') {
       const email = getValues('inviteEmail');
       const phone = getValues('invitePhone');
-      if (!email && !phone) {
-        setStepError('Please enter an email address or phone number');
+      const username = getValues('inviteUsername');
+      if (!email && !phone && !username) {
+        setStepError('Please enter a username, email address, or phone number');
         return false;
       }
       if (email && !email.includes('@')) {
@@ -448,8 +457,43 @@ export function LoanRequestForm({
     { value: 'compound', label: 'Compound Interest' },
   ];
 
-  const canProceedStep2 = () => lenderType === 'business' ? true : !!(inviteEmail || invitePhone);
+  const canProceedStep2 = () => lenderType === 'business' ? true : !!(inviteEmail || invitePhone || inviteUsername);
   const canProceedStep3 = () => amount > 0 && totalInstallments > 0 && !!startDate;
+
+  // Search for username
+  const searchUsername = async (username: string) => {
+    const cleanUsername = username.replace(/^~/, '').toLowerCase().trim();
+    if (!cleanUsername || cleanUsername.length < 3) {
+      setUsernameFound(null);
+      setUsernameError(null);
+      setValue('inviteUsername', '');
+      return;
+    }
+
+    setUsernameSearching(true);
+    setUsernameError(null);
+
+    try {
+      const res = await fetch(`/api/user/username?username=${encodeURIComponent(cleanUsername)}`);
+      const data = await res.json();
+
+      if (data.found) {
+        setUsernameFound({ username: data.username, displayName: data.displayName });
+        setValue('inviteUsername', data.username);
+        setStepError(null);
+      } else {
+        setUsernameFound(null);
+        setValue('inviteUsername', '');
+        setUsernameError('User not found');
+      }
+    } catch (error) {
+      setUsernameError('Failed to search');
+      setUsernameFound(null);
+      setValue('inviteUsername', '');
+    } finally {
+      setUsernameSearching(false);
+    }
+  };
 
   // Progress indicator
   const totalSteps = 5;
@@ -459,13 +503,13 @@ export function LoanRequestForm({
     <form onSubmit={handleFormSubmit} className="space-y-6">
       {/* Progress Bar */}
       <div className="mb-6">
-        <div className="flex justify-between text-sm text-neutral-500 mb-2">
+        <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
           <span>Step {step} of {totalSteps}</span>
           <span>{Math.round(progressPercent)}% complete</span>
         </div>
-        <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
+        <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-primary-500 transition-all duration-300"
+            className="h-full bg-primary-500 dark:bg-primary-400 transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -473,9 +517,9 @@ export function LoanRequestForm({
 
       {/* Error Display */}
       {(stepError || submitError) && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-red-700">{stepError || submitError}</div>
+        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm text-red-700 dark:text-red-300">{stepError || submitError}</div>
         </div>
       )}
 
@@ -484,14 +528,14 @@ export function LoanRequestForm({
         <div className="space-y-6 animate-fade-in">
           {/* Bank Connection Check */}
           {!userBankConnected && (
-            <Card className="bg-yellow-50 border-yellow-200">
+            <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
-                  <CreditCard className="w-6 h-6 text-yellow-600" />
+                <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl flex items-center justify-center">
+                  <CreditCard className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900">Connect Bank First</h3>
-                  <p className="text-sm text-yellow-700 mt-1">
+                  <h3 className="font-semibold text-yellow-900 dark:text-yellow-200">Connect Bank First</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                     You need to connect your Bank account before requesting a loan. 
                     This ensures secure payment processing.
                   </p>
@@ -510,9 +554,9 @@ export function LoanRequestForm({
           )}
 
           {userBankConnected && (
-            <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-xl">
-              <Check className="w-5 h-5 text-green-600" />
-              <span className="text-sm text-green-700">Bank connected</span>
+            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl">
+              <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+              <span className="text-sm text-green-700 dark:text-green-300">Bank connected</span>
             </div>
           )}
 
@@ -521,14 +565,14 @@ export function LoanRequestForm({
             <>
               {/* Personal Lending Tier Card */}
               {(!lenderType || lenderType === 'personal') && borrowingLimit && (
-                <Card className="border-primary-200 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-neutral-800">
+                <Card className="border-primary-200 dark:border-primary-800 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-neutral-800">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        borrowingLimit.borrowingTier === 6 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' :
-                        (borrowingLimit.borrowingTier ?? 0) >= 4 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600' :
-                        (borrowingLimit.borrowingTier ?? 0) >= 2 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' :
-                        'bg-gray-100 dark:bg-gray-800 text-gray-600'
+                        borrowingLimit.borrowingTier === 6 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' :
+                        (borrowingLimit.borrowingTier ?? 0) >= 4 ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400' :
+                        (borrowingLimit.borrowingTier ?? 0) >= 2 ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' :
+                        'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
                       }`}>
                         <Star className="w-5 h-5" />
                       </div>
@@ -552,7 +596,7 @@ export function LoanRequestForm({
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">Borrowing Limit</p>
                         <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">Unlimited ✨</p>
                         {borrowingLimit.totalOutstanding > 0 && (
-                          <p className="text-xs text-neutral-400 mt-1">
+                          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
                             Outstanding: {formatCurrency(borrowingLimit.totalOutstanding)}
                           </p>
                         )}
@@ -567,13 +611,13 @@ export function LoanRequestForm({
                         </div>
                         <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-primary-500 transition-all"
+                            className="h-full bg-primary-500 dark:bg-primary-400 transition-all"
                             style={{ 
                               width: `${borrowingLimit.maxAmount ? ((borrowingLimit.availableAmount || 0) / borrowingLimit.maxAmount) * 100 : 0}%` 
                             }}
                           />
                         </div>
-                        <div className="flex justify-between text-xs text-neutral-400 mt-1">
+                        <div className="flex justify-between text-xs text-neutral-400 dark:text-neutral-500 mt-1">
                           <span>Outstanding: {formatCurrency(borrowingLimit.totalOutstanding)}</span>
                           <span>Tier Max: {formatCurrency(borrowingLimit.maxAmount || 0)}</span>
                         </div>
@@ -584,8 +628,8 @@ export function LoanRequestForm({
                   {/* Can't Borrow Warning */}
                   {!borrowingLimit.canBorrow && borrowingLimit.reason && (
                     <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-red-700 dark:text-red-400">{borrowingLimit.reason}</p>
+                      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-red-700 dark:text-red-300">{borrowingLimit.reason}</p>
                     </div>
                   )}
 
@@ -594,7 +638,7 @@ export function LoanRequestForm({
                     <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-neutral-600 dark:text-neutral-400">
-                          <TrendingUp className="w-4 h-4 inline mr-1 text-green-600" />
+                          <TrendingUp className="w-4 h-4 inline mr-1 text-green-600 dark:text-green-400" />
                           {borrowingLimit.loansNeededToUpgrade} more loan{(borrowingLimit.loansNeededToUpgrade ?? 0) > 1 ? 's' : ''} to unlock {formatCurrency(borrowingLimit.nextTierAmount || 0)}
                         </span>
                       </div>
@@ -631,7 +675,7 @@ export function LoanRequestForm({
 
                   {businessEligibility.isFirstTimeBorrower && (
                     <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-sm text-blue-700 dark:text-blue-400">
+                      <p className="text-sm text-blue-700 dark:text-blue-300">
                         <Info className="w-4 h-4 inline mr-1" />
                         <strong>First-time borrower:</strong> You'll be matched with lenders who accept new borrowers at your requested amount.
                       </p>
@@ -649,8 +693,8 @@ export function LoanRequestForm({
           )}
 
           <div className="text-center mb-4">
-            <h2 className="text-2xl font-bold text-neutral-900 mb-2">Who do you want to borrow from?</h2>
-            <p className="text-neutral-500">Choose your lender type to get started</p>
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Who do you want to borrow from?</h2>
+            <p className="text-neutral-500 dark:text-neutral-400">Choose your lender type to get started</p>
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -658,7 +702,7 @@ export function LoanRequestForm({
             <Card
               hover
               className={`cursor-pointer transition-all ${
-                lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''
+                lenderType === 'business' ? 'ring-2 ring-primary-500 dark:ring-primary-400 border-primary-500 dark:border-primary-400' : ''
               } ${!userBankConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
                 if (userBankConnected && userVerificationStatus === 'verified') {
@@ -669,18 +713,18 @@ export function LoanRequestForm({
               }}
             >
               <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 to-yellow-100 rounded-2xl flex items-center justify-center">
-                  <Building2 className="w-8 h-8 text-primary-600" />
+                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 dark:from-primary-900/30 to-yellow-100 dark:to-yellow-900/30 rounded-2xl flex items-center justify-center">
+                  <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
                 </div>
                 <div className="flex items-center justify-center gap-2 mb-2">
-                  <h3 className="font-semibold text-lg text-neutral-900">Business Lender</h3>
+                  <h3 className="font-semibold text-lg text-neutral-900 dark:text-white">Business Lender</h3>
                   <Zap className="w-4 h-4 text-yellow-500" />
                 </div>
-                <p className="text-sm text-neutral-500">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   We'll instantly match you with the best available lender
                 </p>
                 {userVerificationStatus !== 'verified' && (
-                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
+                  <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 flex items-center justify-center gap-1">
                     <Shield className="w-3 h-3" />
                     Requires verification
                   </p>
@@ -692,7 +736,7 @@ export function LoanRequestForm({
             <Card
               hover
               className={`cursor-pointer transition-all ${
-                lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''
+                lenderType === 'personal' ? 'ring-2 ring-primary-500 dark:ring-primary-400 border-primary-500 dark:border-primary-400' : ''
               } ${!userBankConnected ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
                 if (userBankConnected) {
@@ -704,11 +748,11 @@ export function LoanRequestForm({
               }}
             >
               <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-accent-100 rounded-2xl flex items-center justify-center">
-                  <Users className="w-8 h-8 text-accent-600" />
+                <div className="w-16 h-16 mx-auto mb-4 bg-accent-100 dark:bg-accent-900/30 rounded-2xl flex items-center justify-center">
+                  <Users className="w-8 h-8 text-accent-600 dark:text-accent-400" />
                 </div>
-                <h3 className="font-semibold text-lg text-neutral-900 mb-2">Friend or Family</h3>
-                <p className="text-sm text-neutral-500">
+                <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">Friend or Family</h3>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">
                   Send an invite to someone you know
                 </p>
               </div>
@@ -717,12 +761,12 @@ export function LoanRequestForm({
 
           {/* Verification Required Banner */}
           {userBankConnected && userVerificationStatus !== 'verified' && (
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+            <div className="mt-4 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
               <div className="flex items-start gap-3">
-                <Shield className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <Shield className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
                 <div className="flex-1">
-                  <p className="font-medium text-yellow-800">Verification Required for Business Loans</p>
-                  <p className="text-sm text-yellow-700 mt-1">
+                  <p className="font-medium text-yellow-800 dark:text-yellow-300">Verification Required for Business Loans</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
                     {userVerificationStatus === 'submitted' 
                       ? 'Your verification is being reviewed. You can still borrow from friends and family.'
                       : 'Complete your verification to borrow from registered businesses. You can still borrow from friends and family without verification.'}
@@ -762,7 +806,7 @@ export function LoanRequestForm({
           <button
             type="button"
             onClick={() => { setStep(1); setStepError(null); }}
-            className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+            className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
           >
             <ChevronLeft className="w-4 h-4" />
             Back
@@ -771,49 +815,116 @@ export function LoanRequestForm({
           {lenderType === 'business' ? (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 mb-2">Auto-Match Enabled</h2>
-                <p className="text-neutral-500">We'll find the best lender for you automatically</p>
+                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Auto-Match Enabled</h2>
+                <p className="text-neutral-500 dark:text-neutral-400">We'll find the best lender for you automatically</p>
               </div>
 
-              <Card className="bg-gradient-to-br from-primary-50 to-yellow-50 border-primary-200">
+              <Card className="bg-gradient-to-br from-primary-50 dark:from-primary-900/20 to-yellow-50 dark:to-yellow-900/20 border-primary-200 dark:border-primary-800">
                 <div className="text-center py-6">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 to-yellow-100 rounded-full flex items-center justify-center">
-                    <Zap className="w-8 h-8 text-primary-600" />
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 dark:from-primary-900/30 to-yellow-100 dark:to-yellow-900/30 rounded-full flex items-center justify-center">
+                    <Zap className="w-8 h-8 text-primary-600 dark:text-primary-400" />
                   </div>
-                  <h3 className="font-semibold text-lg text-neutral-900 mb-2">How It Works</h3>
+                  <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">How It Works</h3>
                   <div className="text-left max-w-md mx-auto space-y-3 mt-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800">1</div>
-                      <p className="text-sm text-neutral-600">You submit your loan request with your terms</p>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">1</div>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">You submit your loan request with your terms</p>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800">2</div>
-                      <p className="text-sm text-neutral-600">Our system finds business lenders matching your needs</p>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">2</div>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">Our system finds business lenders matching your needs</p>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800">3</div>
-                      <p className="text-sm text-neutral-600">Best match funds your loan instantly or within 24h</p>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">3</div>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">Best match funds your loan instantly or within 24h</p>
                     </div>
                   </div>
                 </div>
               </Card>
 
-              <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-start gap-3">
-                <Check className="w-5 h-5 text-green-600 mt-0.5" />
+              <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-start gap-3">
+                <Check className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
                 <div>
-                  <p className="font-medium text-green-800">No browsing required</p>
-                  <p className="text-sm text-green-700">Continue to set your loan details and we'll handle the rest</p>
+                  <p className="font-medium text-green-800 dark:text-green-300">No browsing required</p>
+                  <p className="text-sm text-green-700 dark:text-green-400">Continue to set your loan details and we'll handle the rest</p>
                 </div>
               </div>
             </>
           ) : (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 mb-2">Invite Your Lender</h2>
-                <p className="text-neutral-500">Enter their contact information to send an invite</p>
+                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Invite Your Lender</h2>
+                <p className="text-neutral-500 dark:text-neutral-400">Find them by Feyza username, or enter their contact info</p>
               </div>
 
               <div className="space-y-4">
+                {/* Username Search */}
+                <div className="p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    <AtSign className="w-4 h-4 inline mr-1" />
+                    Feyza Username
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-500 dark:text-primary-400 font-medium">~</span>
+                      <input
+                        type="text"
+                        value={usernameSearch}
+                        onChange={(e) => {
+                          setUsernameSearch(e.target.value);
+                          setUsernameError(null);
+                          setUsernameFound(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            searchUsername(usernameSearch);
+                          }
+                        }}
+                        placeholder="username"
+                        className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-primary-500 dark:focus:border-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => searchUsername(usernameSearch)}
+                      disabled={usernameSearching || !usernameSearch}
+                    >
+                      {usernameSearching ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Search className="w-4 h-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  {/* Username Found */}
+                  {usernameFound && (
+                    <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
+                      <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      <div>
+                        <p className="font-medium text-green-800 dark:text-green-300">~{usernameFound.username}</p>
+                        <p className="text-sm text-green-700 dark:text-green-400">{usernameFound.displayName}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Username Error */}
+                  {usernameError && (
+                    <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+                      <p className="text-sm text-red-700 dark:text-red-300">{usernameError}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-4 py-2">
+                  <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
+                  <span className="text-sm text-neutral-400 dark:text-neutral-500 font-medium">or invite by contact</span>
+                  <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
+                </div>
+
                 <Input
                   label="Email Address"
                   type="email"
@@ -824,7 +935,7 @@ export function LoanRequestForm({
                     setStepError(null);
                   }}
                 />
-                <div className="text-center text-sm text-neutral-400">or</div>
+                <div className="text-center text-sm text-neutral-400 dark:text-neutral-500">or</div>
                 <Input
                   label="Phone Number"
                   type="tel"
@@ -835,14 +946,17 @@ export function LoanRequestForm({
                     setStepError(null);
                   }}
                 />
+
+                {/* Hidden field to ensure inviteUsername is submitted */}
+                <input type="hidden" {...register('inviteUsername')} />
                 
-                <div className="pt-4 border-t border-neutral-200">
-                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
                     <div className="flex items-start gap-3">
-                      <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+                      <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
                       <div className="text-sm">
-                        <p className="font-medium text-blue-900">Interest rate set by lender</p>
-                        <p className="text-blue-700">
+                        <p className="font-medium text-blue-900 dark:text-blue-300">Interest rate set by lender</p>
+                        <p className="text-blue-700 dark:text-blue-400">
                           Your friend or family member will set the interest rate (if any) when they accept your request.
                         </p>
                       </div>
@@ -872,25 +986,25 @@ export function LoanRequestForm({
           <button
             type="button"
             onClick={() => { setStep(2); setStepError(null); }}
-            className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+            className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
           >
             <ChevronLeft className="w-4 h-4" />
             Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 mb-2">Loan Details</h2>
-            <p className="text-neutral-500">Specify the amount and repayment terms</p>
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Details</h2>
+            <p className="text-neutral-500 dark:text-neutral-400">Specify the amount and repayment terms</p>
           </div>
 
           {lenderType === 'business' && selectedBusiness && selectedBusiness.default_interest_rate > 0 && (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-start gap-3">
-              <Info className="w-5 h-5 text-blue-600 mt-0.5" />
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl flex items-start gap-3">
+              <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
               <div className="text-sm">
-                <p className="font-medium text-blue-900">
+                <p className="font-medium text-blue-900 dark:text-blue-300">
                   {selectedBusiness.business_name} charges {formatPercentage(selectedBusiness.default_interest_rate)} APR
                 </p>
-                <p className="text-blue-700">
+                <p className="text-blue-700 dark:text-blue-400">
                   Interest type: {selectedBusiness.interest_type === 'compound' ? 'Compound' : 'Simple'}
                 </p>
               </div>
@@ -909,7 +1023,7 @@ export function LoanRequestForm({
               />
               {/* Show available limit for personal lending */}
               {lenderType === 'personal' && borrowingLimit && borrowingLimit.borrowingTier && borrowingLimit.borrowingTier < 6 && (
-                <p className={`text-xs mt-1 ${isAmountOverLimit ? 'text-red-600 font-medium' : 'text-neutral-500 dark:text-neutral-400'}`}>
+                <p className={`text-xs mt-1 ${isAmountOverLimit ? 'text-red-600 dark:text-red-400 font-medium' : 'text-neutral-500 dark:text-neutral-400'}`}>
                   {isAmountOverLimit ? (
                     <>
                       <AlertCircle className="w-3 h-3 inline mr-1" />
@@ -948,13 +1062,13 @@ export function LoanRequestForm({
           {amount > 0 && repaymentPresets.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-neutral-700">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
                   Repayment Schedule *
                 </label>
                 <button
                   type="button"
                   onClick={() => setUseSmartSchedule(!useSmartSchedule)}
-                  className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+                  className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 flex items-center gap-1"
                 >
                   {useSmartSchedule ? (
                     <>
@@ -979,31 +1093,31 @@ export function LoanRequestForm({
                       onClick={() => setSelectedPresetIndex(index)}
                       className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
                         selectedPresetIndex === index
-                          ? 'border-primary-500 bg-primary-50'
-                          : 'border-neutral-200 hover:border-neutral-300'
+                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30'
+                          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
                       }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            selectedPresetIndex === index ? 'bg-primary-100' : 'bg-neutral-100'
+                            selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-800' : 'bg-neutral-100 dark:bg-neutral-700'
                           }`}>
                             <Calendar className={`w-5 h-5 ${
-                              selectedPresetIndex === index ? 'text-primary-600' : 'text-neutral-500'
+                              selectedPresetIndex === index ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'
                             }`} />
                           </div>
                           <div>
-                            <p className="font-medium text-neutral-900">{preset.label}</p>
-                            <p className="text-sm text-neutral-500">
+                            <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
                               {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'} payments
                             </p>
                           </div>
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-neutral-900">
+                          <p className="font-bold text-neutral-900 dark:text-white">
                             {formatCurrency(preset.paymentAmount)}
                           </p>
-                          <p className="text-xs text-neutral-500">per payment</p>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">per payment</p>
                         </div>
                       </div>
                     </button>
@@ -1027,7 +1141,7 @@ export function LoanRequestForm({
               )}
 
               {selectedPreset && useSmartSchedule && (
-                <div className="p-3 bg-primary-50 rounded-lg flex items-center gap-2 text-primary-700 text-sm">
+                <div className="p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg flex items-center gap-2 text-primary-700 dark:text-primary-300 text-sm">
                   <Clock className="w-4 h-4" />
                   <span>
                     You'll pay {formatCurrency(selectedPreset.paymentAmount)}{' '}
@@ -1064,27 +1178,27 @@ export function LoanRequestForm({
           />
 
           {amount > 0 && totalInstallments > 0 && (
-            <div className="p-4 bg-neutral-50 rounded-xl space-y-2">
-              <h4 className="font-semibold text-neutral-900">Loan Summary</h4>
+            <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl space-y-2">
+              <h4 className="font-semibold text-neutral-900 dark:text-white">Loan Summary</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-neutral-500">Principal:</span>
-                <span className="text-right font-medium">{formatCurrency(amount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Principal:</span>
+                <span className="text-right font-medium text-neutral-900 dark:text-white">{formatCurrency(amount)}</span>
                 
                 {interestRate > 0 && (
                   <>
-                    <span className="text-neutral-500">Interest Rate:</span>
-                    <span className="text-right font-medium">{formatPercentage(interestRate)} APR</span>
+                    <span className="text-neutral-500 dark:text-neutral-400">Interest Rate:</span>
+                    <span className="text-right font-medium text-neutral-900 dark:text-white">{formatPercentage(interestRate)} APR</span>
                     
-                    <span className="text-neutral-500">Total Interest:</span>
-                    <span className="text-right font-medium text-orange-600">{formatCurrency(totalInterest)}</span>
+                    <span className="text-neutral-500 dark:text-neutral-400">Total Interest:</span>
+                    <span className="text-right font-medium text-orange-600 dark:text-orange-400">{formatCurrency(totalInterest)}</span>
                   </>
                 )}
                 
-                <span className="text-neutral-500 font-medium">Total to Repay:</span>
-                <span className="text-right font-bold text-primary-600">{formatCurrency(totalAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium">Total to Repay:</span>
+                <span className="text-right font-bold text-primary-600 dark:text-primary-400">{formatCurrency(totalAmount)}</span>
                 
-                <span className="text-neutral-500">Per Installment:</span>
-                <span className="text-right font-medium">{formatCurrency(repaymentAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Per Installment:</span>
+                <span className="text-right font-medium text-neutral-900 dark:text-white">{formatCurrency(repaymentAmount)}</span>
               </div>
             </div>
           )}
@@ -1108,15 +1222,15 @@ export function LoanRequestForm({
           <button
             type="button"
             onClick={() => { setStep(3); setStepError(null); }}
-            className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+            className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
           >
             <ChevronLeft className="w-4 h-4" />
             Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 mb-2">How to Receive Money</h2>
-            <p className="text-neutral-500">Choose how you or your recipient will receive the funds</p>
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">How to Receive Money</h2>
+            <p className="text-neutral-500 dark:text-neutral-400">Choose how you or your recipient will receive the funds</p>
           </div>
 
           {/* Bank Transfer Info */}
@@ -1152,29 +1266,29 @@ export function LoanRequestForm({
           <button
             type="button"
             onClick={() => { setStep(4); setStepError(null); setSubmitError(null); }}
-            className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+            className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
           >
             <ChevronLeft className="w-4 h-4" />
             Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 mb-2">Review & Sign Agreement</h2>
-            <p className="text-neutral-500">Please review the loan terms and sign the agreement</p>
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Review & Sign Agreement</h2>
+            <p className="text-neutral-500 dark:text-neutral-400">Please review the loan terms and sign the agreement</p>
           </div>
 
           {/* Loan Summary Card */}
-          <Card className="bg-primary-50 border-primary-200">
-            <h4 className="font-semibold text-primary-900 mb-3">Loan Summary</h4>
+          <Card className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
+            <h4 className="font-semibold text-primary-900 dark:text-primary-200 mb-3">Loan Summary</h4>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <span className="text-primary-700">Principal:</span>
-              <span className="text-right font-medium text-primary-900">{formatCurrency(amount)}</span>
-              <span className="text-primary-700">Total to Repay:</span>
-              <span className="text-right font-bold text-primary-900">{formatCurrency(totalAmount)}</span>
-              <span className="text-primary-700">Installments:</span>
-              <span className="text-right font-medium text-primary-900">{totalInstallments} × {formatCurrency(repaymentAmount)}</span>
-              <span className="text-primary-700">Start Date:</span>
-              <span className="text-right font-medium text-primary-900">
+              <span className="text-primary-700 dark:text-primary-300">Principal:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-100">{formatCurrency(amount)}</span>
+              <span className="text-primary-700 dark:text-primary-300">Total to Repay:</span>
+              <span className="text-right font-bold text-primary-900 dark:text-primary-100">{formatCurrency(totalAmount)}</span>
+              <span className="text-primary-700 dark:text-primary-300">Installments:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-100">{totalInstallments} × {formatCurrency(repaymentAmount)}</span>
+              <span className="text-primary-700 dark:text-primary-300">Start Date:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-100">
                 {startDate ? new Date(startDate).toLocaleDateString() : '-'}
               </span>
             </div>
@@ -1183,21 +1297,21 @@ export function LoanRequestForm({
           {/* Terms Section */}
           <Card>
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-semibold text-neutral-900 flex items-center gap-2">
+              <h4 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 Loan Agreement Terms
               </h4>
               <button
                 type="button"
                 onClick={() => setShowFullTerms(!showFullTerms)}
-                className="text-sm text-primary-600 hover:text-primary-700"
+                className="text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300"
               >
                 {showFullTerms ? 'Hide' : 'Show'} full terms
               </button>
             </div>
 
             {showFullTerms && (
-              <div className="text-sm text-neutral-600 space-y-3 max-h-64 overflow-y-auto mb-4 p-4 bg-neutral-50 rounded-lg">
+              <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-3 max-h-64 overflow-y-auto mb-4 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
                 <p><strong>1. Loan Agreement</strong></p>
                 <p>
                   I agree to borrow {formatCurrency(amount)} and repay a total of {formatCurrency(totalAmount)} 
@@ -1219,9 +1333,9 @@ export function LoanRequestForm({
               </div>
             )}
 
-            <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-xl mb-4">
-              <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-              <div className="text-sm text-yellow-800">
+            <div className="flex items-start gap-3 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl mb-4">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+              <div className="text-sm text-yellow-800 dark:text-yellow-300">
                 By signing, you agree to repay this loan according to the terms above. 
                 This is a legally binding agreement.
               </div>
@@ -1235,9 +1349,9 @@ export function LoanRequestForm({
                   setAgreementAccepted(e.target.checked);
                   setStepError(null);
                 }}
-                className="mt-1 w-4 h-4 text-primary-600 rounded border-neutral-300 focus:ring-primary-500"
+                className="mt-1 w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-700"
               />
-              <span className="text-sm text-neutral-700">
+              <span className="text-sm text-neutral-700 dark:text-neutral-300">
                 I have read, understood, and agree to the loan agreement terms. 
                 I commit to repaying this loan as agreed.
               </span>

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Input } from '@/components/ui';
 import { Mail, ArrowRight, Shield, CreditCard, Calendar, AlertCircle } from 'lucide-react';
+import { FaCarCrash, FaHospital, FaGraduationCap, FaBriefcase, FaHome, FaFileAlt } from 'react-icons/fa';
 
 export default function BorrowerAccessPage() {
   const router = useRouter();

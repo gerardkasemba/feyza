@@ -19,8 +19,13 @@ import {
   Edit3,
   Building,
   Shield,
-  Loader2
+  Loader2,
+  Sparkles,
+  AlertTriangle,
+  Info,
+  Target
 } from 'lucide-react';
+import { FaLightbulb, FaExclamationTriangle } from 'react-icons/fa';
 import { formatCurrency } from '@/lib/utils';
 
 interface LoanData {
@@ -304,10 +309,10 @@ export default function LenderSetupLoanPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-neutral-600">Loading loan...</p>
+          <div className="w-12 h-12 border-4 border-primary-500 dark:border-primary-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-neutral-600 dark:text-neutral-400">Loading loan...</p>
         </div>
       </div>
     );
@@ -315,15 +320,15 @@ export default function LenderSetupLoanPage() {
 
   if (error || !loan) {
     return (
-      <div className="min-h-screen flex flex-col bg-neutral-50">
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
         <Navbar />
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="max-w-md w-full text-center">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="w-8 h-8 text-red-600" />
+            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-500" />
             </div>
-            <h1 className="text-xl font-bold text-neutral-900 mb-2">Invalid Link</h1>
-            <p className="text-neutral-600 mb-6">{error || 'This link is invalid or has expired.'}</p>
+            <h1 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Invalid Link</h1>
+            <p className="text-neutral-600 dark:text-neutral-400 mb-6">{error || 'This link is invalid or has expired.'}</p>
             <Link href="/">
               <Button>Go to Homepage</Button>
             </Link>
@@ -337,57 +342,62 @@ export default function LenderSetupLoanPage() {
   // Success screen after loan is funded
   if (success) {
     return (
-      <div className="min-h-screen flex flex-col bg-neutral-50">
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
         <Navbar />
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="max-w-lg w-full text-center">
-            <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-10 h-10 text-green-600" />
+            <div className="w-20 h-20 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-500" />
             </div>
-            <h1 className="text-2xl font-bold text-neutral-900 mb-2">Loan Funded! 🎉</h1>
-            <p className="text-neutral-600 mb-6">
-              Your loan of <strong>{formatCurrency(loan.amount, loan.currency)}</strong> has been sent to {loan.borrower_name || loan.borrower_invite_email}.
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Funded!</h1>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <Sparkles className="w-5 h-5 text-yellow-500 dark:text-yellow-400" />
+              <span className="text-yellow-600 dark:text-yellow-500 font-medium">Success!</span>
+            </div>
+            <p className="text-neutral-600 dark:text-neutral-400 mb-6">
+              Your loan of <strong className="text-neutral-900 dark:text-white">{formatCurrency(loan.amount, loan.currency)}</strong> has been sent to {loan.borrower_name || loan.borrower_invite_email}.
             </p>
             
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-              <div className="flex items-center justify-center gap-2 text-green-700">
+            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
                 <Building className="w-5 h-5" />
                 <span className="font-medium">ACH Transfer Initiated</span>
               </div>
-              <p className="text-sm text-green-600 mt-2">
+              <p className="text-sm text-green-600 dark:text-green-400 mt-2">
                 The borrower will receive the funds in 1-3 business days.
               </p>
             </div>
 
-            <div className="bg-neutral-50 rounded-xl p-4 mb-6 text-left">
-              <h3 className="font-semibold text-neutral-900 mb-3">Loan Summary</h3>
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 mb-6 text-left">
+              <h3 className="font-semibold text-neutral-900 dark:text-white mb-3">Loan Summary</h3>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Amount Sent</span>
-                  <span className="font-medium">{formatCurrency(loan.amount, loan.currency)}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Amount Sent</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(loan.amount, loan.currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Interest Rate</span>
-                  <span className="font-medium">{interestRate}% ({interestType})</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Interest Rate</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{interestRate}% ({interestType})</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Total to Receive</span>
-                  <span className="font-medium text-green-600">{formatCurrency(totalAmount, loan.currency)}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Total to Receive</span>
+                  <span className="font-medium text-green-600 dark:text-green-500">{formatCurrency(totalAmount, loan.currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Repayment</span>
-                  <span className="font-medium">{totalInstallments} {repaymentFrequency} payments</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Repayment</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{totalInstallments} {repaymentFrequency} payments</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">First Payment</span>
-                  <span className="font-medium">{new Date(startDate).toLocaleDateString()}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">First Payment</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{new Date(startDate).toLocaleDateString()}</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
-              <p className="text-sm text-blue-700">
-                ✅ <strong>Auto-Pay Enabled</strong> — Repayments will be automatically deposited to your bank account on each due date.
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-700 dark:text-blue-400">
+                <CheckCircle className="w-4 h-4 inline mr-1" />
+                <strong>Auto-Pay Enabled</strong> — Repayments will be automatically deposited to your bank account on each due date.
               </p>
             </div>
 
@@ -407,7 +417,7 @@ export default function LenderSetupLoanPage() {
               </Link>
             </div>
 
-            <p className="text-xs text-neutral-500 mt-6">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-6">
               A confirmation email has been sent to {lenderEmail}
             </p>
           </Card>
@@ -418,7 +428,7 @@ export default function LenderSetupLoanPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
       <Navbar />
 
       <main className="flex-1 py-12 px-4">
@@ -433,19 +443,19 @@ export default function LenderSetupLoanPage() {
 
           {/* Header */}
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-neutral-900 mb-2">Set Loan Terms</h1>
-            <p className="text-neutral-600">
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Set Loan Terms</h1>
+            <p className="text-neutral-600 dark:text-neutral-400">
               You're setting up a loan for {loan.borrower_name || loan.borrower_invite_email}
             </p>
           </div>
 
           {/* Loan Overview */}
-          <Card className="mb-6 bg-gradient-to-br from-primary-500 to-accent-500 text-white">
+          <Card className="mb-6 bg-gradient-to-br from-primary-500 to-accent-500 dark:from-primary-600 dark:to-accent-600 text-white">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-primary-100 text-sm">Loan Amount</p>
+                <p className="text-primary-100 dark:text-primary-200 text-sm">Loan Amount</p>
                 <p className="text-3xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
-                <p className="text-primary-100 text-sm mt-1">Purpose: {loan.purpose || 'Not specified'}</p>
+                <p className="text-primary-100 dark:text-primary-200 text-sm mt-1">Purpose: {loan.purpose || 'Not specified'}</p>
               </div>
               <div className="w-16 h-16 bg-white/20 rounded-xl flex items-center justify-center">
                 <DollarSign className="w-8 h-8" />
@@ -455,14 +465,14 @@ export default function LenderSetupLoanPage() {
 
           {/* Lender Details */}
           <Card className="mb-6">
-            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-primary-600" />
+            <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary-600 dark:text-primary-500" />
               Your Details
             </h2>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   Your Full Name <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -470,13 +480,15 @@ export default function LenderSetupLoanPage() {
                   value={lenderName}
                   onChange={(e) => setLenderName(e.target.value)}
                   placeholder="John Doe"
-                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${
-                    lenderName.trim() ? 'border-green-300 focus:ring-green-500' : 'border-neutral-200 focus:ring-primary-500'
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white ${
+                    lenderName.trim() 
+                      ? 'border-green-300 dark:border-green-700 focus:ring-green-500 dark:focus:ring-green-600' 
+                      : 'border-neutral-200 dark:border-neutral-700 focus:ring-primary-500 dark:focus:ring-primary-400'
                   }`}
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   Your Email Address <span className="text-red-500">*</span>
                 </label>
                 <input
@@ -484,16 +496,16 @@ export default function LenderSetupLoanPage() {
                   value={lenderEmail}
                   onChange={(e) => setLenderEmail(e.target.value)}
                   placeholder="you@example.com"
-                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 ${
+                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white ${
                     lenderEmail && isValidEmail(lenderEmail) 
-                      ? 'border-green-300 focus:ring-green-500' 
+                      ? 'border-green-300 dark:border-green-700 focus:ring-green-500 dark:focus:ring-green-600' 
                       : lenderEmail && !isValidEmail(lenderEmail)
-                        ? 'border-red-300 focus:ring-red-500'
-                        : 'border-neutral-200 focus:ring-primary-500'
+                        ? 'border-red-300 dark:border-red-700 focus:ring-red-500 dark:focus:ring-red-600'
+                        : 'border-neutral-200 dark:border-neutral-700 focus:ring-primary-500 dark:focus:ring-primary-400'
                   }`}
                 />
                 {lenderEmail && !isValidEmail(lenderEmail) && (
-                  <p className="text-xs text-red-500 mt-1">Please enter a valid email address</p>
+                  <p className="text-xs text-red-500 dark:text-red-400 mt-1">Please enter a valid email address</p>
                 )}
               </div>
             </div>
@@ -501,30 +513,33 @@ export default function LenderSetupLoanPage() {
 
           {/* Bank Connection */}
           <Card className="mb-6">
-            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <Building className="w-5 h-5 text-green-600" />
+            <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <Building className="w-5 h-5 text-green-600 dark:text-green-500" />
               Connect Your Bank
             </h2>
             
-            <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-4">
-              <p className="text-sm text-green-800">
-                💰 <strong>Why connect your bank?</strong> To send funds to {loan.borrower_name || 'the borrower'} and receive repayments automatically.
-              </p>
+            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-3 mb-4">
+              <div className="flex items-start gap-2">
+                <FaLightbulb className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-green-800 dark:text-green-400">
+                  <strong>Why connect your bank?</strong> To send funds to {loan.borrower_name || 'the borrower'} and receive repayments automatically.
+                </p>
+              </div>
             </div>
 
             {bankConnected && bankInfo ? (
-              <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+              <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                      <Building className="w-6 h-6 text-green-600" />
+                    <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+                      <Building className="w-6 h-6 text-green-600 dark:text-green-500" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold text-neutral-900">{bankInfo.bank_name}</span>
-                        <CheckCircle className="w-4 h-4 text-green-600" />
+                        <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
+                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-500" />
                       </div>
-                      <p className="text-sm text-neutral-500">
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
                         ••••{bankInfo.account_mask}
                       </p>
                     </div>
@@ -533,8 +548,8 @@ export default function LenderSetupLoanPage() {
               </div>
             ) : (
               <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
-                  <Building className="w-8 h-8 text-neutral-400" />
+                <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
+                  <Building className="w-8 h-8 text-neutral-400 dark:text-neutral-500" />
                 </div>
                 <Button
                   onClick={handleConnectBank}
@@ -553,15 +568,15 @@ export default function LenderSetupLoanPage() {
                   )}
                 </Button>
                 {(!lenderName || !lenderEmail) && (
-                  <p className="text-neutral-500 text-sm mt-2">Enter your name and email first</p>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm mt-2">Enter your name and email first</p>
                 )}
               </div>
             )}
 
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 mt-4">
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 mt-4">
               <div className="flex items-start gap-2">
-                <Shield className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-700">
+                <Shield className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-blue-700 dark:text-blue-400">
                   We use Plaid to securely connect. We never see your login credentials.
                 </p>
               </div>
@@ -572,28 +587,28 @@ export default function LenderSetupLoanPage() {
           {loan.proposed_frequency && loan.proposed_installments && (
             <Card className="mb-6">
               <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <ThumbsUp className="w-5 h-5 text-amber-600" />
+                <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <ThumbsUp className="w-5 h-5 text-amber-600 dark:text-amber-500" />
                 </div>
                 <div>
-                  <h2 className="font-semibold text-neutral-900">Borrower's Proposal</h2>
-                  <p className="text-sm text-neutral-500">
+                  <h2 className="font-semibold text-neutral-900 dark:text-white">Borrower's Proposal</h2>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
                     {loan.borrower_name || 'The borrower'} suggested these terms
                   </p>
                 </div>
               </div>
 
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+              <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-amber-700">Payment Schedule</p>
-                    <p className="font-semibold text-amber-900">
+                    <p className="text-sm text-amber-700 dark:text-amber-400">Payment Schedule</p>
+                    <p className="font-semibold text-amber-900 dark:text-amber-300">
                       {loan.proposed_installments} {loan.proposed_frequency} payments
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm text-amber-700">Each Payment</p>
-                    <p className="font-semibold text-amber-900">
+                    <p className="text-sm text-amber-700 dark:text-amber-400">Each Payment</p>
+                    <p className="font-semibold text-amber-900 dark:text-amber-300">
                       {formatCurrency(loan.proposed_payment_amount || 0, loan.currency)}
                     </p>
                   </div>
@@ -627,14 +642,14 @@ export default function LenderSetupLoanPage() {
 
           {/* Interest Rate */}
           <Card className="mb-6">
-            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <Percent className="w-5 h-5 text-primary-600" />
+            <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <Percent className="w-5 h-5 text-primary-600 dark:text-primary-500" />
               Interest Rate
             </h2>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   Annual Interest Rate (%)
                 </label>
                 <input
@@ -644,21 +659,21 @@ export default function LenderSetupLoanPage() {
                   min="0"
                   max="100"
                   step="0.5"
-                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
                 />
-                <p className="text-xs text-neutral-500 mt-1">
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                   Enter 0 for no interest
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   Interest Type
                 </label>
                 <select
                   value={interestType}
                   onChange={(e) => setInterestType(e.target.value as 'simple' | 'compound')}
-                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
                 >
                   <option value="simple">Simple Interest</option>
                   <option value="compound">Compound Interest</option>
@@ -670,20 +685,20 @@ export default function LenderSetupLoanPage() {
           {/* Repayment Schedule - Only show full controls if customizing */}
           {!useProposal && (
             <Card className="mb-6">
-              <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary-600" />
+              <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                 Custom Repayment Schedule
               </h2>
 
               <div className="grid grid-cols-2 gap-4 mb-4">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     Payment Frequency
                   </label>
                   <select
                     value={repaymentFrequency}
                     onChange={(e) => setRepaymentFrequency(e.target.value as any)}
-                    className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
                   >
                     <option value="weekly">Weekly</option>
                     <option value="biweekly">Bi-weekly</option>
@@ -692,7 +707,7 @@ export default function LenderSetupLoanPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     Number of Payments
                   </label>
                   <input
@@ -701,13 +716,13 @@ export default function LenderSetupLoanPage() {
                     onChange={(e) => setTotalInstallments(e.target.value)}
                     min="1"
                     max="120"
-                    className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-2">
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                   First Payment Date
                 </label>
                 <input
@@ -715,7 +730,7 @@ export default function LenderSetupLoanPage() {
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
                   min={new Date().toISOString().split('T')[0]}
-                  className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
                 />
               </div>
             </Card>
@@ -724,8 +739,8 @@ export default function LenderSetupLoanPage() {
           {/* Start Date - Only shown if using proposal */}
           {useProposal && (
             <Card className="mb-6">
-              <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-primary-600" />
+              <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                 First Payment Date
               </h2>
               <input
@@ -733,23 +748,23 @@ export default function LenderSetupLoanPage() {
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 min={new Date().toISOString().split('T')[0]}
-                className="w-full px-4 py-3 border border-neutral-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="w-full px-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
               />
-              <p className="text-xs text-neutral-500 mt-2">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
                 When should the borrower start making payments?
               </p>
             </Card>
           )}
 
           {/* Auto-Pay Info */}
-          <Card className="mb-6 bg-green-50 border-green-200">
+          <Card className="mb-6 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                <CheckCircle className="w-5 h-5 text-green-600" />
+              <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-500" />
               </div>
               <div>
-                <h3 className="font-semibold text-green-800">Auto-Pay Enabled</h3>
-                <p className="text-sm text-green-700 mt-1">
+                <h3 className="font-semibold text-green-800 dark:text-green-400">Auto-Pay Enabled</h3>
+                <p className="text-sm text-green-700 dark:text-green-400 mt-1">
                   Payments will be automatically processed on each due date. The borrower's bank will be charged and funds will be sent directly to your account.
                 </p>
               </div>
@@ -757,47 +772,50 @@ export default function LenderSetupLoanPage() {
           </Card>
 
           {/* Calculation Summary */}
-          <Card className="mb-6 bg-neutral-50">
-            <h2 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <Calculator className="w-5 h-5 text-primary-600" />
+          <Card className="mb-6 bg-neutral-50 dark:bg-neutral-800/50">
+            <h2 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <Calculator className="w-5 h-5 text-primary-600 dark:text-primary-500" />
               Loan Summary
             </h2>
 
             <div className="space-y-3">
               <div className="flex justify-between">
-                <span className="text-neutral-600">Principal</span>
-                <span className="font-medium">{formatCurrency(loan.amount, loan.currency)}</span>
+                <span className="text-neutral-600 dark:text-neutral-400">Principal</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(loan.amount, loan.currency)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-neutral-600">Total Interest</span>
-                <span className="font-medium">{formatCurrency(totalInterest, loan.currency)}</span>
+                <span className="text-neutral-600 dark:text-neutral-400">Total Interest</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(totalInterest, loan.currency)}</span>
               </div>
-              <div className="flex justify-between border-t pt-3">
-                <span className="font-semibold">Total to Repay</span>
-                <span className="font-bold text-primary-600">{formatCurrency(totalAmount, loan.currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-neutral-600">Each Payment</span>
-                <span className="font-medium">{formatCurrency(repaymentAmount, loan.currency)}</span>
+              <div className="flex justify-between border-t pt-3 border-neutral-200 dark:border-neutral-700">
+                <span className="font-semibold text-neutral-900 dark:text-white">Total to Repay</span>
+                <span className="font-bold text-primary-600 dark:text-primary-500">{formatCurrency(totalAmount, loan.currency)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-neutral-600">Payment Schedule</span>
-                <span className="font-medium">{totalInstallments} {repaymentFrequency} payments</span>
+                <span className="text-neutral-600 dark:text-neutral-400">Each Payment</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(repaymentAmount, loan.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-neutral-600 dark:text-neutral-400">Payment Schedule</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{totalInstallments} {repaymentFrequency} payments</span>
               </div>
             </div>
           </Card>
 
           {/* Warning about funds being sent */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
-            <p className="text-sm text-amber-800">
-              ⚠️ <strong>Important:</strong> Clicking the button below will immediately transfer <strong>{formatCurrency(loan.amount, loan.currency)}</strong> from your bank account to the borrower.
-            </p>
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-4">
+            <div className="flex items-start gap-2">
+              <FaExclamationTriangle className="w-4 h-4 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800 dark:text-amber-400">
+                <strong>Important:</strong> Clicking the button below will immediately transfer <strong className="text-amber-900 dark:text-amber-300">{formatCurrency(loan.amount, loan.currency)}</strong> from your bank account to the borrower.
+              </p>
+            </div>
           </div>
 
           {/* Submit Button */}
           <Button 
             size="lg" 
-            className="w-full bg-green-600 hover:bg-green-700" 
+            className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600" 
             onClick={handleSubmit}
             disabled={saving || !bankConnected || !lenderName || !lenderEmail || !isValidEmail(lenderEmail)}
           >
@@ -814,7 +832,7 @@ export default function LenderSetupLoanPage() {
             )}
           </Button>
 
-          <p className="text-sm text-center text-neutral-500 mt-4">
+          <p className="text-sm text-center text-neutral-500 dark:text-neutral-400 mt-4">
             Funds will be sent via ACH transfer (1-3 business days)
           </p>
         </div>

@@ -5,15 +5,23 @@ export interface User {
   full_name: string;
   phone?: string;
   avatar_url?: string;
+  username?: string;
   user_type: 'individual' | 'business';
-  // Payment Methods
+  // Bank Connection (Plaid + Dwolla)
+  bank_connected: boolean;
+  bank_name?: string;
+  bank_account_mask?: string;
+  bank_account_type?: string;
+  bank_connected_at?: string;
+  dwolla_customer_id?: string;
+  dwolla_customer_url?: string;
+  dwolla_funding_source_id?: string;
+  dwolla_funding_source_url?: string;
+  plaid_access_token?: string;
+  plaid_item_id?: string;
+  plaid_account_id?: string;
+  paypal_connected?: string;
   paypal_email?: string;
-  paypal_payer_id?: string;
-  paypal_connected: boolean;
-  paypal_connected_at?: string;
-  cashapp_username?: string;  // e.g., "$johndoe"
-  venmo_username?: string;    // e.g., "@johndoe"
-  preferred_payment_method?: 'paypal' | 'cashapp' | 'venmo';  // User's favorite
   // Notification preferences
   email_reminders: boolean;
   reminder_days_before: number;
@@ -67,7 +75,7 @@ export interface BusinessProfile {
 }
 
 // Disbursement types
-export type DisbursementMethod = 'paypal' | 'mobile_money' | 'cash_pickup' | 'bank_transfer';
+export type DisbursementMethod = 'bank_transfer' | 'mobile_money' | 'cash_pickup';
 export type MobileMoneyProvider = 'mpesa' | 'airtel' | 'mtn' | 'orange' | 'tigo' | 'other';
 export type PickerIdType = 'passport' | 'national_id' | 'drivers_license';
 
@@ -87,8 +95,12 @@ export interface Loan {
   // For invite-based loans
   invite_email?: string;
   invite_phone?: string;
+  invite_username?: string;
   invite_token?: string;
   invite_accepted: boolean;
+  
+  // Borrower name (for display)
+  borrower_name?: string;
   
   // Loan details
   amount: number;
@@ -175,8 +187,11 @@ export interface Loan {
   borrower_invite_email?: string;
   borrower_access_token?: string;
   borrower_access_token_expires?: string;
-  borrower_payment_method?: 'paypal' | 'cashapp' | 'venmo';
-  borrower_payment_username?: string;
+  
+  // Dwolla transfer tracking
+  disbursement_status?: 'pending' | 'processing' | 'completed' | 'failed';
+  disbursement_transfer_id?: string;
+  disbursed_at?: string;
   
   // Timestamps
   created_at: string;
@@ -200,7 +215,8 @@ export interface Payment {
   confirmation_date?: string;
   note?: string;
   proof_url?: string;
-  paypal_transaction_id?: string;
+  dwolla_transfer_id?: string;
+  dwolla_transfer_url?: string;
   created_at: string;
 }
 
@@ -232,10 +248,12 @@ export type NotificationType =
   | 'loan_declined'
   | 'loan_cancelled'
   | 'contract_signed'
-  | 'paypal_required'
+  | 'bank_required'
   | 'loan_match_offer'
   | 'funds_sent'
-  | 'funds_disbursed';
+  | 'funds_disbursed'
+  | 'transfer_completed'
+  | 'transfer_failed';
 
 export interface Notification {
   id: string;

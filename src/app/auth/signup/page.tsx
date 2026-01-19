@@ -73,27 +73,27 @@ function SignUpContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 mb-8 transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to home
         </Link>
 
-        <Card className="animate-fade-in">
+        <Card className="animate-fade-in bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
           <div className="text-center mb-8">
-            <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center mx-auto mb-4">
+            <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 dark:from-primary-600 dark:to-primary-700 rounded-xl flex items-center justify-center mx-auto mb-4">
               <span className="text-white font-bold text-xl">FZ</span>
             </div>
-            <h1 className="text-2xl font-display font-bold text-neutral-900">Create your account</h1>
-            <p className="text-neutral-500 mt-1">Start tracking loans in minutes</p>
+            <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">Create your account</h1>
+            <p className="text-neutral-500 dark:text-neutral-400 mt-1">Start tracking loans in minutes</p>
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-700 dark:text-red-400">
               {error}
             </div>
           )}
@@ -101,15 +101,15 @@ function SignUpContent() {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
             {/* Account Type Selection */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-neutral-700">Account Type</label>
+              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">Account Type</label>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setValue('userType', 'individual')}
                   className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all ${
                     userType === 'individual'
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'
+                      ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
                   }`}
                 >
                   <User className="w-5 h-5" />
@@ -120,8 +120,8 @@ function SignUpContent() {
                   onClick={() => setValue('userType', 'business')}
                   className={`flex items-center justify-center gap-2 p-4 rounded-xl border-2 transition-all ${
                     userType === 'business'
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-neutral-200 text-neutral-600 hover:border-neutral-300'
+                      ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                      : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
                   }`}
                 >
                   <Building2 className="w-5 h-5" />
@@ -136,6 +136,7 @@ function SignUpContent() {
               placeholder="John Doe"
               {...register('fullName')}
               error={errors.fullName?.message}
+              className="bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white"
             />
 
             <Input
@@ -144,6 +145,7 @@ function SignUpContent() {
               placeholder="you@example.com"
               {...register('email')}
               error={errors.email?.message}
+              className="bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white"
             />
 
             <Input
@@ -153,15 +155,16 @@ function SignUpContent() {
               {...register('password')}
               error={errors.password?.message}
               helperText="At least 8 characters"
+              className="bg-white dark:bg-neutral-800 border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-white"
             />
 
-            <div className="text-sm text-neutral-500">
+            <div className="text-sm text-neutral-500 dark:text-neutral-400">
               By signing up, you agree to our{' '}
-              <Link href="/terms" className="text-primary-600 hover:underline">
+              <Link href="/terms" className="text-primary-600 dark:text-primary-400 hover:underline">
                 Terms of Service
               </Link>{' '}
               and{' '}
-              <Link href="/privacy" className="text-primary-600 hover:underline">
+              <Link href="/privacy" className="text-primary-600 dark:text-primary-400 hover:underline">
                 Privacy Policy
               </Link>
             </div>
@@ -171,11 +174,11 @@ function SignUpContent() {
             </Button>
           </form>
 
-          <p className="text-center text-sm text-neutral-500 mt-6">
+          <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-6">
             Already have an account?{' '}
             <Link 
               href={redirectUrl ? `/auth/signin?redirect=${encodeURIComponent(redirectUrl)}` : '/auth/signin'} 
-              className="text-primary-600 hover:text-primary-700 font-medium"
+              className="text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 font-medium"
             >
               Sign in
             </Link>
@@ -189,8 +192,8 @@ function SignUpContent() {
 export default function SignUpPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-neutral-500">Loading...</div>
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center">
+        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     }>
       <SignUpContent />

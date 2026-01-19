@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { Button } from '@/components/ui';
 import { Building, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { FaBuilding, FaExclamationTriangle, FaCreditCard } from 'react-icons/fa';
+
 
 interface PlaidLinkButtonProps {
   onSuccess: (data: {
@@ -116,7 +118,7 @@ export function PlaidLinkButton({
   if (error) {
     return (
       <div className="text-center">
-        <div className="flex items-center justify-center gap-2 text-red-600 mb-2">
+        <div className="flex items-center justify-center gap-2 text-red-600 dark:text-red-400 mb-2">
           <AlertCircle className="w-4 h-4" />
           <span className="text-sm">{error}</span>
         </div>
@@ -129,6 +131,7 @@ export function PlaidLinkButton({
             // Re-fetch link token
             window.location.reload();
           }}
+          className="border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
         >
           Try Again
         </Button>
@@ -149,7 +152,7 @@ export function PlaidLinkButton({
         </>
       ) : (
         <>
-          <Building className="w-4 h-4 mr-2" />
+          <FaBuilding className="w-4 h-4 mr-2" />
           {buttonText}
         </>
       )}
@@ -178,12 +181,12 @@ export function ConnectedBank({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 bg-green-100 dark:bg-green-900/40 rounded-xl flex items-center justify-center">
-            <Building className="w-6 h-6 text-green-600 dark:text-green-400" />
+            <FaBuilding className="w-6 h-6 text-green-600 dark:text-green-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <span className="font-semibold text-neutral-900 dark:text-white">{bankName}</span>
-              <CheckCircle className="w-4 h-4 text-green-600" />
+              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
             </div>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
               {accountType && `${accountType.charAt(0).toUpperCase() + accountType.slice(1)} • `}
@@ -194,7 +197,12 @@ export function ConnectedBank({
         
         <div className="flex items-center gap-2">
           {onUpdate && (
-            <Button variant="outline" size="sm" onClick={onUpdate}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onUpdate}
+              className="border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+            >
               Update
             </Button>
           )}
@@ -203,7 +211,7 @@ export function ConnectedBank({
               variant="outline" 
               size="sm" 
               onClick={onDisconnect}
-              className="text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+              className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
             >
               Disconnect
             </Button>
@@ -228,7 +236,7 @@ export function BankConnectionRequired({
     <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
       <div className="flex items-start gap-4">
         <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
-          <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+          <FaExclamationTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
         </div>
         <div className="flex-1">
           <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">
@@ -240,16 +248,19 @@ export function BankConnectionRequired({
           {onConnect ? (
             <Button 
               size="sm" 
-              className="bg-yellow-500 hover:bg-yellow-600 text-white"
+              className="bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white"
               onClick={onConnect}
             >
-              <Building className="w-4 h-4 mr-2" />
+              <FaCreditCard className="w-4 h-4 mr-2" />
               Connect Bank
             </Button>
           ) : (
             <a href="/settings?tab=payments">
-              <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-white">
-                <Building className="w-4 h-4 mr-2" />
+              <Button 
+                size="sm" 
+                className="bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white"
+              >
+                <FaCreditCard className="w-4 h-4 mr-2" />
                 Go to Settings
               </Button>
             </a>

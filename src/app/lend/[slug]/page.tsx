@@ -15,6 +15,10 @@ import {
   CreditCard, Hand, FileText, Sparkles,
   Heart
 } from 'lucide-react';
+import { FaShieldAlt, FaStar, FaRocket, FaHandshake } from 'react-icons/fa';
+import { GiTakeMyMoney } from 'react-icons/gi';
+import { IoMedicalOutline, IoBusinessOutline } from 'react-icons/io5';
+import { BsLightningCharge } from 'react-icons/bs';
 
 export default function PublicLenderPage() {
   const params = useParams();
@@ -81,7 +85,7 @@ export default function PublicLenderPage() {
         <Navbar user={user} />
         <div className="flex items-center justify-center min-h-[60vh]">
           <div className="text-center">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 border-3 border-green-600 border-t-transparent rounded-full animate-spin" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 border-3 border-green-600 dark:border-green-500 border-t-transparent rounded-full animate-spin" />
             <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400">Loading lender profile...</p>
           </div>
         </div>
@@ -104,7 +108,7 @@ export default function PublicLenderPage() {
               This lender profile is either private or has been removed.
             </p>
             <Link href="/loans/new">
-              <Button className="bg-green-600 hover:bg-green-700 text-white w-full sm:w-auto">
+              <Button className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white w-full sm:w-auto">
                 Browse All Lenders
               </Button>
             </Link>
@@ -135,13 +139,13 @@ export default function PublicLenderPage() {
       
       <main className="flex-1">
         {/* Hero Section */}
-        <div className="bg-green-600 text-white">
+        <div className="bg-green-600 dark:bg-green-700 text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
             {/* Mobile: Centered stack layout */}
             <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left gap-6 lg:gap-8">
               {/* Logo & Badges */}
               <div className="flex flex-col items-center lg:items-start">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 bg-white/10 rounded-xl sm:rounded-2xl border-2 border-white/20 flex items-center justify-center mb-3 sm:mb-4">
+                <div className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 bg-white/10 dark:bg-white/20 rounded-xl sm:rounded-2xl border-2 border-white/20 flex items-center justify-center mb-3 sm:mb-4">
                   {lender.logo_url ? (
                     <img 
                       src={lender.logo_url} 
@@ -149,23 +153,23 @@ export default function PublicLenderPage() {
                       className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-lg sm:rounded-xl object-cover"
                     />
                   ) : (
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-lg sm:rounded-xl bg-white/10 flex items-center justify-center">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-lg sm:rounded-xl bg-white/10 dark:bg-white/20 flex items-center justify-center">
                       <Building2 className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 text-white/80" />
                     </div>
                   )}
                 </div>
                 
                 <div className="flex flex-wrap justify-center lg:justify-start gap-1.5 sm:gap-2">
-                  <Badge className="bg-white/20 text-white border-white/30 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
+                  <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
                     <CheckCircle className="w-3 h-3 mr-1" />
                     Verified
                   </Badge>
-                  <Badge className="bg-white/20 text-white border-white/30 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
+                  <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
                     <Shield className="w-3 h-3 mr-1" />
                     Licensed
                   </Badge>
                   {lender.years_in_business && (
-                    <Badge className="bg-white/20 text-white border-white/30 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
+                    <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
                       <Calendar className="w-3 h-3 mr-1" />
                       {lender.years_in_business}+ yrs
                     </Badge>
@@ -178,7 +182,7 @@ export default function PublicLenderPage() {
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 break-words">
                   {lender.business_name}
                 </h1>
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-4 text-white/80 text-sm sm:text-base mb-3 sm:mb-4">
+                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-4 text-white/80 dark:text-white/90 text-sm sm:text-base mb-3 sm:mb-4">
                   <span className="flex items-center gap-1.5 sm:gap-2">
                     <Building2 className="w-4 h-4" />
                     {getBusinessTypeLabel(lender.business_type)}
@@ -192,7 +196,7 @@ export default function PublicLenderPage() {
                 </div>
                 
                 {lender.tagline && (
-                  <p className="text-base sm:text-lg text-white/90 mb-4 sm:mb-6 max-w-lg mx-auto lg:mx-0">
+                  <p className="text-base sm:text-lg text-white/90 dark:text-white/95 mb-4 sm:mb-6 max-w-lg mx-auto lg:mx-0">
                     {lender.tagline}
                   </p>
                 )}
@@ -202,14 +206,14 @@ export default function PublicLenderPage() {
               <div className="w-full sm:w-auto flex-shrink-0">
                 <Button 
                   size="lg" 
-                  className="w-full sm:w-auto bg-white text-green-700 hover:bg-neutral-100 text-base sm:text-lg px-6 py-3"
+                  className="w-full sm:w-auto bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200 text-base sm:text-lg px-6 py-3"
                   onClick={handleRequestLoan}
                 >
                   <Sparkles className="w-5 h-5 mr-2" />
                   Request a Loan
                   <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
-                <p className="text-white/70 text-xs sm:text-sm mt-2 sm:mt-3 text-center lg:text-left">
+                <p className="text-white/70 dark:text-white/80 text-xs sm:text-sm mt-2 sm:mt-3 text-center lg:text-left">
                   No hidden fees • No credit check
                 </p>
               </div>
@@ -221,23 +225,23 @@ export default function PublicLenderPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
           {/* Mobile: Quick Action Card at top */}
           <div className="lg:hidden mb-6">
-            <div className="bg-green-600 rounded-xl p-5 sm:p-6">
+            <div className="bg-green-600 dark:bg-green-700 rounded-xl p-5 sm:p-6">
               <div className="text-center">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 rounded-full bg-white/20 flex items-center justify-center">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 rounded-full bg-white/20 dark:bg-white/30 flex items-center justify-center">
                   <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                 </div>
                 <h3 className="text-base sm:text-lg font-bold text-white mb-2">Ready to apply?</h3>
-                <p className="text-green-100 text-sm mb-4">
+                <p className="text-green-100 dark:text-green-200 text-sm mb-4">
                   Get a decision in minutes. No obligation.
                 </p>
                 <Button 
-                  className="w-full bg-white text-green-700 hover:bg-neutral-100"
+                  className="w-full bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200"
                   onClick={handleRequestLoan}
                 >
                   <Heart className="w-5 h-5 mr-2" />
                   Apply Now
                 </Button>
-                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-green-200 text-xs sm:text-sm mt-4">
+                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-green-200 dark:text-green-300 text-xs sm:text-sm mt-4">
                   <span>✓ No credit check</span>
                   <span>✓ Funds in 24h</span>
                   <span>✓ Flexible terms</span>
@@ -325,7 +329,7 @@ export default function PublicLenderPage() {
                 {/* Feature Highlight */}
                 <div className="p-3 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
                   <div className="flex items-start gap-3">
-                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-green-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-green-500 dark:bg-green-600 flex items-center justify-center flex-shrink-0 mt-0.5">
                       <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
                     </div>
                     <div className="min-w-0">
@@ -374,7 +378,7 @@ export default function PublicLenderPage() {
                     return (
                       <div key={step.step} className="relative">
                         <div className="absolute -top-2 left-3 sm:left-4 z-10">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-600 text-white text-sm font-bold flex items-center justify-center border-2 border-white dark:border-neutral-900">
+                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-600 dark:bg-green-700 text-white text-sm font-bold flex items-center justify-center border-2 border-white dark:border-neutral-900">
                             {step.step}
                           </div>
                         </div>
@@ -447,7 +451,7 @@ export default function PublicLenderPage() {
                           {lender.website_url.replace(/^https?:\/\//, '')}
                         </p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-neutral-400 flex-shrink-0" />
+                      <ExternalLink className="w-4 h-4 text-neutral-400 dark:text-neutral-500 flex-shrink-0" />
                     </a>
                   )}
                 </div>
@@ -489,23 +493,23 @@ export default function PublicLenderPage() {
             {/* Right Column - Sidebar (Desktop only) */}
             <div className="hidden lg:block lg:w-1/3 space-y-6">
               {/* Quick Action Card */}
-              <div className="bg-green-600 rounded-xl border border-green-600 p-6">
+              <div className="bg-green-600 dark:bg-green-700 rounded-xl border border-green-600 dark:border-green-700 p-6">
                 <div className="text-center">
-                  <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-white/20 flex items-center justify-center">
+                  <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-white/20 dark:bg-white/30 flex items-center justify-center">
                     <Target className="w-6 h-6 text-white" />
                   </div>
                   <h3 className="text-lg font-bold text-white mb-2">Ready to apply?</h3>
-                  <p className="text-green-100 mb-4">
+                  <p className="text-green-100 dark:text-green-200 mb-4">
                     Get a decision in minutes. No obligation.
                   </p>
                   <Button 
-                    className="w-full bg-white text-green-700 hover:bg-neutral-100"
+                    className="w-full bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200"
                     onClick={handleRequestLoan}
                   >
                     <Heart className="w-5 h-5 mr-2" />
                     Apply Now
                   </Button>
-                  <p className="text-green-200 text-sm mt-4">
+                  <p className="text-green-200 dark:text-green-300 text-sm mt-4">
                     ✓ No credit check required<br />
                     ✓ Funds in 24 hours<br />
                     ✓ Flexible repayment
@@ -567,7 +571,7 @@ export default function PublicLenderPage() {
                         <p className="text-sm font-medium text-neutral-900 dark:text-white">Website</p>
                         <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{lender.website_url.replace(/^https?:\/\//, '')}</p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-neutral-400" />
+                      <ExternalLink className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
                     </a>
                   )}
                 </div>
@@ -611,7 +615,7 @@ export default function PublicLenderPage() {
         {/* Fixed Bottom CTA - Mobile only */}
         <div className="z-100 lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 safe-area-inset-bottom">
           <Button 
-            className="w-full bg-green-600 hover:bg-green-700 text-white py-3"
+            className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white py-3"
             onClick={handleRequestLoan}
           >
             <Sparkles className="w-5 h-5 mr-2" />

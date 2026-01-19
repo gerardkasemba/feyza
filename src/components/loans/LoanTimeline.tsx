@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { formatCurrency, formatDate, getPaymentStatus } from '@/lib/utils';
 import { PaymentScheduleItem } from '@/types';
 import { Check, Clock, AlertCircle, Circle } from 'lucide-react';
+import { GiTakeMyMoney, GiReceiveMoney } from 'react-icons/gi';
+import { MdEmergency, MdMedicalServices, MdSchool, MdBusinessCenter, MdHome, MdDescription } from 'react-icons/md';
 
 interface LoanTimelineProps {
   schedule: PaymentScheduleItem[];
@@ -16,7 +18,7 @@ export function LoanTimeline({ schedule, currency, showBreakdown = true }: LoanT
   return (
     <div className="relative">
       {/* Timeline line */}
-      <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-neutral-200" />
+      <div className="absolute left-5 top-0 bottom-0 w-0.5 bg-neutral-200 dark:bg-neutral-700" />
 
       <div className="space-y-4">
         {schedule.map((item, index) => {
@@ -27,26 +29,26 @@ export function LoanTimeline({ schedule, currency, showBreakdown = true }: LoanT
           const statusConfig = {
             paid: {
               icon: Check,
-              bgColor: 'bg-green-500',
-              textColor: 'text-green-700',
+              bgColor: 'bg-green-500 dark:bg-green-600',
+              textColor: 'text-green-700 dark:text-green-400',
               label: 'Paid',
             },
             upcoming: {
               icon: Circle,
-              bgColor: 'bg-neutral-200',
-              textColor: 'text-neutral-500',
+              bgColor: 'bg-neutral-200 dark:bg-neutral-600',
+              textColor: 'text-neutral-500 dark:text-neutral-400',
               label: 'Upcoming',
             },
             due: {
               icon: Clock,
-              bgColor: 'bg-yellow-500',
-              textColor: 'text-yellow-700',
+              bgColor: 'bg-yellow-500 dark:bg-yellow-600',
+              textColor: 'text-yellow-700 dark:text-yellow-400',
               label: 'Due soon',
             },
             overdue: {
               icon: AlertCircle,
-              bgColor: 'bg-red-500',
-              textColor: 'text-red-700',
+              bgColor: 'bg-red-500 dark:bg-red-600',
+              textColor: 'text-red-700 dark:text-red-400',
               label: 'Overdue',
             },
           };
@@ -63,38 +65,46 @@ export function LoanTimeline({ schedule, currency, showBreakdown = true }: LoanT
                   config.bgColor
                 )}
               >
-                <Icon className={cn('w-3.5 h-3.5', status === 'paid' ? 'text-white' : 'text-white')} />
+                <Icon className={cn('w-3.5 h-3.5', status === 'paid' ? 'text-white dark:text-white' : 'text-white dark:text-white')} />
               </div>
 
               {/* Content */}
               <div
                 className={cn(
-                  'flex-1 bg-white rounded-xl border p-4',
-                  status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-neutral-200'
+                  'flex-1 bg-white dark:bg-neutral-800 rounded-xl border p-4',
+                  status === 'overdue' 
+                    ? 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30' 
+                    : 'border-neutral-200 dark:border-neutral-700'
                 )}
               >
                 <div className="flex items-center justify-between mb-2">
                   <span className={cn('text-sm font-medium', config.textColor)}>
                     {config.label}
                   </span>
-                  <span className="text-sm text-neutral-500">{formatDate(item.due_date)}</span>
+                  <span className="text-sm text-neutral-500 dark:text-neutral-400">
+                    {formatDate(item.due_date)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-lg font-bold text-neutral-900">
+                    <span className="text-lg font-bold text-neutral-900 dark:text-white">
                       {formatCurrency(item.amount, currency)}
                     </span>
                     {/* Show breakdown if there's interest */}
                     {showBreakdown && hasInterest && (
-                      <div className="flex gap-3 mt-1 text-xs text-neutral-500">
-                        <span>Principal: {formatCurrency(item.principal_amount, currency)}</span>
-                        <span className="text-orange-600">Interest: {formatCurrency(item.interest_amount, currency)}</span>
+                      <div className="flex gap-3 mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                        <span>
+                          Principal: {formatCurrency(item.principal_amount, currency)}
+                        </span>
+                        <span className="text-orange-600 dark:text-orange-400">
+                          Interest: {formatCurrency(item.interest_amount, currency)}
+                        </span>
                       </div>
                     )}
                   </div>
                   {/* Auto-pay indicator for unpaid items */}
                   {!item.is_paid && (
-                    <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                    <span className="text-xs text-green-600 dark:text-green-400 font-medium flex items-center gap-1">
                       <Check className="w-3 h-3" />
                       Auto-pay
                     </span>

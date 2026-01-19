@@ -23,7 +23,7 @@ export function RecentActivity({ activities }: RecentActivityProps) {
   if (activities.length === 0) {
     return (
       <Card className="text-center py-12">
-        <p className="text-neutral-500">No recent activity</p>
+        <p className="text-neutral-500 dark:text-neutral-400">No recent activity</p>
       </Card>
     );
   }
@@ -43,15 +43,15 @@ function ActivityCard({ activity }: { activity: ActivityItem }) {
   const config = {
     loan_created: {
       icon: ArrowUpRight,
-      iconBg: 'bg-blue-100',
-      iconColor: 'text-blue-600',
+      iconBg: 'bg-blue-100 dark:bg-blue-900/30',
+      iconColor: 'text-blue-600 dark:text-blue-400',
       title: 'Loan requested',
       description: `You requested ${formatCurrency(loan.amount, loan.currency)}`,
     },
     payment_made: {
       icon: ArrowDownLeft,
-      iconBg: 'bg-yellow-100',
-      iconColor: 'text-yellow-600',
+      iconBg: 'bg-yellow-100 dark:bg-yellow-900/30',
+      iconColor: 'text-yellow-600 dark:text-yellow-400',
       title: 'Payment marked',
       description: payment
         ? `${formatCurrency(payment.amount, loan.currency)} marked as paid`
@@ -59,8 +59,8 @@ function ActivityCard({ activity }: { activity: ActivityItem }) {
     },
     payment_confirmed: {
       icon: Check,
-      iconBg: 'bg-green-100',
-      iconColor: 'text-green-600',
+      iconBg: 'bg-green-100 dark:bg-green-900/30',
+      iconColor: 'text-green-600 dark:text-green-400',
       title: 'Payment confirmed',
       description: payment
         ? `${formatCurrency(payment.amount, loan.currency)} confirmed`
@@ -68,8 +68,8 @@ function ActivityCard({ activity }: { activity: ActivityItem }) {
     },
     loan_accepted: {
       icon: Check,
-      iconBg: 'bg-green-100',
-      iconColor: 'text-green-600',
+      iconBg: 'bg-green-100 dark:bg-green-900/30',
+      iconColor: 'text-green-600 dark:text-green-400',
       title: 'Loan accepted',
       description: `${formatCurrency(loan.amount, loan.currency)} loan is now active`,
     },
@@ -84,10 +84,10 @@ function ActivityCard({ activity }: { activity: ActivityItem }) {
           <Icon className={`w-5 h-5 ${iconColor}`} />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium text-neutral-900">{title}</p>
-          <p className="text-sm text-neutral-500 truncate">{description}</p>
+          <p className="font-medium text-neutral-900 dark:text-white">{title}</p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{description}</p>
         </div>
-        <span className="text-xs text-neutral-400 whitespace-nowrap">
+        <span className="text-xs text-neutral-400 dark:text-neutral-500 whitespace-nowrap">
           {formatRelativeDate(timestamp)}
         </span>
       </Card>

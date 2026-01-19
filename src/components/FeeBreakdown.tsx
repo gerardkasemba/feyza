@@ -37,16 +37,16 @@ export function FeeBreakdown({
 
   if (variant === 'compact') {
     return (
-      <div className={`text-sm text-neutral-600 ${className}`}>
+      <div className={`text-sm text-neutral-600 dark:text-neutral-400 ${className}`}>
         <div className="flex items-center gap-1">
           <span>{feeLabel}:</span>
-          <span className="font-medium">{formatCurrency(platformFee)}</span>
+          <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(platformFee)}</span>
           {showTooltip && (
             <div className="relative group">
-              <Info className="w-3.5 h-3.5 text-neutral-400 cursor-help" />
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-neutral-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+              <Info className="w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500 cursor-help" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-neutral-900 dark:bg-neutral-800 text-white dark:text-neutral-100 text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg dark:shadow-neutral-900/50">
                 {feeDescription}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-900"></div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-800"></div>
               </div>
             </div>
           )}
@@ -56,7 +56,7 @@ export function FeeBreakdown({
   }
 
   return (
-    <div className={`bg-neutral-50 dark:bg-neutral-800 rounded-lg p-4 ${className}`}>
+    <div className={`bg-neutral-50 dark:bg-neutral-800/50 rounded-lg p-4 border border-neutral-200 dark:border-neutral-700 ${className}`}>
       <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
         Payment Breakdown
       </h4>
@@ -74,10 +74,10 @@ export function FeeBreakdown({
             <span className="text-neutral-600 dark:text-neutral-400">{feeLabel}</span>
             {showTooltip && (
               <div className="relative group">
-                <Info className="w-3.5 h-3.5 text-neutral-400 cursor-help" />
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-neutral-900 text-white text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                <Info className="w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500 cursor-help" />
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-neutral-900 dark:bg-neutral-800 text-white dark:text-neutral-100 text-xs rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50 shadow-lg dark:shadow-neutral-900/50">
                   {feeDescription}
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-900"></div>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-neutral-900 dark:border-t-neutral-800"></div>
                 </div>
               </div>
             )}

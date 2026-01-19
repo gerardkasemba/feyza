@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/client';
 import { PlaidLinkButton, ConnectedBank, BankConnectionRequired } from '@/components/payments/PlaidLink';
 import { 
   User, Bell, Shield, LogOut, Building, CheckCircle, 
-  AlertCircle, Key, Eye, EyeOff, Globe, Trash2
+  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2
 } from 'lucide-react';
 
 function SettingsContent() {
@@ -26,6 +26,9 @@ function SettingsContent() {
   // Form state
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
+  const [username, setUsername] = useState('');
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [reminderDays, setReminderDays] = useState('3');
   const [timezone, setTimezone] = useState('America/New_York');
@@ -63,6 +66,7 @@ function SettingsContent() {
           setProfile(profileData);
           setFullName(profileData.full_name || '');
           setPhone(profileData.phone || '');
+          setUsername(profileData.username || '');
           setEmailNotifications(profileData.email_reminders !== false);
           setReminderDays(String(profileData.reminder_days_before || 3));
           setTimezone(profileData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -141,6 +145,62 @@ function SettingsContent() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
       setMessage({ type: 'error', text: error.message || 'Failed to update settings' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const checkUsernameAvailability = async (value: string) => {
+    const cleanValue = value.toLowerCase().replace(/^~/, '').trim();
+    if (!cleanValue || cleanValue.length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    setCheckingUsername(true);
+    try {
+      const res = await fetch(`/api/user/username?username=${encodeURIComponent(cleanValue)}&check=true`);
+      const data = await res.json();
+      // If the username is the same as current user's, it's "available"
+      if (cleanValue === profile?.username) {
+        setUsernameAvailable(true);
+      } else {
+        setUsernameAvailable(data.available && data.valid);
+      }
+    } catch (error) {
+      setUsernameAvailable(null);
+    } finally {
+      setCheckingUsername(false);
+    }
+  };
+
+  const handleSaveUsername = async () => {
+    const cleanUsername = username.toLowerCase().replace(/^~/, '').trim();
+    if (!cleanUsername) return;
+
+    setSaving(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch('/api/user/username', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanUsername }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setProfile({ ...profile, username: cleanUsername });
+        setMessage({ type: 'success', text: `Username set to ~${cleanUsername}` });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to set username' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to set username' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
@@ -267,7 +327,7 @@ function SettingsContent() {
       <Navbar user={userProfile} />
 
       <main className="flex-1">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-6">Settings</h1>
 
           {message && (
@@ -320,40 +380,134 @@ function SettingsContent() {
             <div className="flex-1">
               {/* Profile Tab */}
               {activeTab === 'profile' && (
-                <Card>
-                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-6">Profile Information</h2>
-                  
-                  <form onSubmit={handleSaveProfile} className="space-y-4">
-                    <Input
-                      label="Email"
-                      type="email"
-                      value={user?.email || ''}
-                      disabled
-                      helperText="Email cannot be changed"
-                    />
+                <div className="space-y-6">
+                  <Card>
+                    <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-6">Profile Information</h2>
                     
-                    <Input
-                      label="Full Name"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      placeholder="Your full name"
-                    />
-                    
-                    <Input
-                      label="Phone Number"
-                      type="tel"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+1 (555) 123-4567"
-                    />
+                    <form onSubmit={handleSaveProfile} className="space-y-4">
+                      <Input
+                        label="Email"
+                        type="email"
+                        value={user?.email || ''}
+                        disabled
+                        helperText="Email cannot be changed"
+                      />
+                      
+                      <Input
+                        label="Full Name"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        placeholder="Your full name"
+                      />
+                      
+                      <Input
+                        label="Phone Number"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="+1 (555) 123-4567"
+                      />
 
-                    <div className="flex justify-end pt-4">
-                      <Button type="submit" loading={saving}>
-                        Save Changes
-                      </Button>
+                      <div className="flex justify-end pt-4">
+                        <Button type="submit" loading={saving}>
+                          Save Changes
+                        </Button>
+                      </div>
+                    </form>
+                  </Card>
+
+                  {/* Username Section */}
+                  <Card>
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                        <AtSign className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Feyza Username</h2>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Your unique identifier on Feyza</p>
+                      </div>
                     </div>
-                  </form>
-                </Card>
+
+                    <div className="p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl mb-4">
+                      <p className="text-sm text-primary-800 dark:text-primary-300">
+                        <strong>~username</strong> lets friends find and send you loan requests easily. 
+                        Share your username instead of your email or phone.
+                      </p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                          Username
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-500 font-semibold">~</span>
+                            <input
+                              type="text"
+                              value={username}
+                              onChange={(e) => {
+                                const value = e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '');
+                                setUsername(value);
+                                setUsernameAvailable(null);
+                              }}
+                              onBlur={() => checkUsernameAvailability(username)}
+                              placeholder="yourname"
+                              maxLength={20}
+                              className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-white"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            onClick={handleSaveUsername}
+                            disabled={saving || checkingUsername || !username || username.length < 3 || usernameAvailable === false}
+                          >
+                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save'}
+                          </Button>
+                        </div>
+                        
+                        {/* Username Status */}
+                        <div className="mt-2">
+                          {checkingUsername && (
+                            <p className="text-sm text-neutral-500 flex items-center gap-1">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              Checking availability...
+                            </p>
+                          )}
+                          {!checkingUsername && usernameAvailable === true && username && (
+                            <p className="text-sm text-green-600 dark:text-green-400 flex items-center gap-1">
+                              <CheckCircle className="w-4 h-4" />
+                              {username === profile?.username ? 'This is your current username' : 'Username is available'}
+                            </p>
+                          )}
+                          {!checkingUsername && usernameAvailable === false && (
+                            <p className="text-sm text-red-600 dark:text-red-400 flex items-center gap-1">
+                              <AlertCircle className="w-4 h-4" />
+                              Username is taken
+                            </p>
+                          )}
+                          {username && username.length < 3 && (
+                            <p className="text-sm text-neutral-500">
+                              Username must be at least 3 characters
+                            </p>
+                          )}
+                        </div>
+                        
+                        <p className="text-xs text-neutral-500 mt-2">
+                          3-20 characters. Lowercase letters, numbers, and underscores only.
+                        </p>
+                      </div>
+
+                      {profile?.username && (
+                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                          <p className="text-sm text-green-800 dark:text-green-300">
+                            Your current username: <strong className="font-mono">~{profile.username}</strong>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </Card>
+                </div>
               )}
 
               {/* Bank Account Tab */}

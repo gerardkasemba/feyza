@@ -19,35 +19,66 @@ export function StatsCard({ title, value, subtitle, icon: Icon, trend, highlight
   return (
     <div
       className={cn(
-        'bg-white rounded-2xl border p-6 transition-all hover:shadow-lg',
-        highlight ? 'border-amber-300 bg-amber-50' : 'border-neutral-200',
+        'bg-white dark:bg-neutral-800 rounded-2xl border p-6 transition-all hover:shadow-lg dark:hover:shadow-neutral-900/50',
+        highlight 
+          ? 'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20' 
+          : 'border-neutral-200 dark:border-neutral-700',
         className
       )}
     >
       <div className="flex items-start justify-between mb-4">
         <div className={cn(
           'p-3 rounded-xl',
-          highlight ? 'bg-amber-100' : 'bg-primary-50'
+          highlight 
+            ? 'bg-amber-100 dark:bg-amber-900/30' 
+            : 'bg-primary-50 dark:bg-primary-900/30'
         )}>
           <Icon className={cn(
             'w-6 h-6',
-            highlight ? 'text-amber-600' : 'text-primary-600'
+            highlight 
+              ? 'text-amber-600 dark:text-amber-400' 
+              : 'text-primary-600 dark:text-primary-400'
           )} />
         </div>
         {trend && (
           <span
             className={cn(
               'text-sm font-medium px-2 py-1 rounded-full',
-              trend.isPositive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+              trend.isPositive 
+                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
+                : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
             )}
           >
             {trend.isPositive ? '+' : ''}{trend.value}%
           </span>
         )}
       </div>
-      <p className={cn('text-sm mb-1', highlight ? 'text-amber-700' : 'text-neutral-500')}>{title}</p>
-      <p className={cn('text-2xl font-bold', highlight ? 'text-amber-900' : 'text-neutral-900')}>{value}</p>
-      {subtitle && <p className={cn('text-xs mt-1', highlight ? 'text-amber-600' : 'text-neutral-400')}>{subtitle}</p>}
+      <p className={cn(
+        'text-sm mb-1', 
+        highlight 
+          ? 'text-amber-700 dark:text-amber-300' 
+          : 'text-neutral-500 dark:text-neutral-400'
+      )}>
+        {title}
+      </p>
+      <p className={cn(
+        'text-2xl font-bold', 
+        highlight 
+          ? 'text-amber-900 dark:text-amber-200' 
+          : 'text-neutral-900 dark:text-white'
+      )}>
+        {value}
+      </p>
+      {subtitle && (
+        <p className={cn(
+          'text-xs mt-1', 
+          highlight 
+            ? 'text-amber-600 dark:text-amber-400' 
+            : 'text-neutral-400 dark:text-neutral-500'
+        )}>
+          {subtitle}
+        </p>
+      )}
     </div>
   );
 }

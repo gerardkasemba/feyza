@@ -20,25 +20,29 @@ export function Breadcrumbs({ items, showHome = true }: BreadcrumbsProps) {
     : items;
 
   return (
-    <nav className="flex items-center gap-1 text-sm text-neutral-500 mb-4 flex-wrap">
+    <nav className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 mb-4 flex-wrap">
       {allItems.map((item, index) => {
         const isLast = index === allItems.length - 1;
         
         return (
           <React.Fragment key={index}>
             {index > 0 && (
-              <ChevronRight className="w-4 h-4 text-neutral-300 flex-shrink-0" />
+              <ChevronRight className="w-4 h-4 text-neutral-300 dark:text-neutral-600 flex-shrink-0" />
             )}
             {item.href && !isLast ? (
               <Link 
                 href={item.href}
-                className="hover:text-primary-600 transition-colors flex items-center gap-1"
+                className="hover:text-primary-600 dark:hover:text-primary-400 transition-colors flex items-center gap-1"
               >
                 {index === 0 && showHome && <Home className="w-3.5 h-3.5" />}
                 <span>{item.label}</span>
               </Link>
             ) : (
-              <span className={isLast ? 'text-neutral-900 font-medium' : ''}>
+              <span className={
+                isLast 
+                  ? 'text-neutral-900 dark:text-white font-medium' 
+                  : 'text-neutral-500 dark:text-neutral-400'
+              }>
                 {item.label}
               </span>
             )}

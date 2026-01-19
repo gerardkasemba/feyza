@@ -109,26 +109,26 @@ export default async function BusinessPage() {
   const totalCollected = activeLoans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={userProfile} />
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Auto-Match Setup Prompt */}
           {!isProfileIncomplete && !hasLenderPrefs && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl">
+            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/30 dark:to-orange-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl">
               <div className="flex items-start gap-4">
-                <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Zap className="w-5 h-5 text-yellow-600" />
+                <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Zap className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-800 mb-1">Set Up Auto-Matching</h3>
-                  <p className="text-sm text-yellow-700 mb-3">
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Set Up Auto-Matching</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-3">
                     Configure your lending preferences to automatically receive matching loan requests from borrowers. 
                     Set your loan amount range, interest rate, and countries you serve.
                   </p>
                   <Link href="/lender/preferences">
-                    <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-white">
+                    <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white">
                       <Zap className="w-4 h-4 mr-2" />
                       Configure Auto-Match
                     </Button>
@@ -141,16 +141,16 @@ export default async function BusinessPage() {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center overflow-hidden">
+              <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center overflow-hidden">
                 {businessProfile.logo_url ? (
                   <img src={businessProfile.logo_url} alt={businessProfile.business_name} className="w-full h-full object-cover" />
                 ) : (
-                  <Building2 className="w-8 h-8 text-primary-600" />
+                  <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-500" />
                 )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-display font-bold text-neutral-900">
+                  <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
                     {businessProfile.business_name}
                   </h1>
                   {businessProfile.is_verified && (
@@ -166,12 +166,12 @@ export default async function BusinessPage() {
                     </Badge>
                   )}
                 </div>
-                <p className="text-neutral-500">{businessProfile.business_type}</p>
+                <p className="text-neutral-500 dark:text-neutral-400">{businessProfile.business_type}</p>
               </div>
             </div>
             <div className="flex gap-3">
               <Link href="/lender/preferences">
-                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600">
+                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 dark:from-yellow-600 dark:to-orange-600 dark:hover:from-yellow-700 dark:hover:to-orange-700">
                   <Zap className="w-4 h-4 mr-2" />
                   Auto-Match Settings
                 </Button>
@@ -228,7 +228,7 @@ export default async function BusinessPage() {
           {/* Pending Requests */}
           {pendingRequests.length > 0 && (
             <div className="mb-8">
-              <h2 className="text-lg font-display font-semibold text-neutral-900 mb-4">
+              <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white mb-4">
                 Pending Loan Requests
               </h2>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -241,7 +241,7 @@ export default async function BusinessPage() {
 
           {/* Active Loans */}
           <div>
-            <h2 className="text-lg font-display font-semibold text-neutral-900 mb-4">
+            <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white mb-4">
               Active Loans
             </h2>
             {activeLoans.length > 0 ? (
@@ -251,10 +251,10 @@ export default async function BusinessPage() {
                 ))}
               </div>
             ) : (
-              <Card className="text-center py-12">
-                <Users className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
-                <h3 className="font-semibold text-neutral-900 mb-2">No active loans</h3>
-                <p className="text-neutral-500">
+              <Card className="text-center py-12 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                <Users className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
+                <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No active loans</h3>
+                <p className="text-neutral-500 dark:text-neutral-400">
                   When borrowers request loans from your business, they'll appear here
                 </p>
               </Card>

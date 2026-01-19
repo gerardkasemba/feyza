@@ -5,6 +5,7 @@ import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { LoanCard } from '@/components/loans';
 import { Plus, FileText } from 'lucide-react';
+import { HiOutlineDocumentText } from 'react-icons/hi';
 
 export default async function LoansPage() {
   const supabase = await createServerSupabaseClient();
@@ -116,7 +117,7 @@ export default async function LoansPage() {
   const uniqueLentLoans = Array.from(lentLoanMap.values());
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={userProfile} />
 
       <main className="flex-1">
@@ -124,8 +125,8 @@ export default async function LoansPage() {
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
             <div>
-              <h1 className="text-2xl font-display font-bold text-neutral-900">My Loans</h1>
-              <p className="text-neutral-500 mt-1">Manage all your loans in one place</p>
+              <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">My Loans</h1>
+              <p className="text-neutral-500 dark:text-neutral-400 mt-1">Manage all your loans in one place</p>
             </div>
             <Link href="/loans/new">
               <Button>
@@ -193,10 +194,10 @@ export default async function LoansPage() {
 
 function EmptyState({ message = "You don't have any loans yet" }: { message?: string }) {
   return (
-    <Card className="text-center py-12">
-      <FileText className="w-12 h-12 text-neutral-300 mx-auto mb-4" />
-      <h3 className="font-semibold text-neutral-900 mb-2">No loans found</h3>
-      <p className="text-neutral-500 mb-6">{message}</p>
+    <Card className="text-center py-12 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
+      <HiOutlineDocumentText className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
+      <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No loans found</h3>
+      <p className="text-neutral-500 dark:text-neutral-400 mb-6">{message}</p>
       <Link href="/loans/new">
         <Button>Request a Loan</Button>
       </Link>

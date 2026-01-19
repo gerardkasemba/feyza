@@ -30,7 +30,7 @@ export function TabsList({ children, className }: { children: React.ReactNode; c
   return (
     <div
       className={cn(
-        'inline-flex items-center gap-1 p-1 bg-neutral-100 rounded-xl',
+        'inline-flex items-center gap-1 p-1 bg-neutral-100 dark:bg-neutral-800 rounded-xl',
         className
       )}
     >
@@ -58,8 +58,8 @@ export function TabsTrigger({ value, children, className }: TabsTriggerProps) {
       className={cn(
         'px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200',
         isActive
-          ? 'bg-white text-neutral-900 shadow-sm'
-          : 'text-neutral-600 hover:text-neutral-900',
+          ? 'bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white shadow-sm dark:shadow-neutral-900/50'
+          : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-300',
         className
       )}
     >

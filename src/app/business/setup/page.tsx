@@ -12,6 +12,7 @@ import {
   MapPin, Globe, Users, DollarSign, Calendar, Shield,
   Upload, Image as ImageIcon, X, Calculator
 } from 'lucide-react';
+import { FaHospital, FaGraduationCap, FaBriefcase, FaHome, FaFileAlt, FaCar } from 'react-icons/fa';
 
 const US_STATES = [
   { value: '', label: 'Select state' },
@@ -367,8 +368,8 @@ export default function BusinessSetupPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-neutral-500">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
+        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     );
   }
@@ -379,7 +380,7 @@ export default function BusinessSetupPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-teal-50 dark:from-neutral-950 dark:via-neutral-900 dark:to-neutral-950 py-8 px-4">
       <div className="max-w-2xl mx-auto">
-        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-6">
+        <Link href="/dashboard" className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-6">
           <ArrowLeft className="w-4 h-4" />
           Back to dashboard
         </Link>
@@ -399,13 +400,13 @@ export default function BusinessSetupPage() {
               <span>{Math.round(progressPercent)}% complete</span>
             </div>
             <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-              <div className="h-full bg-primary-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+              <div className="h-full bg-primary-500 dark:bg-primary-600 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
             </div>
           </div>
 
           {error && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+              <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
               <span className="text-sm text-red-700 dark:text-red-400">{error}</span>
             </div>
           )}
@@ -414,7 +415,7 @@ export default function BusinessSetupPage() {
             {step === 1 && (
               <div className="space-y-4 animate-fade-in">
                 <div className="flex items-center gap-2 mb-4">
-                  <Building2 className="w-5 h-5 text-primary-600" />
+                  <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                   <h3 className="font-semibold text-neutral-900 dark:text-white">Business Information</h3>
                 </div>
                 
@@ -426,7 +427,7 @@ export default function BusinessSetupPage() {
                       {logoPreview ? (
                         <img src={logoPreview} alt="Logo preview" className="w-full h-full object-cover" />
                       ) : (
-                        <ImageIcon className="w-8 h-8 text-neutral-400" />
+                        <ImageIcon className="w-8 h-8 text-neutral-400 dark:text-neutral-500" />
                       )}
                     </div>
                     <div className="flex-1">
@@ -461,7 +462,7 @@ export default function BusinessSetupPage() {
                             setLogoFile(null);
                             setLogoPreview(null);
                           }}
-                          className="ml-2 text-sm text-red-600 hover:text-red-700 dark:text-red-400"
+                          className="ml-2 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                         >
                           Remove
                         </button>
@@ -479,7 +480,13 @@ export default function BusinessSetupPage() {
                 <Input label="Tagline (optional)" value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="e.g., Fast, fair loans for everyone" helperText="A short description that appears on your public profile" />
                 <div>
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">Business Description (optional)</label>
-                  <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} placeholder="Tell borrowers about your lending services..." className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400" />
+                  <textarea 
+                    value={description} 
+                    onChange={(e) => setDescription(e.target.value)} 
+                    rows={3} 
+                    placeholder="Tell borrowers about your lending services..." 
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent placeholder:text-neutral-400 dark:placeholder:text-neutral-500" 
+                  />
                 </div>
                 <div className="pt-4 flex justify-end">
                   <Button type="button" onClick={goToNextStep}>Continue<ChevronRight className="w-4 h-4 ml-1" /></Button>
@@ -489,11 +496,15 @@ export default function BusinessSetupPage() {
 
             {step === 2 && (
               <div className="space-y-4 animate-fade-in">
-                <button type="button" onClick={() => { setStep(1); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setStep(1); setError(null); }} 
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
+                >
                   <ChevronLeft className="w-4 h-4" />Back
                 </button>
                 <div className="flex items-center gap-2 mb-4">
-                  <Shield className="w-5 h-5 text-primary-600" />
+                  <Shield className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                   <h3 className="font-semibold text-neutral-900 dark:text-white">Verification Details</h3>
                 </div>
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-4">
@@ -523,23 +534,27 @@ export default function BusinessSetupPage() {
 
             {step === 3 && (
               <div className="space-y-4 animate-fade-in">
-                <button type="button" onClick={() => { setStep(2); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setStep(2); setError(null); }} 
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
+                >
                   <ChevronLeft className="w-4 h-4" />Back
                 </button>
                 <div className="flex items-center gap-2 mb-4">
-                  <Percent className="w-5 h-5 text-primary-600" />
+                  <Percent className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                   <h3 className="font-semibold text-neutral-900 dark:text-white">Lending Settings</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-4">
                   <div>
                     <div className="flex items-center gap-2 mb-2">
-                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
                         Default Interest Rate (%)
                       </label>
                       <button
                         type="button"
                         onClick={() => setShowCalculator(true)}
-                        className="p-1 text-primary-500 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                        className="p-1 text-primary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors"
                         title="Calculate interest rate"
                       >
                         <Calculator className="w-4 h-4" />
@@ -553,7 +568,7 @@ export default function BusinessSetupPage() {
                       value={defaultInterestRate}
                       onChange={(e) => setDefaultInterestRate(e.target.value)}
                       placeholder="e.g., 15"
-                      className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-neutral-800 dark:text-white"
+                      className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:bg-neutral-800 dark:text-white"
                     />
                     <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Annual percentage rate</p>
                   </div>
@@ -575,12 +590,16 @@ export default function BusinessSetupPage() {
 
             {step === 4 && (
               <div className="space-y-4 animate-fade-in">
-                <button type="button" onClick={() => { setStep(3); setError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2">
+                <button 
+                  type="button" 
+                  onClick={() => { setStep(3); setError(null); }} 
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
+                >
                   <ChevronLeft className="w-4 h-4" />Back
                 </button>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-4">
-                    <Building className="w-5 h-5 text-primary-600" />
+                    <Building className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                     <h3 className="font-semibold text-neutral-900 dark:text-white">Bank Account Setup</h3>
                   </div>
                   {(userProfile?.bank_connected || bankConnected) ? (
@@ -590,9 +609,9 @@ export default function BusinessSetupPage() {
                       accountType={userProfile?.bank_account_type}
                     />
                   ) : (
-                    <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
+                    <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
                       <div className="w-12 h-12 mx-auto mb-3 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
-                        <Building className="w-6 h-6 text-neutral-500" />
+                        <Building className="w-6 h-6 text-neutral-500 dark:text-neutral-400" />
                       </div>
                       <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
                         Connect your bank account to receive loan repayments
@@ -608,23 +627,27 @@ export default function BusinessSetupPage() {
                     </div>
                   )}
                 </div>
-                <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
+                <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
                   <label className="flex items-center justify-between cursor-pointer">
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">Enable Public Profile</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">Allow borrowers to find you via a shareable link</p>
                     </div>
-                    <button type="button" onClick={() => setPublicProfileEnabled(!publicProfileEnabled)} className={`relative w-14 h-8 rounded-full transition-colors ${publicProfileEnabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}>
-                      <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${publicProfileEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                    <button 
+                      type="button" 
+                      onClick={() => setPublicProfileEnabled(!publicProfileEnabled)} 
+                      className={`relative w-14 h-8 rounded-full transition-colors ${publicProfileEnabled ? 'bg-primary-500 dark:bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-600'}`}
+                    >
+                      <div className={`absolute top-1 w-6 h-6 bg-white dark:bg-neutral-200 rounded-full shadow transition-transform ${publicProfileEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
                     </button>
                   </label>
                 </div>
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-4">
-                    <FileText className="w-5 h-5 text-primary-600" />
+                    <FileText className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                     <h3 className="font-semibold text-neutral-900 dark:text-white">Terms & Conditions</h3>
                   </div>
-                  <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600 dark:text-neutral-400">
+                  <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600 dark:text-neutral-400">
                     <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Feyza Business Lender Agreement</h4>
                     <p className="mb-2">By creating a business lender account on Feyza, you agree to:</p>
                     <ul className="list-disc pl-5 space-y-1">
@@ -640,7 +663,12 @@ export default function BusinessSetupPage() {
                     </ul>
                   </div>
                   <label className="flex items-start gap-3 cursor-pointer">
-                    <input type="checkbox" checked={termsAccepted} onChange={(e) => setTermsAccepted(e.target.checked)} className="mt-1 w-5 h-5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 focus:ring-primary-500" />
+                    <input 
+                      type="checkbox" 
+                      checked={termsAccepted} 
+                      onChange={(e) => setTermsAccepted(e.target.checked)} 
+                      className="mt-1 w-5 h-5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 dark:text-primary-500 focus:ring-primary-500 dark:focus:ring-primary-400" 
+                    />
                     <span className="text-sm text-neutral-700 dark:text-neutral-300">I have read and agree to the <strong>Terms & Conditions</strong> and confirm that my business complies with all applicable lending regulations in my state.</span>
                   </label>
                 </div>

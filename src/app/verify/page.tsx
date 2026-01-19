@@ -10,6 +10,7 @@ import {
   CheckCircle, ChevronRight, ChevronLeft, AlertCircle,
   Upload, Calendar, Building2
 } from 'lucide-react';
+import { FaIdCard, FaPassport, FaCar, FaLandmark, FaFileInvoiceDollar, FaFileContract, FaEnvelope } from 'react-icons/fa';
 
 export default function VerificationPage() {
   const router = useRouter();
@@ -48,38 +49,38 @@ export default function VerificationPage() {
   const [termsAccepted, setTermsAccepted] = useState(false);
 
   const idTypes = [
-    { value: '', label: 'Select ID type' },
-    { value: 'national_id', label: 'National ID' },
-    { value: 'passport', label: 'Passport' },
-    { value: 'drivers_license', label: "Driver's License" },
+    { value: '', label: 'Select ID type', icon: null },
+    { value: 'national_id', label: 'National ID', icon: <FaIdCard className="w-4 h-4" /> },
+    { value: 'passport', label: 'Passport', icon: <FaPassport className="w-4 h-4" /> },
+    { value: 'drivers_license', label: "Driver's License", icon: <FaCar className="w-4 h-4" /> },
   ];
 
   const employmentStatuses = [
-    { value: '', label: 'Select employment status' },
-    { value: 'employed', label: 'Employed (Full-time)' },
-    { value: 'part_time', label: 'Employed (Part-time)' },
-    { value: 'self_employed', label: 'Self-Employed' },
-    { value: 'contractor', label: 'Independent Contractor' },
+    { value: '', label: 'Select employment status', icon: null },
+    { value: 'employed', label: 'Employed (Full-time)', icon: null },
+    { value: 'part_time', label: 'Employed (Part-time)', icon: null },
+    { value: 'self_employed', label: 'Self-Employed', icon: null },
+    { value: 'contractor', label: 'Independent Contractor', icon: null },
   ];
 
   const addressDocumentTypes = [
-    { value: '', label: 'Select document type' },
-    { value: 'utility_bill', label: 'Utility Bill (last 3 months)' },
-    { value: 'bank_statement', label: 'Bank Statement (last 3 months)' },
-    { value: 'lease_agreement', label: 'Lease/Rental Agreement' },
-    { value: 'government_letter', label: 'Government Letter' },
+    { value: '', label: 'Select document type', icon: null },
+    { value: 'utility_bill', label: 'Utility Bill (last 3 months)', icon: null },
+    { value: 'bank_statement', label: 'Bank Statement (last 3 months)', icon: <FaLandmark className="w-4 h-4" /> },
+    { value: 'lease_agreement', label: 'Lease/Rental Agreement', icon: <FaFileContract className="w-4 h-4" /> },
+    { value: 'government_letter', label: 'Government Letter', icon: <FaEnvelope className="w-4 h-4" /> },
   ];
 
   const countries = [
-    { value: '', label: 'Select country' },
-    { value: 'US', label: 'United States' },
-    { value: 'UK', label: 'United Kingdom' },
-    { value: 'CA', label: 'Canada' },
-    { value: 'NG', label: 'Nigeria' },
-    { value: 'KE', label: 'Kenya' },
-    { value: 'GH', label: 'Ghana' },
-    { value: 'ZA', label: 'South Africa' },
-    { value: 'OTHER', label: 'Other' },
+    { value: '', label: 'Select country', icon: null },
+    { value: 'US', label: 'United States', icon: null },
+    { value: 'UK', label: 'United Kingdom', icon: null },
+    { value: 'CA', label: 'Canada', icon: null },
+    { value: 'NG', label: 'Nigeria', icon: null },
+    { value: 'KE', label: 'Kenya', icon: null },
+    { value: 'GH', label: 'Ghana', icon: null },
+    { value: 'ZA', label: 'South Africa', icon: null },
+    { value: 'OTHER', label: 'Other', icon: null },
   ];
 
   useEffect(() => {
@@ -344,8 +345,8 @@ export default function VerificationPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-neutral-500">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
+        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     );
   }
@@ -353,15 +354,15 @@ export default function VerificationPage() {
   // Already submitted
   if (profile?.verification_status === 'submitted') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 p-4">
         <Card className="max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-6 bg-blue-100 rounded-full flex items-center justify-center">
-            <Shield className="w-8 h-8 text-blue-600" />
+          <div className="w-16 h-16 mx-auto mb-6 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+            <Shield className="w-8 h-8 text-blue-600 dark:text-blue-400" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-neutral-900 mb-2">
+          <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-2">
             Verification In Progress
           </h1>
-          <p className="text-neutral-500 mb-6">
+          <p className="text-neutral-500 dark:text-neutral-400 mb-6">
             Your documents have been submitted and are being reviewed. This usually takes 1-2 business days.
           </p>
           <Link href="/dashboard">
@@ -376,11 +377,11 @@ export default function VerificationPage() {
   const progressPercent = (step / totalSteps) * 100;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 py-12 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 py-12 px-4">
       <div className="max-w-lg mx-auto">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-2 text-sm text-neutral-500 hover:text-neutral-700 mb-8 transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-8 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to dashboard
@@ -388,26 +389,26 @@ export default function VerificationPage() {
 
         <Card>
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-primary-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Shield className="w-8 h-8 text-primary-600" />
+            <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-primary-600 dark:text-primary-400" />
             </div>
-            <h1 className="text-2xl font-display font-bold text-neutral-900">
+            <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
               Verify Your Identity
             </h1>
-            <p className="text-neutral-500 mt-2">
+            <p className="text-neutral-500 dark:text-neutral-400 mt-2">
               Complete verification to start borrowing
             </p>
           </div>
 
           {/* Progress Bar */}
           <div className="mb-6">
-            <div className="flex justify-between text-sm text-neutral-500 mb-2">
+            <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
               <span>Step {step} of {totalSteps}</span>
               <span>{Math.round(progressPercent)}% complete</span>
             </div>
-            <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
+            <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div 
-                className="h-full bg-primary-500 transition-all duration-300"
+                className="h-full bg-primary-500 dark:bg-primary-600 transition-all duration-300"
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -422,24 +423,24 @@ export default function VerificationPage() {
               { num: 4, icon: FileText, label: 'Review' },
             ].map((s, idx) => (
               <React.Fragment key={s.num}>
-                <div className={`flex flex-col items-center ${step >= s.num ? 'text-primary-600' : 'text-neutral-400'}`}>
+                <div className={`flex flex-col items-center ${step >= s.num ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-400 dark:text-neutral-500'}`}>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    step > s.num ? 'bg-green-500 text-white' : 
-                    step === s.num ? 'bg-primary-500 text-white' : 'bg-neutral-200'
+                    step > s.num ? 'bg-green-500 dark:bg-green-600 text-white' : 
+                    step === s.num ? 'bg-primary-500 dark:bg-primary-600 text-white' : 'bg-neutral-200 dark:bg-neutral-700'
                   }`}>
                     {step > s.num ? <CheckCircle className="w-5 h-5" /> : <s.icon className="w-4 h-4" />}
                   </div>
                   <span className="text-xs mt-1 hidden sm:block">{s.label}</span>
                 </div>
-                {idx < 3 && <div className="flex-1 h-0.5 bg-neutral-200 mx-2" />}
+                {idx < 3 && <div className="flex-1 h-0.5 bg-neutral-200 dark:bg-neutral-700 mx-2" />}
               </React.Fragment>
             ))}
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
 
@@ -448,8 +449,8 @@ export default function VerificationPage() {
             {step === 1 && (
               <div className="space-y-4 animate-fade-in">
                 <div className="flex items-center gap-2 mb-4">
-                  <User className="w-5 h-5 text-primary-600" />
-                  <h3 className="font-semibold text-neutral-900">Proof of Identity</h3>
+                  <User className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Proof of Identity</h3>
                 </div>
 
                 <Select
@@ -474,10 +475,10 @@ export default function VerificationPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
                     Upload ID Document *
                   </label>
-                  <div className="border-2 border-dashed border-neutral-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors">
+                  <div className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl p-6 text-center hover:border-primary-400 dark:hover:border-primary-500 transition-colors">
                     <input
                       type="file"
                       accept="image/*,.pdf"
@@ -486,13 +487,13 @@ export default function VerificationPage() {
                       id="id-upload"
                     />
                     <label htmlFor="id-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
+                      <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mx-auto mb-2" />
                       {idDocumentFile ? (
-                        <p className="text-sm text-primary-600 font-medium">{idDocumentFile.name}</p>
+                        <p className="text-sm text-primary-600 dark:text-primary-500 font-medium">{idDocumentFile.name}</p>
                       ) : (
                         <>
-                          <p className="text-sm text-neutral-600">Click to upload</p>
-                          <p className="text-xs text-neutral-400">JPG, PNG or PDF (max 5MB)</p>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">Click to upload</p>
+                          <p className="text-xs text-neutral-400 dark:text-neutral-500">JPG, PNG or PDF (max 5MB)</p>
                         </>
                       )}
                     </label>
@@ -514,19 +515,19 @@ export default function VerificationPage() {
                 <button
                   type="button"
                   onClick={() => { setStep(1); setError(null); }}
-                  className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-2"
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   Back
                 </button>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <Briefcase className="w-5 h-5 text-primary-600" />
-                  <h3 className="font-semibold text-neutral-900">Proof of Employment</h3>
+                  <Briefcase className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Proof of Employment</h3>
                 </div>
 
-                <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl mb-4">
-                  <p className="text-sm text-blue-800">
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl mb-4">
+                  <p className="text-sm text-blue-800 dark:text-blue-300">
                     <strong>Requirement:</strong> You must have been employed for at least 30 days to be eligible for loans.
                   </p>
                 </div>
@@ -569,13 +570,13 @@ export default function VerificationPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
                     Upload Employment Proof *
                   </label>
-                  <p className="text-xs text-neutral-500 mb-2">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
                     Pay stub, employment letter, or business registration
                   </p>
-                  <div className="border-2 border-dashed border-neutral-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors">
+                  <div className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl p-6 text-center hover:border-primary-400 dark:hover:border-primary-500 transition-colors">
                     <input
                       type="file"
                       accept="image/*,.pdf"
@@ -584,13 +585,13 @@ export default function VerificationPage() {
                       id="employment-upload"
                     />
                     <label htmlFor="employment-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
+                      <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mx-auto mb-2" />
                       {employmentDocumentFile ? (
-                        <p className="text-sm text-primary-600 font-medium">{employmentDocumentFile.name}</p>
+                        <p className="text-sm text-primary-600 dark:text-primary-500 font-medium">{employmentDocumentFile.name}</p>
                       ) : (
                         <>
-                          <p className="text-sm text-neutral-600">Click to upload</p>
-                          <p className="text-xs text-neutral-400">JPG, PNG or PDF (max 5MB)</p>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">Click to upload</p>
+                          <p className="text-xs text-neutral-400 dark:text-neutral-500">JPG, PNG or PDF (max 5MB)</p>
                         </>
                       )}
                     </label>
@@ -612,15 +613,15 @@ export default function VerificationPage() {
                 <button
                   type="button"
                   onClick={() => { setStep(2); setError(null); }}
-                  className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-2"
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   Back
                 </button>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <MapPin className="w-5 h-5 text-primary-600" />
-                  <h3 className="font-semibold text-neutral-900">Proof of Address</h3>
+                  <MapPin className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Proof of Address</h3>
                 </div>
 
                 <Input
@@ -675,13 +676,13 @@ export default function VerificationPage() {
                 />
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1.5">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1.5">
                     Upload Address Proof *
                   </label>
-                  <p className="text-xs text-neutral-500 mb-2">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
                     Document must be dated within the last 3 months
                   </p>
-                  <div className="border-2 border-dashed border-neutral-300 rounded-xl p-6 text-center hover:border-primary-400 transition-colors">
+                  <div className="border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl p-6 text-center hover:border-primary-400 dark:hover:border-primary-500 transition-colors">
                     <input
                       type="file"
                       accept="image/*,.pdf"
@@ -690,13 +691,13 @@ export default function VerificationPage() {
                       id="address-upload"
                     />
                     <label htmlFor="address-upload" className="cursor-pointer">
-                      <Upload className="w-8 h-8 text-neutral-400 mx-auto mb-2" />
+                      <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mx-auto mb-2" />
                       {addressDocumentFile ? (
-                        <p className="text-sm text-primary-600 font-medium">{addressDocumentFile.name}</p>
+                        <p className="text-sm text-primary-600 dark:text-primary-500 font-medium">{addressDocumentFile.name}</p>
                       ) : (
                         <>
-                          <p className="text-sm text-neutral-600">Click to upload</p>
-                          <p className="text-xs text-neutral-400">JPG, PNG or PDF (max 5MB)</p>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">Click to upload</p>
+                          <p className="text-xs text-neutral-400 dark:text-neutral-500">JPG, PNG or PDF (max 5MB)</p>
                         </>
                       )}
                     </label>
@@ -718,60 +719,60 @@ export default function VerificationPage() {
                 <button
                   type="button"
                   onClick={() => { setStep(3); setError(null); }}
-                  className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-2"
+                  className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
                 >
                   <ChevronLeft className="w-4 h-4" />
                   Back
                 </button>
 
                 <div className="flex items-center gap-2 mb-4">
-                  <FileText className="w-5 h-5 text-primary-600" />
-                  <h3 className="font-semibold text-neutral-900">Review & Submit</h3>
+                  <FileText className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Review & Submit</h3>
                 </div>
 
                 {/* Summary */}
                 <div className="space-y-4">
-                  <div className="p-4 bg-neutral-50 rounded-xl">
-                    <h4 className="font-medium text-neutral-900 mb-2 flex items-center gap-2">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+                    <h4 className="font-medium text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
                       <User className="w-4 h-4" /> Identity
                     </h4>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300">
                       {idTypes.find(t => t.value === idType)?.label}: {idNumber}
                     </p>
                     {idDocumentFile && (
-                      <p className="text-xs text-green-600 mt-1">✓ Document uploaded</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Document uploaded</p>
                     )}
                   </div>
 
-                  <div className="p-4 bg-neutral-50 rounded-xl">
-                    <h4 className="font-medium text-neutral-900 mb-2 flex items-center gap-2">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+                    <h4 className="font-medium text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
                       <Briefcase className="w-4 h-4" /> Employment
                     </h4>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300">
                       {employmentStatuses.find(s => s.value === employmentStatus)?.label} at {employerName}
                     </p>
-                    <p className="text-xs text-neutral-500">Since {employmentStartDate}</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Since {employmentStartDate}</p>
                     {employmentDocumentFile && (
-                      <p className="text-xs text-green-600 mt-1">✓ Document uploaded</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Document uploaded</p>
                     )}
                   </div>
 
-                  <div className="p-4 bg-neutral-50 rounded-xl">
-                    <h4 className="font-medium text-neutral-900 mb-2 flex items-center gap-2">
+                  <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+                    <h4 className="font-medium text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
                       <MapPin className="w-4 h-4" /> Address
                     </h4>
-                    <p className="text-sm text-neutral-600">
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300">
                       {addressLine1}, {city}, {countries.find(c => c.value === country)?.label}
                     </p>
                     {addressDocumentFile && (
-                      <p className="text-xs text-green-600 mt-1">✓ Document uploaded</p>
+                      <p className="text-xs text-green-600 dark:text-green-400 mt-1">✓ Document uploaded</p>
                     )}
                   </div>
                 </div>
 
                 {/* Terms */}
-                <div className="bg-neutral-50 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600">
-                  <h4 className="font-semibold text-neutral-900 mb-2">Terms & Conditions</h4>
+                <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 mb-4 max-h-48 overflow-y-auto text-sm text-neutral-600 dark:text-neutral-400">
+                  <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Terms & Conditions</h4>
                   <p className="mb-2">By submitting this verification, you agree to:</p>
                   <ul className="list-disc pl-5 space-y-1">
                     <li>All information provided is accurate and truthful</li>
@@ -788,9 +789,9 @@ export default function VerificationPage() {
                     type="checkbox"
                     checked={termsAccepted}
                     onChange={(e) => setTermsAccepted(e.target.checked)}
-                    className="mt-1 w-5 h-5 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                    className="mt-1 w-5 h-5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 dark:text-primary-500 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800"
                   />
-                  <span className="text-sm text-neutral-700">
+                  <span className="text-sm text-neutral-700 dark:text-neutral-300">
                     I confirm that all information provided is accurate and I agree to the <strong>Terms & Conditions</strong>.
                   </span>
                 </label>
@@ -810,7 +811,7 @@ export default function VerificationPage() {
             )}
           </form>
 
-          <p className="text-xs text-neutral-500 text-center mt-6">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center mt-6">
             Your documents will be reviewed within 1-2 business days.
           </p>
         </Card>

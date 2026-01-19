@@ -89,17 +89,17 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
   const borrowerRating = loan.borrower?.borrower_rating || 'neutral';
 
   return (
-    <Card className="border-yellow-200 bg-yellow-50/50">
+    <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-neutral-200 rounded-full flex items-center justify-center">
-            <User className="w-5 h-5 text-neutral-500" />
+          <div className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+            <User className="w-5 h-5 text-neutral-500 dark:text-neutral-400" />
           </div>
           <div>
-            <p className="font-medium text-neutral-900">
+            <p className="font-medium text-neutral-900 dark:text-white">
               {loan.borrower?.full_name || 'Unknown'}
             </p>
-            <p className="text-sm text-neutral-500">{loan.borrower?.email}</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">{loan.borrower?.email}</p>
           </div>
         </div>
         <Badge variant="warning">Pending</Badge>
@@ -111,22 +111,22 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
       </div>
       
       <div className="mb-4">
-        <p className="text-2xl font-bold text-neutral-900">
+        <p className="text-2xl font-bold text-neutral-900 dark:text-white">
           {formatCurrency(loan.amount, loan.currency)}
         </p>
         {loan.purpose && (
-          <p className="text-sm text-neutral-500 mt-1">{loan.purpose}</p>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">{loan.purpose}</p>
         )}
       </div>
 
-      <div className="text-sm text-neutral-500 mb-4">
+      <div className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
         <p>{loan.total_installments} {loan.repayment_frequency} payments</p>
       </div>
 
       {/* Expandable Borrower Details */}
       <button
         onClick={() => setShowBorrowerDetails(!showBorrowerDetails)}
-        className="w-full flex items-center justify-center gap-1 py-2 text-sm text-primary-600 hover:text-primary-700 border-t border-neutral-200"
+        className="w-full flex items-center justify-center gap-1 py-2 text-sm text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 border-t border-neutral-200 dark:border-neutral-700"
       >
         {showBorrowerDetails ? (
           <>
@@ -144,7 +144,7 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
       {showBorrowerDetails && (
         <div className="pt-4 animate-fade-in">
           {loadingProfile ? (
-            <div className="text-center py-4 text-neutral-500">Loading...</div>
+            <div className="text-center py-4 text-neutral-500 dark:text-neutral-400">Loading...</div>
           ) : borrowerProfile ? (
             <BorrowerRatingCard
               rating={borrowerProfile.rating?.overall || 'neutral'}
@@ -160,7 +160,7 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
               isVerified={borrowerProfile.borrower?.isVerified}
             />
           ) : (
-            <div className="p-4 bg-neutral-100 rounded-lg text-sm text-neutral-600">
+            <div className="p-4 bg-neutral-100 dark:bg-neutral-800 rounded-lg text-sm text-neutral-600 dark:text-neutral-400">
               No additional information available
             </div>
           )}
@@ -168,10 +168,10 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
           {borrowerProfile?.recommendation && (
             <div className={`mt-3 p-3 rounded-lg text-sm ${
               borrowerRating === 'great' || borrowerRating === 'good' 
-                ? 'bg-green-50 text-green-800 border border-green-200'
+                ? 'bg-green-50 dark:bg-green-900/30 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800'
                 : borrowerRating === 'poor' || borrowerRating === 'bad' || borrowerRating === 'worst'
-                ? 'bg-red-50 text-red-800 border border-red-200'
-                : 'bg-blue-50 text-blue-800 border border-blue-200'
+                ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+                : 'bg-blue-50 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
             }`}>
               <strong>Recommendation:</strong> {borrowerProfile.recommendation}
             </div>
@@ -180,9 +180,9 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
       )}
 
       {error && (
-        <div className="my-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-red-500 mt-0.5" />
-          <p className="text-sm text-red-700">{error}</p>
+        <div className="my-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 mt-0.5" />
+          <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
         </div>
       )}
 

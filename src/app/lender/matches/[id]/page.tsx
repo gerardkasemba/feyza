@@ -22,6 +22,14 @@ import {
   Calendar,
   Zap,
 } from 'lucide-react';
+import { 
+  FaStar, 
+  FaThumbsUp, 
+  FaUserPlus, 
+  FaExclamationTriangle, 
+  FaBan, 
+  FaExclamationCircle 
+} from 'react-icons/fa';
 
 interface Match {
   id: string;
@@ -169,17 +177,45 @@ export default function MatchReviewPage() {
   };
 
   const getRatingBadge = (rating: string) => {
-    const config: Record<string, { color: string; icon: string }> = {
-      great: { color: 'bg-green-100 text-green-700', icon: '⭐' },
-      good: { color: 'bg-blue-100 text-blue-700', icon: '👍' },
-      neutral: { color: 'bg-gray-100 text-gray-700', icon: '🆕' },
-      poor: { color: 'bg-yellow-100 text-yellow-700', icon: '⚠️' },
-      bad: { color: 'bg-orange-100 text-orange-700', icon: '⛔' },
-      worst: { color: 'bg-red-100 text-red-700', icon: '🚨' },
+    const config: Record<string, { 
+      color: string; 
+      darkColor: string; 
+      icon: React.ReactNode 
+    }> = {
+      great: { 
+        color: 'bg-green-100 text-green-700', 
+        darkColor: 'dark:bg-green-900/30 dark:text-green-400',
+        icon: <FaStar className="w-3 h-3" />
+      },
+      good: { 
+        color: 'bg-blue-100 text-blue-700', 
+        darkColor: 'dark:bg-blue-900/30 dark:text-blue-400',
+        icon: <FaThumbsUp className="w-3 h-3" />
+      },
+      neutral: { 
+        color: 'bg-gray-100 text-gray-700', 
+        darkColor: 'dark:bg-neutral-800 dark:text-neutral-400',
+        icon: <FaUserPlus className="w-3 h-3" />
+      },
+      poor: { 
+        color: 'bg-yellow-100 text-yellow-700', 
+        darkColor: 'dark:bg-yellow-900/30 dark:text-yellow-400',
+        icon: <FaExclamationTriangle className="w-3 h-3" />
+      },
+      bad: { 
+        color: 'bg-orange-100 text-orange-700', 
+        darkColor: 'dark:bg-orange-900/30 dark:text-orange-400',
+        icon: <FaBan className="w-3 h-3" />
+      },
+      worst: { 
+        color: 'bg-red-100 text-red-700', 
+        darkColor: 'dark:bg-red-900/30 dark:text-red-400',
+        icon: <FaExclamationCircle className="w-3 h-3" />
+      },
     };
     const c = config[rating] || config.neutral;
     return (
-      <span className={`px-3 py-1 rounded-full text-sm font-medium ${c.color}`}>
+      <span className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1.5 ${c.color} ${c.darkColor}`}>
         {c.icon} {rating.charAt(0).toUpperCase() + rating.slice(1)}
       </span>
     );
@@ -187,10 +223,10 @@ export default function MatchReviewPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
         <Navbar user={user} />
         <div className="flex items-center justify-center py-20">
-          <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full" />
+          <div className="animate-spin w-8 h-8 border-4 border-primary-500 dark:border-primary-400 border-t-transparent rounded-full" />
         </div>
       </div>
     );
@@ -211,24 +247,24 @@ export default function MatchReviewPage() {
     : 100;
 
   return (
-    <div className="min-h-screen bg-neutral-50">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={user} />
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
-          <Link href="/dashboard" className="flex items-center gap-2 text-neutral-600 hover:text-neutral-900 mb-4">
+          <Link href="/dashboard" className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-300 mb-4">
             <ArrowLeft className="w-4 h-4" />
             Back to Dashboard
           </Link>
 
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-neutral-900">Loan Match Review</h1>
-              <p className="text-neutral-500">Review and respond to this loan request</p>
+              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Loan Match Review</h1>
+              <p className="text-neutral-500 dark:text-neutral-400">Review and respond to this loan request</p>
             </div>
             {isPending && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded-full">
+              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-400 rounded-full">
                 <Clock className="w-4 h-4" />
                 <span className="font-medium">{timeLeft} left</span>
               </div>
@@ -239,22 +275,22 @@ export default function MatchReviewPage() {
         {/* Status Banner */}
         {!isPending && (
           <Card className={`mb-6 ${
-            match.status === 'accepted' ? 'bg-green-50 border-green-200' :
-            match.status === 'declined' ? 'bg-red-50 border-red-200' :
-            'bg-yellow-50 border-yellow-200'
+            match.status === 'accepted' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' :
+            match.status === 'declined' ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800' :
+            'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'
           }`}>
             <div className="flex items-center gap-3">
-              {match.status === 'accepted' && <CheckCircle className="w-6 h-6 text-green-600" />}
-              {match.status === 'declined' && <XCircle className="w-6 h-6 text-red-600" />}
-              {(match.status === 'expired' || isExpired) && <AlertCircle className="w-6 h-6 text-yellow-600" />}
+              {match.status === 'accepted' && <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-500" />}
+              {match.status === 'declined' && <XCircle className="w-6 h-6 text-red-600 dark:text-red-500" />}
+              {(match.status === 'expired' || isExpired) && <AlertCircle className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />}
               <div>
-                <p className="font-semibold">
+                <p className="font-semibold text-neutral-900 dark:text-white">
                   {match.status === 'accepted' && 'You accepted this loan'}
                   {match.status === 'declined' && 'You declined this loan'}
                   {(match.status === 'expired' || isExpired) && 'This match has expired'}
                 </p>
                 {match.status === 'accepted' && (
-                  <Link href={`/loans/${loan.id}`} className="text-sm text-green-700 underline">
+                  <Link href={`/loans/${loan.id}`} className="text-sm text-green-700 dark:text-green-400 underline">
                     View loan details →
                   </Link>
                 )}
@@ -264,14 +300,14 @@ export default function MatchReviewPage() {
         )}
 
         {/* Match Score */}
-        <Card className="mb-6 bg-gradient-to-br from-primary-500 to-primary-600 text-white">
+        <Card className="mb-6 bg-gradient-to-br from-primary-500 to-primary-600 dark:from-primary-600 dark:to-primary-700 text-white">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-primary-100">Match Score</p>
+              <p className="text-primary-100 dark:text-primary-200">Match Score</p>
               <p className="text-4xl font-bold">{match.match_score}%</p>
             </div>
             <div className="text-right">
-              <p className="text-primary-100">Loan Amount</p>
+              <p className="text-primary-100 dark:text-primary-200">Loan Amount</p>
               <p className="text-3xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
             </div>
           </div>
@@ -280,42 +316,42 @@ export default function MatchReviewPage() {
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           {/* Borrower Info */}
           <Card>
-            <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <User className="w-5 h-5 text-primary-500" />
+            <h3 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <User className="w-5 h-5 text-primary-500 dark:text-primary-400" />
               Borrower Profile
             </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Name</span>
-                <span className="font-medium">{borrower.full_name}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Name</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{borrower.full_name}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Rating</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Rating</span>
                 {getRatingBadge(borrower.borrower_rating || 'neutral')}
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Verified</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Verified</span>
                 {borrower.verification_status === 'verified' ? (
-                  <span className="flex items-center gap-1 text-green-600">
+                  <span className="flex items-center gap-1 text-green-600 dark:text-green-500">
                     <Shield className="w-4 h-4" />
                     Verified
                   </span>
                 ) : (
-                  <span className="text-neutral-400">Not verified</span>
+                  <span className="text-neutral-400 dark:text-neutral-500">Not verified</span>
                 )}
               </div>
-              <div className="pt-3 border-t">
+              <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-neutral-500">Payment History</span>
-                  <span className="font-medium">{borrower.total_payments_made} payments</span>
+                  <span className="text-neutral-500 dark:text-neutral-400">Payment History</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{borrower.total_payments_made} payments</span>
                 </div>
-                <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
+                <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                   <div 
-                    className="h-full bg-green-500"
+                    className="h-full bg-green-500 dark:bg-green-600"
                     style={{ width: `${onTimePercentage}%` }}
                   />
                 </div>
-                <p className="text-xs text-neutral-500 mt-1">
+                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                   {onTimePercentage}% on-time or early
                 </p>
               </div>
@@ -324,29 +360,29 @@ export default function MatchReviewPage() {
 
           {/* Loan Details */}
           <Card>
-            <h3 className="font-semibold text-neutral-900 mb-4 flex items-center gap-2">
-              <Target className="w-5 h-5 text-primary-500" />
+            <h3 className="font-semibold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+              <Target className="w-5 h-5 text-primary-500 dark:text-primary-400" />
               Loan Details
             </h3>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Amount</span>
-                <span className="font-medium">{formatCurrency(loan.amount, loan.currency)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Amount</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(loan.amount, loan.currency)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Installments</span>
-                <span className="font-medium">{loan.total_installments} × {loan.repayment_frequency}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Installments</span>
+                <span className="font-medium text-neutral-900 dark:text-white">{loan.total_installments} × {loan.repayment_frequency}</span>
               </div>
               {loan.purpose && (
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Purpose</span>
-                  <span className="font-medium">{loan.purpose}</span>
+                  <span className="text-neutral-500 dark:text-neutral-400">Purpose</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{loan.purpose}</span>
                 </div>
               )}
               {loan.recipient_country && (
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Recipient Country</span>
-                  <span className="font-medium flex items-center gap-1">
+                  <span className="text-neutral-500 dark:text-neutral-400">Recipient Country</span>
+                  <span className="font-medium text-neutral-900 dark:text-white flex items-center gap-1">
                     <MapPin className="w-3 h-3" />
                     {loan.recipient_country}
                   </span>
@@ -354,19 +390,19 @@ export default function MatchReviewPage() {
               )}
               {loan.recipient_name && (
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Recipient</span>
-                  <span className="font-medium">{loan.recipient_name}</span>
+                  <span className="text-neutral-500 dark:text-neutral-400">Recipient</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{loan.recipient_name}</span>
                 </div>
               )}
               {loan.disbursement_method && (
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-500">Disbursement</span>
-                  <span className="font-medium capitalize">{loan.disbursement_method.replace('_', ' ')}</span>
+                  <span className="text-neutral-500 dark:text-neutral-400">Disbursement</span>
+                  <span className="font-medium text-neutral-900 dark:text-white capitalize">{loan.disbursement_method.replace('_', ' ')}</span>
                 </div>
               )}
               <div className="flex items-center justify-between">
-                <span className="text-neutral-500">Requested</span>
-                <span className="text-neutral-400 text-sm">{new Date(loan.created_at).toLocaleDateString()}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Requested</span>
+                <span className="text-neutral-400 dark:text-neutral-500 text-sm">{new Date(loan.created_at).toLocaleDateString()}</span>
               </div>
             </div>
           </Card>
@@ -374,12 +410,12 @@ export default function MatchReviewPage() {
 
         {/* Auto-accept Tip */}
         {isPending && (
-          <Card className="mb-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200">
+          <Card className="mb-6 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border-yellow-200 dark:border-yellow-800">
             <div className="flex items-start gap-3">
-              <Zap className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <Zap className="w-5 h-5 text-yellow-600 dark:text-yellow-500 mt-0.5" />
               <div>
-                <p className="font-medium text-yellow-900">Save time with Auto-Accept</p>
-                <p className="text-sm text-yellow-700 mt-1">
+                <p className="font-medium text-yellow-900 dark:text-yellow-400">Save time with Auto-Accept</p>
+                <p className="text-sm text-yellow-700 dark:text-yellow-500 mt-1">
                   Enable auto-accept in your preferences to automatically fund loans that match your criteria.
                   <Link href="/lender/preferences" className="underline ml-1">
                     Update preferences →
@@ -395,7 +431,7 @@ export default function MatchReviewPage() {
           <div className="flex gap-4">
             <Button
               variant="outline"
-              className="flex-1 text-red-600 border-red-200 hover:bg-red-50"
+              className="flex-1 text-red-600 dark:text-red-400 border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/30"
               onClick={() => handleAction('decline')}
               loading={actionLoading === 'decline'}
             >
@@ -403,7 +439,7 @@ export default function MatchReviewPage() {
               Decline
             </Button>
             <Button
-              className="flex-1 bg-green-600 hover:bg-green-700"
+              className="flex-1 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
               onClick={() => handleAction('accept')}
               loading={actionLoading === 'accept'}
             >
@@ -415,24 +451,24 @@ export default function MatchReviewPage() {
 
         {/* Decline Modal */}
         {showDeclineModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <Card className="w-full max-w-md">
-              <h3 className="font-semibold text-neutral-900 mb-4">Decline Loan</h3>
-              <p className="text-neutral-600 mb-4">
+          <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4">
+            <Card className="w-full max-w-md bg-white dark:bg-neutral-900">
+              <h3 className="font-semibold text-neutral-900 dark:text-white mb-4">Decline Loan</h3>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-4">
                 Are you sure you want to decline this loan? It will be offered to the next matching lender.
               </p>
               <textarea
                 value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}
                 placeholder="Reason for declining (optional)"
-                className="w-full p-3 border border-neutral-200 rounded-xl min-h-[80px] mb-4"
+                className="w-full p-3 border border-neutral-200 dark:border-neutral-700 rounded-xl min-h-[80px] mb-4 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
               />
               <div className="flex gap-3">
                 <Button variant="outline" onClick={() => setShowDeclineModal(false)}>
                   Cancel
                 </Button>
                 <Button
-                  className="bg-red-600 hover:bg-red-700"
+                  className="bg-red-600 hover:bg-red-700 dark:bg-red-700 dark:hover:bg-red-600"
                   onClick={() => handleAction('decline')}
                   loading={actionLoading === 'decline'}
                 >

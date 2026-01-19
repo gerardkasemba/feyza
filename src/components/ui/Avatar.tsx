@@ -23,25 +23,40 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
     xl: 'w-16 h-16 text-lg',
   };
 
-  const colors = [
-    'bg-primary-500',
-    'bg-blue-500',
-    'bg-purple-500',
-    'bg-pink-500',
-    'bg-orange-500',
-    'bg-teal-500',
-  ];
+  const colors = {
+    light: [
+      'bg-primary-500',
+      'bg-blue-500',
+      'bg-purple-500',
+      'bg-pink-500',
+      'bg-orange-500',
+      'bg-teal-500',
+    ],
+    dark: [
+      'bg-primary-600',
+      'bg-blue-600',
+      'bg-purple-600',
+      'bg-pink-600',
+      'bg-orange-600',
+      'bg-teal-600',
+    ]
+  };
 
   // Generate consistent color based on name
-  const colorIndex = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.length;
-  const bgColor = colors[colorIndex];
+  const colorIndex = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.light.length;
+  const bgColorLight = colors.light[colorIndex];
+  const bgColorDark = colors.dark[colorIndex];
 
   if (src) {
     return (
       <img
         src={src}
         alt={name}
-        className={cn('rounded-full object-cover', sizes[size], className)}
+        className={cn(
+          'rounded-full object-cover border-2 border-white dark:border-neutral-800',
+          sizes[size],
+          className
+        )}
       />
     );
   }
@@ -49,9 +64,10 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
   return (
     <div
       className={cn(
-        'rounded-full flex items-center justify-center font-semibold text-white',
+        'rounded-full flex items-center justify-center font-semibold text-white border-2 border-white dark:border-neutral-800',
         sizes[size],
-        bgColor,
+        bgColorLight,
+        'dark:' + bgColorDark,
         className
       )}
     >

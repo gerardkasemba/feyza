@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Card, Button, Input } from '@/components/ui';
 import { Mail, ArrowRight, CheckCircle, AlertCircle, Wallet } from 'lucide-react';
+import { MdEmail } from 'react-icons/md'; // Using react-icons for email icon
 
 export default function LenderAccessPage() {
   const [email, setEmail] = useState('');
@@ -45,22 +46,22 @@ export default function LenderAccessPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 p-4">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 p-4">
         <Card className="max-w-md w-full text-center">
-          <div className="w-16 h-16 mx-auto mb-6 bg-green-100 rounded-full flex items-center justify-center">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+          <div className="w-16 h-16 mx-auto mb-6 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+            <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-500" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-neutral-900 mb-2">
-            Check Your Email! 📧
+          <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-2">
+            Check Your Email! <MdEmail className="inline-block ml-1 w-6 h-6" />
           </h1>
-          <p className="text-neutral-500 mb-6">
-            We've sent a link to <strong>{email}</strong> to access your lending dashboard.
+          <p className="text-neutral-500 dark:text-neutral-400 mb-6">
+            We've sent a link to <strong className="text-neutral-900 dark:text-white">{email}</strong> to access your lending dashboard.
           </p>
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-neutral-400 dark:text-neutral-500">
             Didn't receive it? Check your spam folder or{' '}
             <button
               onClick={() => setSuccess(false)}
-              className="text-primary-600 hover:underline"
+              className="text-primary-600 dark:text-primary-400 hover:underline"
             >
               try again
             </button>
@@ -71,17 +72,17 @@ export default function LenderAccessPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 p-4">
       <div className="max-w-md w-full">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 dark:from-primary-600 dark:to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
             <Wallet className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-display font-bold text-neutral-900 mb-2">
+          <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-2">
             Lender Dashboard Access
           </h1>
-          <p className="text-neutral-500">
+          <p className="text-neutral-500 dark:text-neutral-400">
             Enter your email to access your lending dashboard
           </p>
         </div>
@@ -89,9 +90,9 @@ export default function LenderAccessPage() {
         <Card>
           <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-700">{error}</p>
+              <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
               </div>
             )}
 
@@ -104,9 +105,9 @@ export default function LenderAccessPage() {
               icon={<Mail className="w-4 h-4" />}
             />
 
-            <div className="bg-neutral-50 rounded-xl p-4">
-              <p className="text-sm text-neutral-600">
-                <strong>How it works:</strong> If you've received loan requests at this email, 
+            <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                <strong className="text-neutral-900 dark:text-white">How it works:</strong> If you've received loan requests at this email, 
                 we'll send you a secure link to view and manage all your loans.
               </p>
             </div>
@@ -117,8 +118,8 @@ export default function LenderAccessPage() {
             </Button>
           </form>
 
-          <div className="mt-6 pt-6 border-t border-neutral-100 text-center">
-            <p className="text-sm text-neutral-500 mb-2">Already have an account?</p>
+          <div className="mt-6 pt-6 border-t border-neutral-100 dark:border-neutral-800 text-center">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">Already have an account?</p>
             <Link href="/auth/signin">
               <Button variant="outline" size="sm">
                 Sign In
@@ -127,8 +128,8 @@ export default function LenderAccessPage() {
           </div>
         </Card>
 
-        <p className="text-center text-sm text-neutral-500 mt-8">
-          <Link href="/" className="text-primary-600 hover:underline">
+        <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-8">
+          <Link href="/" className="text-primary-600 dark:text-primary-400 hover:underline">
             Back to home
           </Link>
         </p>

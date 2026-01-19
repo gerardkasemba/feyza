@@ -45,7 +45,7 @@ export function DashboardBorrowingLimit() {
   if (loading) {
     return (
       <Card className="animate-pulse">
-        <div className="h-20 bg-neutral-100 rounded" />
+        <div className="h-20 bg-neutral-100 dark:bg-neutral-800 rounded" />
       </Card>
     );
   }
@@ -53,13 +53,43 @@ export function DashboardBorrowingLimit() {
   if (!eligibility) return null;
 
   const getTierColor = (tier: number) => {
-    const colors: Record<number, { bg: string; text: string }> = {
-      1: { bg: 'bg-gray-100', text: 'text-gray-600' },
-      2: { bg: 'bg-amber-100', text: 'text-amber-700' },
-      3: { bg: 'bg-slate-200', text: 'text-slate-700' },
-      4: { bg: 'bg-yellow-100', text: 'text-yellow-700' },
-      5: { bg: 'bg-purple-100', text: 'text-purple-700' },
-      6: { bg: 'bg-blue-100', text: 'text-blue-700' },
+    const colors: Record<number, { bg: string; text: string; bgDark: string; textDark: string }> = {
+      1: { 
+        bg: 'bg-gray-100', 
+        text: 'text-gray-600',
+        bgDark: 'bg-gray-900/30',
+        textDark: 'text-gray-400'
+      },
+      2: { 
+        bg: 'bg-amber-100', 
+        text: 'text-amber-700',
+        bgDark: 'bg-amber-900/30',
+        textDark: 'text-amber-400'
+      },
+      3: { 
+        bg: 'bg-slate-200', 
+        text: 'text-slate-700',
+        bgDark: 'bg-slate-800/30',
+        textDark: 'text-slate-400'
+      },
+      4: { 
+        bg: 'bg-yellow-100', 
+        text: 'text-yellow-700',
+        bgDark: 'bg-yellow-900/30',
+        textDark: 'text-yellow-400'
+      },
+      5: { 
+        bg: 'bg-purple-100', 
+        text: 'text-purple-700',
+        bgDark: 'bg-purple-900/30',
+        textDark: 'text-purple-400'
+      },
+      6: { 
+        bg: 'bg-blue-100', 
+        text: 'text-blue-700',
+        bgDark: 'bg-blue-900/30',
+        textDark: 'text-blue-400'
+      },
     };
     return colors[tier] || colors[1];
   };
@@ -70,19 +100,19 @@ export function DashboardBorrowingLimit() {
     : 100;
 
   return (
-    <Card className="bg-gradient-to-br from-primary-50 to-white border-primary-100">
+    <Card className="bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-neutral-800 border-primary-100 dark:border-primary-800">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tierColor.bg}`}>
-            <Star className={`w-5 h-5 ${tierColor.text}`} />
+          <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${tierColor.bg} dark:${tierColor.bgDark}`}>
+            <Star className={`w-5 h-5 ${tierColor.text} dark:${tierColor.textDark}`} />
           </div>
           <div>
-            <p className="text-sm text-neutral-500">Your Borrowing Tier</p>
-            <p className="font-semibold text-neutral-900">{eligibility.tierName}</p>
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">Your Borrowing Tier</p>
+            <p className="font-semibold text-neutral-900 dark:text-white">{eligibility.tierName}</p>
           </div>
         </div>
         {!eligibility.canBorrow && (
-          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center gap-1">
+          <span className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 rounded-full text-xs font-medium flex items-center gap-1">
             <Lock className="w-3 h-3" />
             Limited
           </span>
@@ -90,10 +120,10 @@ export function DashboardBorrowingLimit() {
       </div>
 
       {/* Limit Info */}
-      <div className="flex items-center justify-between p-3 bg-white rounded-xl border border-neutral-100 mb-3">
+      <div className="flex items-center justify-between p-3 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-100 dark:border-neutral-700 mb-3">
         <div>
-          <p className="text-xs text-neutral-500">Available to Borrow</p>
-          <p className="text-xl font-bold text-primary-600">
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">Available to Borrow</p>
+          <p className="text-xl font-bold text-primary-600 dark:text-primary-400">
             {eligibility.borrowingTier === 6 
               ? 'Unlimited' 
               : formatCurrency(eligibility.availableAmount || 0)}
@@ -101,8 +131,8 @@ export function DashboardBorrowingLimit() {
         </div>
         {eligibility.borrowingTier < 6 && (
           <div className="text-right">
-            <p className="text-xs text-neutral-500">Tier Limit</p>
-            <p className="font-medium text-neutral-700">{formatCurrency(eligibility.maxAmount || 0)}</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Tier Limit</p>
+            <p className="font-medium text-neutral-700 dark:text-neutral-300">{formatCurrency(eligibility.maxAmount || 0)}</p>
           </div>
         )}
       </div>
@@ -111,15 +141,15 @@ export function DashboardBorrowingLimit() {
       {eligibility.borrowingTier < 6 && eligibility.loansNeededToUpgrade > 0 && (
         <div className="mb-3">
           <div className="flex items-center justify-between text-xs mb-1">
-            <span className="text-neutral-500 flex items-center gap-1">
-              <TrendingUp className="w-3 h-3 text-green-600" />
+            <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+              <TrendingUp className="w-3 h-3 text-green-600 dark:text-green-500" />
               Next tier: {formatCurrency(eligibility.nextTierAmount || 0)}
             </span>
-            <span className="text-neutral-600">{3 - eligibility.loansNeededToUpgrade}/3 loans</span>
+            <span className="text-neutral-600 dark:text-neutral-400">{3 - eligibility.loansNeededToUpgrade}/3 loans</span>
           </div>
-          <div className="h-2 bg-neutral-200 rounded-full overflow-hidden">
+          <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-green-500 transition-all"
+              className="h-full bg-green-500 dark:bg-green-600 transition-all"
               style={{ width: `${progressPercent}%` }}
             />
           </div>

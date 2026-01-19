@@ -9,6 +9,7 @@ import {
   ExternalLink, CheckCircle, Calendar, 
   ArrowRight, AlertCircle, Upload, XCircle
 } from 'lucide-react';
+import { FaPaypal, FaRegMoneyBillAlt } from 'react-icons/fa';
 
 interface LenderPaymentInfo {
   paypal_email?: string;
@@ -31,24 +32,20 @@ interface PaymentModalProps {
 const PAYMENT_METHODS = {
   paypal: {
     name: 'PayPal',
-    bg: 'bg-[#0070ba]',
-    hoverBg: 'hover:bg-[#003087]',
-    icon: (
-      <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106zm14.146-14.42a3.35 3.35 0 0 0-.607-.541c-.013.076-.026.175-.041.254-.93 4.778-4.005 7.201-9.138 7.201h-2.19a.563.563 0 0 0-.556.479l-1.187 7.527h-.506l-.24 1.516a.56.56 0 0 0 .554.647h3.882c.46 0 .85-.334.922-.788.06-.26.76-4.852.816-5.09a.932.932 0 0 1 .923-.788h.58c3.76 0 6.705-1.528 7.565-5.946.36-1.847.174-3.388-.777-4.471z"/>
-      </svg>
-    ),
+    bg: 'bg-[#0070ba] dark:bg-[#005EA6]',
+    hoverBg: 'hover:bg-[#003087] dark:hover:bg-[#004C9E]',
+    icon: <FaPaypal className="w-6 h-6 text-white" />,
   },
   cashapp: {
     name: 'Cash App',
-    bg: 'bg-[#00D632]',
-    hoverBg: 'hover:bg-[#00B82B]',
-    icon: <span className="text-white font-bold text-2xl">$</span>,
+    bg: 'bg-[#00D632] dark:bg-[#00B82B]',
+    hoverBg: 'hover:bg-[#00B82B] dark:hover:bg-[#009A24]',
+    icon: <FaRegMoneyBillAlt className="w-6 h-6 text-white" />,
   },
   venmo: {
     name: 'Venmo',
-    bg: 'bg-[#3D95CE]',
-    hoverBg: 'hover:bg-[#2B7AB5]',
+    bg: 'bg-[#3D95CE] dark:bg-[#2B7AB5]',
+    hoverBg: 'hover:bg-[#2B7AB5] dark:hover:bg-[#1E5F9C]',
     icon: <span className="text-white font-bold text-2xl">V</span>,
   },
 };
@@ -164,27 +161,27 @@ export function PaymentModal({
       {step === 'pay' && (
         <div className="space-y-6">
           {/* Payment Info */}
-          <div className="text-center py-6 bg-primary-50 rounded-xl">
-            <p className="text-sm text-neutral-500 mb-1">Amount Due</p>
-            <p className="text-3xl font-bold text-primary-600">
+          <div className="text-center py-6 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">Amount Due</p>
+            <p className="text-3xl font-bold text-primary-600 dark:text-primary-400">
               {formatCurrency(amount, currency)}
             </p>
-            <p className="text-sm text-neutral-500 mt-2 flex items-center justify-center gap-1">
+            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 flex items-center justify-center gap-1">
               <Calendar className="w-4 h-4" />
               Due: {formatDate(scheduleItem.due_date)}
             </p>
           </div>
 
           {/* Breakdown */}
-          <div className="bg-neutral-50 rounded-xl p-4 space-y-2 text-sm">
+          <div className="bg-neutral-50 dark:bg-neutral-800/50 rounded-xl p-4 space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-neutral-500">Principal</span>
-              <span>{formatCurrency(scheduleItem.principal_amount, currency)}</span>
+              <span className="text-neutral-500 dark:text-neutral-400">Principal</span>
+              <span className="text-neutral-900 dark:text-neutral-300">{formatCurrency(scheduleItem.principal_amount, currency)}</span>
             </div>
             {scheduleItem.interest_amount > 0 && (
               <div className="flex justify-between">
-                <span className="text-neutral-500">Interest</span>
-                <span>{formatCurrency(scheduleItem.interest_amount, currency)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Interest</span>
+                <span className="text-neutral-900 dark:text-neutral-300">{formatCurrency(scheduleItem.interest_amount, currency)}</span>
               </div>
             )}
           </div>
@@ -193,19 +190,19 @@ export function PaymentModal({
           {activePayment && methodConfig && paymentUrl ? (
             <>
               <div className="text-center">
-                <p className="text-sm text-neutral-500 mb-2">Pay to:</p>
-                <p className="font-medium text-neutral-900">{lenderName || 'Your Lender'}</p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">Pay to:</p>
+                <p className="font-medium text-neutral-900 dark:text-white">{lenderName || 'Your Lender'}</p>
               </div>
 
               {/* Big Payment Button */}
               <div className={`${methodConfig.bg} rounded-xl p-5`}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
+                    <div className="w-12 h-12 bg-white/20 dark:bg-white/10 rounded-xl flex items-center justify-center">
                       {methodConfig.icon}
                     </div>
                     <div className="text-white">
-                      <p className="text-white/80 text-sm">via {methodConfig.name}</p>
+                      <p className="text-white/80 dark:text-white/90 text-sm">via {methodConfig.name}</p>
                       <p className="font-bold text-lg">{activePayment.value}</p>
                     </div>
                   </div>
@@ -214,7 +211,7 @@ export function PaymentModal({
                   href={paymentUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-2 w-full bg-white text-neutral-900 font-bold py-3 px-6 rounded-lg hover:bg-neutral-100 transition-colors"
+                  className="flex items-center justify-center gap-2 w-full bg-white dark:bg-white/95 text-neutral-900 dark:text-neutral-800 font-bold py-3 px-6 rounded-lg hover:bg-neutral-100 dark:hover:bg-white transition-colors"
                 >
                   Pay {formatCurrency(amount, currency)}
                   <ExternalLink className="w-4 h-4" />
@@ -222,7 +219,7 @@ export function PaymentModal({
               </div>
 
               <div className="text-center">
-                <p className="text-sm text-neutral-500 mb-3">
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">
                   After completing payment in {methodConfig.name}:
                 </p>
                 <Button
@@ -236,12 +233,12 @@ export function PaymentModal({
               </div>
             </>
           ) : (
-            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-xl">
+            <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl">
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-500 mt-0.5" />
                 <div>
-                  <p className="font-medium text-yellow-800">No payment method available</p>
-                  <p className="text-sm text-yellow-700">
+                  <p className="font-medium text-yellow-800 dark:text-yellow-300">No payment method available</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400">
                     Your lender hasn't set up a payment method. Please contact them directly to arrange payment.
                   </p>
                 </div>
@@ -260,11 +257,11 @@ export function PaymentModal({
       {step === 'confirm' && (
         <div className="space-y-6">
           <div className="text-center">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-500" />
             </div>
-            <h3 className="text-lg font-bold text-neutral-900">Confirm Payment</h3>
-            <p className="text-neutral-500">
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">Confirm Payment</h3>
+            <p className="text-neutral-500 dark:text-neutral-400">
               Did you complete the {formatCurrency(amount, currency)} payment via {methodConfig?.name}?
             </p>
           </div>
@@ -279,10 +276,10 @@ export function PaymentModal({
 
           {/* Proof of Payment Upload */}
           <div>
-            <label className="block text-sm font-medium text-neutral-700 mb-1">
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
               Screenshot Proof of Payment *
             </label>
-            <p className="text-xs text-neutral-500 mb-2">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-2">
               Upload a screenshot showing the completed payment
             </p>
             
@@ -291,7 +288,7 @@ export function PaymentModal({
                 <img 
                   src={proofPreview} 
                   alt="Payment proof" 
-                  className="w-full h-40 object-cover rounded-lg border border-neutral-200"
+                  className="w-full h-40 object-cover rounded-lg border border-neutral-200 dark:border-neutral-700"
                 />
                 <button
                   type="button"
@@ -299,17 +296,17 @@ export function PaymentModal({
                     setProofFile(null);
                     setProofPreview(null);
                   }}
-                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                  className="absolute top-2 right-2 p-1 bg-red-500 dark:bg-red-600 text-white rounded-full hover:bg-red-600 dark:hover:bg-red-700"
                 >
                   <XCircle className="w-4 h-4" />
                 </button>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-neutral-300 rounded-lg cursor-pointer hover:border-primary-500 hover:bg-primary-50/50 transition-colors">
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-lg cursor-pointer hover:border-primary-500 dark:hover:border-primary-400 hover:bg-primary-50/50 dark:hover:bg-primary-900/20 transition-colors">
                 <div className="flex flex-col items-center">
-                  <Upload className="w-8 h-8 text-neutral-400 mb-2" />
-                  <span className="text-sm text-neutral-500">Click to upload screenshot</span>
-                  <span className="text-xs text-neutral-400 mt-1">PNG, JPG up to 5MB</span>
+                  <Upload className="w-8 h-8 text-neutral-400 dark:text-neutral-500 mb-2" />
+                  <span className="text-sm text-neutral-500 dark:text-neutral-400">Click to upload screenshot</span>
+                  <span className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">PNG, JPG up to 5MB</span>
                 </div>
                 <input
                   type="file"
@@ -339,14 +336,14 @@ export function PaymentModal({
           />
 
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-500 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 mt-0.5" />
+              <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
             </div>
           )}
 
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-            <p className="text-sm text-amber-800">
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+            <p className="text-sm text-amber-800 dark:text-amber-300">
               <strong>⚠️ Important:</strong> Screenshot proof is required. Your lender will be notified and can confirm receipt of this payment.
             </p>
           </div>

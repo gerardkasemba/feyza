@@ -9,6 +9,7 @@ import {
   CheckCircle, Clock, Building2, Settings, Bell, 
   Share2, ExternalLink, Copy, ArrowRight
 } from 'lucide-react';
+import { FaRegCheckCircle } from 'react-icons/fa';
 
 export default function BusinessSetupSuccessPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function BusinessSetupSuccessPage() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
-        <div className="animate-pulse text-neutral-500">Loading...</div>
+        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     );
   }
@@ -72,12 +73,15 @@ export default function BusinessSetupSuccessPage() {
             <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
           </div>
 
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
-            Application Submitted! 🎉
-          </h1>
+          <div className="flex items-center justify-center gap-2 mb-2">
+            <FaRegCheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
+            <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">
+              Application Submitted!
+            </h1>
+          </div>
           
           <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-            Your business profile for <strong>{businessProfile?.business_name}</strong> has been submitted for review.
+            Your business profile for <strong className="text-neutral-900 dark:text-white">{businessProfile?.business_name}</strong> has been submitted for review.
           </p>
 
           {/* Status Card */}
@@ -136,11 +140,11 @@ export default function BusinessSetupSuccessPage() {
           {businessProfile?.slug && (
             <div className="bg-neutral-50 dark:bg-neutral-800 rounded-xl p-4 mb-6">
               <div className="flex items-center gap-2 mb-2">
-                <Share2 className="w-4 h-4 text-neutral-500" />
+                <Share2 className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
                 <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">Your Public Lender Profile</span>
               </div>
               <div className="flex items-center gap-2">
-                <code className="flex-1 text-sm bg-white dark:bg-neutral-700 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-600 text-neutral-600 dark:text-neutral-300 truncate">
+                <code className="flex-1 text-sm bg-white dark:bg-neutral-900 px-3 py-2 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 truncate">
                   {typeof window !== 'undefined' ? `${window.location.origin}/lend/${businessProfile.slug}` : `/lend/${businessProfile.slug}`}
                 </code>
                 <Button
@@ -148,7 +152,7 @@ export default function BusinessSetupSuccessPage() {
                   size="sm"
                   onClick={copyProfileLink}
                 >
-                  {copied ? <CheckCircle className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+                  {copied ? <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-500" /> : <Copy className="w-4 h-4" />}
                 </Button>
               </div>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
@@ -189,7 +193,7 @@ export default function BusinessSetupSuccessPage() {
 
         {/* Footer */}
         <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-6">
-          Questions? Contact us at <a href="mailto:support@feyza.app" className="text-primary-600 hover:underline">support@feyza.app</a>
+          Questions? Contact us at <a href="mailto:support@feyza.app" className="text-primary-600 dark:text-primary-400 hover:underline">support@feyza.app</a>
         </p>
       </div>
     </div>

@@ -356,29 +356,26 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
           <div className="flex items-center gap-2">
             {/* Theme Toggle */}
             {mounted && (
-              <>
-              {/* Light/Dark Mode */}
-              </>
-              // <div className="relative" ref={themeDropdownRef}>
-              //   <button onClick={() => setThemeDropdownOpen(!themeDropdownOpen)} className="p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" aria-label="Toggle theme">
-              //     <ThemeIcon className="w-5 h-5" />
-              //   </button>
-              //   {themeDropdownOpen && (
-              //     <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 animate-fade-in z-50">
-              //       {[{ value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon }, { value: 'system', label: 'System', icon: Monitor }].map((option) => {
-              //         const Icon = option.icon;
-              //         return (
-              //           <button key={option.value} onClick={() => { setTheme(option.value as any); setThemeDropdownOpen(false); }}
-              //             className={cn('w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
-              //               theme === option.value ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700')}>
-              //             <Icon className="w-4 h-4" />{option.label}
-              //             {theme === option.value && <span className="ml-auto text-green-600">✓</span>}
-              //           </button>
-              //         );
-              //       })}
-              //     </div>
-              //   )}
-              // </div>
+              <div className="relative" ref={themeDropdownRef}>
+                <button onClick={() => setThemeDropdownOpen(!themeDropdownOpen)} className="p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors" aria-label="Toggle theme">
+                  <ThemeIcon className="w-5 h-5" />
+                </button>
+                {themeDropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 animate-fade-in z-50">
+                    {[{ value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon }, { value: 'system', label: 'System', icon: Monitor }].map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <button key={option.value} onClick={() => { setTheme(option.value as any); setThemeDropdownOpen(false); }}
+                          className={cn('w-full flex items-center gap-3 px-4 py-2 text-sm transition-colors',
+                            theme === option.value ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700')}>
+                          <Icon className="w-4 h-4" />{option.label}
+                          {theme === option.value && <span className="ml-auto text-green-600">✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             {user ? (

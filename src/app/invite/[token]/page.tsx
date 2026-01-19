@@ -24,6 +24,7 @@ import {
   Loader2,
   Shield,
 } from 'lucide-react';
+import { MdEmergency, MdMedicalServices, MdSchool, MdBusinessCenter, MdHome, MdDescription } from 'react-icons/md';
 
 export default function InvitePage() {
   const params = useParams();
@@ -38,7 +39,7 @@ export default function InvitePage() {
   const [accepted, setAccepted] = useState(false);
   const [declined, setDeclined] = useState(false);
   
-  // Multi-step flow: 1=Review, 2=Interest, 3=Bank Connection, 4=Agreement, 5=Confirm
+  // Multi-step flow: 1=Review, 2=Interest, 3=BankConnection, 4=Agreement, 5=Confirm
   const [step, setStep] = useState(1);
   const [stepError, setStepError] = useState<string | null>(null);
   
@@ -56,6 +57,15 @@ export default function InvitePage() {
   // Payment state
   const [disbursing, setDisbursing] = useState(false);
   const [disbursementComplete, setDisbursementComplete] = useState(false);
+
+  const purposeIcons: Record<string, React.ReactNode> = {
+    emergency: <MdEmergency className="w-5 h-5" />,
+    medical: <MdMedicalServices className="w-5 h-5" />,
+    education: <MdSchool className="w-5 h-5" />,
+    business: <MdBusinessCenter className="w-5 h-5" />,
+    personal: <MdHome className="w-5 h-5" />,
+    other: <MdDescription className="w-5 h-5" />,
+  };
 
   useEffect(() => {
     const fetchLoan = async () => {
@@ -265,10 +275,10 @@ export default function InvitePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 dark:from-neutral-900 dark:to-neutral-950 flex items-center justify-center p-4">
         <div className="text-center">
-          <Loader2 className="w-8 h-8 animate-spin text-primary-600 mx-auto mb-4" />
-          <p className="text-neutral-600">Loading loan details...</p>
+          <Loader2 className="w-8 h-8 animate-spin text-primary-600 dark:text-primary-500 mx-auto mb-4" />
+          <p className="text-neutral-600 dark:text-neutral-400">Loading loan details...</p>
         </div>
       </div>
     );
@@ -276,13 +286,13 @@ export default function InvitePage() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 dark:from-neutral-900 dark:to-neutral-950 flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center p-8">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-8 h-8 text-red-600" />
+          <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-red-600 dark:text-red-500" />
           </div>
-          <h1 className="text-xl font-bold text-neutral-900 mb-2">Unable to Load</h1>
-          <p className="text-neutral-600 mb-6">{error}</p>
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Unable to Load</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-6">{error}</p>
           <Link href="/">
             <Button variant="outline">Go Home</Button>
           </Link>
@@ -293,13 +303,13 @@ export default function InvitePage() {
 
   if (declined) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 dark:from-neutral-900 dark:to-neutral-950 flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center p-8">
-          <div className="w-16 h-16 bg-neutral-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <XCircle className="w-8 h-8 text-neutral-600" />
+          <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <XCircle className="w-8 h-8 text-neutral-600 dark:text-neutral-400" />
           </div>
-          <h1 className="text-xl font-bold text-neutral-900 mb-2">Request Declined</h1>
-          <p className="text-neutral-600 mb-6">
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Request Declined</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-6">
             You've declined this loan request. {borrower?.full_name} will be notified.
           </p>
           <Link href="/">
@@ -312,24 +322,24 @@ export default function InvitePage() {
 
   if (accepted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-teal-50 dark:from-neutral-900 dark:to-neutral-950 flex items-center justify-center p-4">
         <Card className="max-w-md w-full text-center p-8">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-green-600" />
+          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-500" />
           </div>
-          <h1 className="text-xl font-bold text-neutral-900 mb-2">Loan Accepted!</h1>
-          <p className="text-neutral-600 mb-4">
+          <h1 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Loan Accepted!</h1>
+          <p className="text-neutral-600 dark:text-neutral-400 mb-4">
             {formatCurrency(loan?.amount || 0, loan?.currency)} is being transferred to {borrower?.full_name}'s bank account.
           </p>
-          <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 text-left">
-            <h3 className="font-semibold text-green-800 mb-2">What happens next:</h3>
-            <ul className="text-sm text-green-700 space-y-1">
+          <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6 text-left">
+            <h3 className="font-semibold text-green-800 dark:text-green-300 mb-2">What happens next:</h3>
+            <ul className="text-sm text-green-700 dark:text-green-400 space-y-1">
               <li>• Funds will arrive in 1-3 business days</li>
               <li>• You'll receive {loan?.total_installments} repayments of {formatCurrency(repaymentAmount, loan?.currency)}</li>
               <li>• We'll email you when each payment is received</li>
             </ul>
           </div>
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-neutral-500 dark:text-neutral-400">
             Check your email for confirmation and repayment schedule.
           </p>
         </Card>
@@ -338,12 +348,12 @@ export default function InvitePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 py-8 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-teal-50 dark:from-neutral-900 dark:to-neutral-950 py-8 px-4">
       <div className="max-w-lg mx-auto">
         {/* Header */}
         <div className="text-center mb-6">
-          <h1 className="text-2xl font-bold text-neutral-900 mb-2">Loan Request</h1>
-          <p className="text-neutral-600">
+          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Request</h1>
+          <p className="text-neutral-600 dark:text-neutral-400">
             {borrower?.full_name} is asking to borrow money from you
           </p>
         </div>
@@ -355,10 +365,10 @@ export default function InvitePage() {
               key={s}
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                 s === step
-                  ? 'bg-primary-600 text-white'
+                  ? 'bg-primary-600 dark:bg-primary-500 text-white'
                   : s < step
-                  ? 'bg-green-500 text-white'
-                  : 'bg-neutral-200 text-neutral-500'
+                  ? 'bg-green-500 dark:bg-green-600 text-white'
+                  : 'bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400'
               }`}
             >
               {s < step ? <CheckCircle className="w-4 h-4" /> : s}
@@ -366,47 +376,50 @@ export default function InvitePage() {
           ))}
         </div>
 
-        <Card className="p-6">
+        <Card className="p-6 dark:bg-neutral-800">
           {stepError && (
-            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-600" />
-              <span className="text-sm text-red-700">{stepError}</span>
+            <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
+              <span className="text-sm text-red-700 dark:text-red-400">{stepError}</span>
             </div>
           )}
 
           {/* Step 1: Review Request */}
           {step === 1 && (
             <>
-              <h2 className="text-lg font-bold text-neutral-900 mb-4">Review Request</h2>
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Review Request</h2>
               
-              <div className="flex items-center gap-4 mb-6 p-4 bg-neutral-50 rounded-xl">
-                <div className="w-12 h-12 bg-primary-100 rounded-full flex items-center justify-center">
-                  <User className="w-6 h-6 text-primary-600" />
+              <div className="flex items-center gap-4 mb-6 p-4 bg-neutral-50 dark:bg-neutral-700/50 rounded-xl">
+                <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
+                  <User className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                 </div>
                 <div>
-                  <p className="font-semibold text-neutral-900">{borrower?.full_name}</p>
-                  <p className="text-sm text-neutral-500">{borrower?.email}</p>
+                  <p className="font-semibold text-neutral-900 dark:text-white">{borrower?.full_name}</p>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{borrower?.email}</p>
                 </div>
               </div>
 
               <div className="space-y-4 mb-6">
-                <div className="flex justify-between p-3 bg-neutral-50 rounded-lg">
-                  <span className="text-neutral-600">Amount Requested</span>
-                  <span className="font-bold text-neutral-900">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
+                <div className="flex justify-between p-3 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg">
+                  <span className="text-neutral-600 dark:text-neutral-400">Amount Requested</span>
+                  <span className="font-bold text-neutral-900 dark:text-white">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
                 </div>
-                <div className="flex justify-between p-3 bg-neutral-50 rounded-lg">
-                  <span className="text-neutral-600">Purpose</span>
-                  <span className="font-medium text-neutral-900">{loan?.purpose || 'Not specified'}</span>
+                <div className="flex justify-between p-3 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg items-center">
+                  <span className="text-neutral-600 dark:text-neutral-400">Purpose</span>
+                  <span className="font-medium text-neutral-900 dark:text-white flex items-center gap-2">
+                    {loan?.purpose && purposeIcons[loan.purpose]}
+                    {loan?.purpose || 'Not specified'}
+                  </span>
                 </div>
-                <div className="flex justify-between p-3 bg-neutral-50 rounded-lg">
-                  <span className="text-neutral-600">Repayment</span>
-                  <span className="font-medium text-neutral-900">
+                <div className="flex justify-between p-3 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg">
+                  <span className="text-neutral-600 dark:text-neutral-400">Repayment</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">
                     {loan?.total_installments} {loan?.repayment_frequency} payments
                   </span>
                 </div>
-                <div className="flex justify-between p-3 bg-neutral-50 rounded-lg">
-                  <span className="text-neutral-600">Start Date</span>
-                  <span className="font-medium text-neutral-900">
+                <div className="flex justify-between p-3 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg">
+                  <span className="text-neutral-600 dark:text-neutral-400">Start Date</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">
                     {loan?.start_date ? formatDate(new Date(loan.start_date)) : 'TBD'}
                   </span>
                 </div>
@@ -430,20 +443,20 @@ export default function InvitePage() {
             <>
               <button
                 onClick={() => setStep(1)}
-                className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-4"
+                className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-4"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Back
               </button>
 
-              <h2 className="text-lg font-bold text-neutral-900 mb-4">Set Interest Rate</h2>
-              <p className="text-neutral-600 mb-6">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Set Interest Rate</h2>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-6">
                 Choose how much interest (if any) you want to charge on this loan.
               </p>
 
               <div className="space-y-4 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-2">
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     Annual Interest Rate (%)
                   </label>
                   <div className="flex items-center gap-4">
@@ -454,33 +467,39 @@ export default function InvitePage() {
                       step="0.5"
                       value={interestRate}
                       onChange={(e) => setInterestRate(parseFloat(e.target.value))}
-                      className="flex-1"
+                      className="flex-1 accent-primary-600 dark:accent-primary-500"
                     />
-                    <span className="w-16 text-center font-bold text-lg">{interestRate}%</span>
+                    <span className="w-16 text-center font-bold text-lg text-neutral-900 dark:text-white">{interestRate}%</span>
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setInterestRate(0); setInterestType('simple'); }}
-                    className={`flex-1 p-3 rounded-lg border text-center ${
-                      interestRate === 0 ? 'border-primary-500 bg-primary-50' : 'border-neutral-200'
+                    className={`flex-1 p-3 rounded-lg border text-center transition-all ${
+                      interestRate === 0 
+                        ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
+                        : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
                     }`}
                   >
                     <span className="text-sm font-medium">0% (No Interest)</span>
                   </button>
                   <button
                     onClick={() => setInterestRate(5)}
-                    className={`flex-1 p-3 rounded-lg border text-center ${
-                      interestRate === 5 ? 'border-primary-500 bg-primary-50' : 'border-neutral-200'
+                    className={`flex-1 p-3 rounded-lg border text-center transition-all ${
+                      interestRate === 5 
+                        ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
+                        : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
                     }`}
                   >
                     <span className="text-sm font-medium">5%</span>
                   </button>
                   <button
                     onClick={() => setInterestRate(10)}
-                    className={`flex-1 p-3 rounded-lg border text-center ${
-                      interestRate === 10 ? 'border-primary-500 bg-primary-50' : 'border-neutral-200'
+                    className={`flex-1 p-3 rounded-lg border text-center transition-all ${
+                      interestRate === 10 
+                        ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400' 
+                        : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
                     }`}
                   >
                     <span className="text-sm font-medium">10%</span>
@@ -488,24 +507,24 @@ export default function InvitePage() {
                 </div>
 
                 {/* Summary */}
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <h4 className="font-semibold text-blue-800 mb-2">Loan Summary</h4>
+                <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+                  <h4 className="font-semibold text-blue-800 dark:text-blue-300 mb-2">Loan Summary</h4>
                   <div className="space-y-1 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-blue-700">Principal</span>
-                      <span className="font-medium">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
+                      <span className="text-blue-700 dark:text-blue-400">Principal</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-blue-700">Interest ({interestRate}%)</span>
-                      <span className="font-medium">+{formatCurrency(totalInterest, loan?.currency)}</span>
+                      <span className="text-blue-700 dark:text-blue-400">Interest ({interestRate}%)</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">+{formatCurrency(totalInterest, loan?.currency)}</span>
                     </div>
-                    <div className="flex justify-between pt-2 border-t border-blue-200">
-                      <span className="text-blue-800 font-semibold">Total Repayment</span>
-                      <span className="font-bold text-blue-900">{formatCurrency(totalAmount, loan?.currency)}</span>
+                    <div className="flex justify-between pt-2 border-t border-blue-200 dark:border-blue-700">
+                      <span className="text-blue-800 dark:text-blue-300 font-semibold">Total Repayment</span>
+                      <span className="font-bold text-blue-900 dark:text-blue-200">{formatCurrency(totalAmount, loan?.currency)}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-blue-700">Each Payment</span>
-                      <span className="font-medium">{formatCurrency(repaymentAmount, loan?.currency)}</span>
+                      <span className="text-blue-700 dark:text-blue-400">Each Payment</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(repaymentAmount, loan?.currency)}</span>
                     </div>
                   </div>
                 </div>
@@ -523,14 +542,14 @@ export default function InvitePage() {
             <>
               <button
                 onClick={() => setStep(2)}
-                className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-4"
+                className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-4"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Back
               </button>
 
-              <h2 className="text-lg font-bold text-neutral-900 mb-4">Connect Your Bank</h2>
-              <p className="text-neutral-600 mb-6">
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Connect Your Bank</h2>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-6">
                 Connect your bank account to send the loan and receive repayments.
               </p>
 
@@ -541,17 +560,17 @@ export default function InvitePage() {
                     accountMask={bankInfo.account_mask}
                     accountType={bankInfo.account_type}
                   />
-                  <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-700">Bank connected successfully!</span>
+                  <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-500" />
+                    <span className="text-sm text-green-700 dark:text-green-400">Bank connected successfully!</span>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-8 mb-6">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 rounded-full flex items-center justify-center">
-                    <Building className="w-8 h-8 text-neutral-400" />
+                  <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+                    <Building className="w-8 h-8 text-neutral-400 dark:text-neutral-500" />
                   </div>
-                  <p className="text-neutral-600 mb-4">
+                  <p className="text-neutral-600 dark:text-neutral-400 mb-4">
                     Securely connect your bank to send funds.
                   </p>
                   <PlaidLinkButton
@@ -562,12 +581,12 @@ export default function InvitePage() {
                 </div>
               )}
 
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
                 <div className="flex items-start gap-3">
-                  <Shield className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
                   <div>
-                    <h4 className="font-medium text-blue-800">Secure & Protected</h4>
-                    <p className="text-sm text-blue-700 mt-1">
+                    <h4 className="font-medium text-blue-800 dark:text-blue-300">Secure & Protected</h4>
+                    <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
                       We use Plaid to securely connect to your bank. We never see your login credentials.
                     </p>
                   </div>
@@ -590,13 +609,13 @@ export default function InvitePage() {
             <>
               <button
                 onClick={() => setStep(3)}
-                className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-4"
+                className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-4"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Back
               </button>
 
-              <h2 className="text-lg font-bold text-neutral-900 mb-4">Loan Agreement</h2>
+              <h2 className="text-lg font-bold text-neutral-900 dark:text-white mb-4">Loan Agreement</h2>
 
               <div className="space-y-4 mb-6">
                 <Input
@@ -619,10 +638,10 @@ export default function InvitePage() {
                     type="checkbox"
                     checked={agreementAccepted}
                     onChange={(e) => setAgreementAccepted(e.target.checked)}
-                    className="mt-1 w-5 h-5 rounded border-neutral-300 text-primary-600 focus:ring-primary-500"
+                    className="mt-1 w-5 h-5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 dark:text-primary-500 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-700"
                   />
-                  <span className="text-sm text-neutral-600">
-                    I, <strong>{lenderName || '[Your Name]'}</strong>, agree to lend {formatCurrency(loan?.amount || 0, loan?.currency)} to {borrower?.full_name}. 
+                  <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                    I, <strong className="text-neutral-900 dark:text-white">{lenderName || '[Your Name]'}</strong>, agree to lend {formatCurrency(loan?.amount || 0, loan?.currency)} to {borrower?.full_name}. 
                     I understand they will repay {formatCurrency(totalAmount, loan?.currency)} to my bank account over {loan?.total_installments} {loan?.repayment_frequency} payments.
                   </span>
                 </label>
@@ -644,49 +663,49 @@ export default function InvitePage() {
             <>
               <button
                 onClick={() => setStep(4)}
-                className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700 mb-4"
+                className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-4"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Back
               </button>
 
               <div className="text-center mb-6">
-                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <DollarSign className="w-8 h-8 text-green-600" />
+                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <DollarSign className="w-8 h-8 text-green-600 dark:text-green-500" />
                 </div>
-                <h2 className="text-xl font-bold text-neutral-900 mb-2">Confirm & Send</h2>
-                <p className="text-neutral-500">
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">Confirm & Send</h2>
+                <p className="text-neutral-500 dark:text-neutral-400">
                   Review and send {formatCurrency(loan?.amount || 0, loan?.currency)} to {borrower?.full_name}
                 </p>
               </div>
 
               {/* Summary */}
-              <div className="bg-neutral-50 rounded-xl p-4 mb-6 space-y-3">
+              <div className="bg-neutral-50 dark:bg-neutral-700/50 rounded-xl p-4 mb-6 space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">You're sending</span>
-                  <span className="font-bold text-lg">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">You're sending</span>
+                  <span className="font-bold text-lg text-neutral-900 dark:text-white">{formatCurrency(loan?.amount || 0, loan?.currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">To</span>
-                  <span className="font-medium">{borrower?.full_name}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">To</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{borrower?.full_name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">From</span>
-                  <span className="font-medium">{bankInfo?.bank_name} ••••{bankInfo?.account_mask}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">From</span>
+                  <span className="font-medium text-neutral-900 dark:text-white">{bankInfo?.bank_name} ••••{bankInfo?.account_mask}</span>
                 </div>
-                <hr />
+                <hr className="border-neutral-200 dark:border-neutral-600" />
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">You'll receive back</span>
-                  <span className="font-bold text-green-600">{formatCurrency(totalAmount, loan?.currency)}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">You'll receive back</span>
+                  <span className="font-bold text-green-600 dark:text-green-500">{formatCurrency(totalAmount, loan?.currency)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-neutral-600">Your profit</span>
-                  <span className="font-medium text-green-600">+{formatCurrency(totalInterest, loan?.currency)}</span>
+                  <span className="text-neutral-600 dark:text-neutral-400">Your profit</span>
+                  <span className="font-medium text-green-600 dark:text-green-500">+{formatCurrency(totalInterest, loan?.currency)}</span>
                 </div>
               </div>
 
               <Button 
-                className="w-full bg-green-600 hover:bg-green-700" 
+                className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600" 
                 onClick={handleAcceptAndDisburse}
                 loading={disbursing}
               >
@@ -694,7 +713,7 @@ export default function InvitePage() {
                 Accept & Send {formatCurrency(loan?.amount || 0, loan?.currency)}
               </Button>
 
-              <p className="text-xs text-neutral-500 text-center mt-4">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center mt-4">
                 Funds typically arrive in 1-3 business days via ACH transfer.
               </p>
             </>

@@ -13,7 +13,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const FROM_EMAIL = process.env.SMTP_FROM || '"Feyza" <noreply@loantrack.app>';
+const FROM_EMAIL = process.env.SMTP_FROM || '"Feyza" <hello@feyza.app>';
 
 interface EmailParams {
   to: string;

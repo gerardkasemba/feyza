@@ -220,7 +220,7 @@ export default function HomePage() {
               </ul>
 
               <div className="mt-8">
-                <Link href="/borrow/request">
+                <Link href="/borrower/request">
                   <Button
                     className="w-full sm:w-auto bg-neutral-900 text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
                   >

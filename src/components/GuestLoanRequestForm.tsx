@@ -245,7 +245,7 @@ export default function GuestLoanRequestForm() {
   }, [amount, purpose, fullName, email, description, selectedPresetIndex, selectedPreset, currency, bankConnected, bankInfo, startDate, router]);
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-2xl lg:rounded-3xl overflow-hidden shadow-sm dark:shadow-neutral-900/50 border border-neutral-200 dark:border-neutral-800">
+    <div className="bg-white dark:bg-neutral-900 rounded-2xl lg:rounded-3xl overflow-hidden">
       {/* Mobile Header with Back Button */}
       <div className="lg:hidden sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-3">
         <div className="flex items-center">

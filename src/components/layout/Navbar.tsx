@@ -362,7 +362,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
                 </button>
                 {themeDropdownOpen && (
                   <div className="absolute right-0 mt-2 w-36 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 py-1 animate-fade-in z-50">
-                    {[{ value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon }, { value: 'system', label: 'System', icon: Monitor }].map((option) => {
+                    {[{ value: 'light', label: 'Light', icon: Sun }, { value: 'dark', label: 'Dark', icon: Moon }].map((option) => {
                       const Icon = option.icon;
                       return (
                         <button key={option.value} onClick={() => { setTheme(option.value as any); setThemeDropdownOpen(false); }}

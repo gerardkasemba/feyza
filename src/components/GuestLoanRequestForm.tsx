@@ -434,23 +434,21 @@ export default function GuestLoanRequestForm() {
                 {/* Quick amounts - Scrollable on mobile */}
                 <div>
                   <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-2">Quick select:</p>
-                  <div className="flex overflow-x-auto pb-2 -mx-1 px-1 scrollbar-hide">
-                    <div className="flex gap-2 min-w-max">
-                      {[100, 250, 500, 1000, 2500].map((amt) => (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => setAmount(String(amt))}
-                          className={`px-4 py-3 rounded-lg border transition-all flex-shrink-0 ${
-                            amount === String(amt)
-                              ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
-                              : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
-                          }`}
-                        >
-                          ${amt.toLocaleString()}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                    {[100, 250, 500, 1000, 2500].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setAmount(String(amt))}
+                        className={`py-2.5 rounded-lg border transition-all text-sm sm:text-base ${
+                          amount === String(amt)
+                            ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300'
+                        }`}
+                      >
+                        ${amt.toLocaleString()}
+                      </button>
+                    ))}
                   </div>
                 </div>
 

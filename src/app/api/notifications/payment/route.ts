@@ -118,66 +118,161 @@ async function handleDirectLoanRequest(
     if (notifError) {
       console.error('[Notification] Failed to create in-app notification:', notifError);
     } else {
-      console.log('[Notification] ✅ In-app notification created for user:', business.owner.id);
+      console.log('[Notification] In-app notification created for user:', business.owner.id);
     }
   }
 
   // Send email to business owner
   if (business.owner?.email) {
-    const emailHtml = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">📋 New Loan Request</h1>
-          </div>
-          
-          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e5e7eb; border-top: none;">
-            <p style="font-size: 18px; margin-bottom: 20px;">Hi ${business.business_name} team! 👋</p>
-            
-            <p>You have a new loan request from <strong>${borrowerName || 'A borrower'}</strong>:</p>
-            
-            <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #e5e7eb;">
-              <div style="margin-bottom: 10px;">
-                <span style="color: #6b7280;">Requested Amount:</span>
-                <span style="font-weight: bold; font-size: 24px; color: #22c55e; margin-left: 10px;">$${amount?.toLocaleString() || 0}</span>
-              </div>
-              ${loan?.purpose ? `
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 10px; margin-top: 10px;">
-                <span style="color: #6b7280;">Purpose:</span>
-                <p style="margin: 5px 0 0 0;">${loan.purpose}</p>
-              </div>
-              ` : ''}
-            </div>
-            
-            <p style="color: #6b7280; font-size: 14px;">Review this request in your business dashboard to accept or decline.</p>
-            
-            <a href="${APP_URL}/business" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
-              View Request →
-            </a>
-          </div>
-          
-          <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-            Sent via Feyza • Simple loan tracking for everyone
-          </p>
-        </body>
-      </html>
-    `;
+  const emailHtml = `
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
 
+  <body style="
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    line-height:1.6;
+    color:#333;
+    max-width:600px;
+    margin:0 auto;
+    padding:20px;
+    background:#f9fafb;
+  ">
+
+    <!-- ===== HEADER ===== -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="
+          background:linear-gradient(135deg,#059669 0%,#047857 100%);
+          padding:30px;
+          border-radius:16px 16px 0 0;
+          text-align:center;
+        ">
+          <!-- Logo -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding-bottom:15px;">
+                <img
+                  src="https://feyza.app/feyza.png"
+                  alt="Feyza Logo"
+                  height="40"
+                  style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;"
+                />
+              </td>
+            </tr>
+          </table>
+
+          <h1 style="color:white;margin:0;font-size:26px;font-weight:700;">
+            New Loan Request
+          </h1>
+        </td>
+      </tr>
+    </table>
+
+    <!-- ===== BODY ===== -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="
+          background:#ffffff;
+          padding:30px;
+          border-radius:0 0 16px 16px;
+          border:1px solid #e5e7eb;
+          border-top:none;
+        ">
+          <p style="font-size:17px;margin-bottom:20px;">
+            Hi <strong>${business.business_name}</strong> team,
+          </p>
+
+          <p>
+            You have received a new loan request from
+            <strong>${borrowerName || 'a borrower'}</strong>.
+          </p>
+
+          <!-- Request Card -->
+          <div style="
+            background:#f0fdf4;
+            padding:20px;
+            border-radius:12px;
+            margin:20px 0;
+            border:1px solid #bbf7d0;
+          ">
+            <div style="margin-bottom:10px;">
+              <span style="color:#065f46;font-size:14px;">
+                Requested Amount
+              </span>
+              <div style="
+                font-weight:700;
+                font-size:26px;
+                color:#059669;
+                margin-top:4px;
+              ">
+                $${amount?.toLocaleString() || 0}
+              </div>
+            </div>
+
+            ${loan?.purpose ? `
+            <div style="border-top:1px solid #bbf7d0;padding-top:10px;margin-top:10px;">
+              <span style="color:#065f46;font-size:14px;">
+                Purpose
+              </span>
+              <p style="margin:5px 0 0 0;">
+                ${loan.purpose}
+              </p>
+            </div>
+            ` : ''}
+          </div>
+
+          <p style="color:#6b7280;font-size:14px;">
+            Review this request in your business dashboard to accept or decline.
+          </p>
+
+          <!-- CTA -->
+          <a
+            href="${APP_URL}/business"
+            style="
+              display:block;
+              background:#059669;
+              color:white;
+              text-decoration:none;
+              padding:16px 32px;
+              border-radius:10px;
+              font-weight:600;
+              text-align:center;
+              margin:24px 0;
+            "
+          >
+            View Loan Request →
+          </a>
+        </td>
+      </tr>
+    </table>
+
+    <!-- ===== FOOTER ===== -->
+    <p style="
+      color:#9ca3af;
+      font-size:12px;
+      text-align:center;
+      margin-top:20px;
+    ">
+      Sent via Feyza • Simple loan tracking for everyone
+    </p>
+
+  </body>
+  </html>
+  `;
     const result = await sendEmail({
       to: business.owner.email,
-      subject: `📋 New loan request from ${borrowerName || 'a borrower'} - $${amount?.toLocaleString() || 0}`,
+      subject: `New loan request from ${borrowerName || 'a borrower'} - $${amount?.toLocaleString() || 0}`,
       html: emailHtml,
     });
 
     if (result.success) {
-      console.log('[Notification] ✅ Email sent to business owner:', business.owner.email);
+      console.log('[Notification] Email sent to business owner:', business.owner.email);
     } else {
-      console.error('[Notification] ❌ Failed to send email:', result.error);
+      console.error('[Notification] Failed to send email:', result.error);
     }
   } else {
     console.log('[Notification] No business owner email found');

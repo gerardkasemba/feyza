@@ -166,7 +166,7 @@ function generateContractHtml(loan: any): string {
   )[0];
   const endDate = lastPayment ? format(new Date(lastPayment.due_date), 'MMMM d, yyyy') : 'TBD';
 
-  return `
+return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -175,6 +175,7 @@ function generateContractHtml(loan: any): string {
   <title>Loan Agreement - ${loan.id}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+
     body {
       font-family: 'Times New Roman', Times, serif;
       line-height: 1.6;
@@ -184,108 +185,129 @@ function generateContractHtml(loan: any): string {
       padding: 40px 20px;
       background: white;
     }
+
+    /* ===== HEADER ===== */
     .header {
       text-align: center;
-      border-bottom: 3px double #333;
+      border-bottom: 3px double #059669;
       padding-bottom: 20px;
       margin-bottom: 30px;
     }
+
     .header h1 {
       font-size: 28px;
       margin-bottom: 5px;
+      color: #065f46;
     }
+
     .header p {
-      color: #666;
+      color: #555;
+      font-size: 14px;
     }
+
+    /* ===== SECTIONS ===== */
     .section {
       margin-bottom: 25px;
     }
+
     .section h2 {
       font-size: 16px;
-      border-bottom: 1px solid #ccc;
+      border-bottom: 1px solid #bbf7d0;
       padding-bottom: 5px;
       margin-bottom: 15px;
       text-transform: uppercase;
+      color: #065f46;
     }
+
     .parties {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 30px;
     }
+
     .party {
-      background: #f9f9f9;
+      background: #f0fdf4;
       padding: 15px;
       border-radius: 8px;
+      border: 1px solid #bbf7d0;
     }
+
     .party h3 {
       font-size: 14px;
-      color: #666;
+      color: #047857;
       margin-bottom: 10px;
     }
+
     .party p {
       margin: 5px 0;
     }
-    .terms-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 15px 0;
-    }
-    .terms-table th,
-    .terms-table td {
-      padding: 12px;
-      text-align: left;
-      border: 1px solid #ddd;
-    }
-    .terms-table th {
-      background: #f5f5f5;
-      font-weight: bold;
-    }
+
+    /* ===== TABLES ===== */
+    .terms-table,
     .schedule-table {
       width: 100%;
       border-collapse: collapse;
       margin: 15px 0;
       font-size: 14px;
     }
+
+    .terms-table th,
+    .terms-table td,
     .schedule-table th,
     .schedule-table td {
-      padding: 8px 12px;
+      padding: 10px 12px;
       text-align: left;
       border: 1px solid #ddd;
     }
+
+    .terms-table th,
     .schedule-table th {
-      background: #f5f5f5;
+      background: #ecfdf5;
+      font-weight: bold;
+      color: #065f46;
     }
+
+    /* ===== CLAUSES ===== */
     .clause {
       margin-bottom: 15px;
     }
+
     .clause-number {
       font-weight: bold;
       margin-right: 5px;
+      color: #065f46;
     }
+
+    /* ===== SIGNATURES ===== */
     .signatures {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 50px;
       margin-top: 50px;
       padding-top: 30px;
-      border-top: 2px solid #333;
+      border-top: 2px solid #059669;
     }
+
     .signature-block {
       text-align: center;
     }
+
     .signature-line {
       border-bottom: 1px solid #333;
       height: 60px;
       margin-bottom: 10px;
     }
+
     .signature-name {
       font-weight: bold;
       margin-bottom: 5px;
     }
+
     .signature-date {
       color: #666;
       font-size: 14px;
     }
+
     .signed-badge {
       background: #22c55e;
       color: white;
@@ -295,6 +317,7 @@ function generateContractHtml(loan: any): string {
       display: inline-block;
       margin-top: 10px;
     }
+
     .pending-badge {
       background: #f59e0b;
       color: white;
@@ -304,27 +327,47 @@ function generateContractHtml(loan: any): string {
       display: inline-block;
       margin-top: 10px;
     }
+
+    /* ===== FOOTER ===== */
     .footer {
       margin-top: 50px;
       padding-top: 20px;
-      border-top: 1px solid #ccc;
+      border-top: 1px solid #bbf7d0;
       text-align: center;
-      color: #666;
+      color: #065f46;
       font-size: 12px;
     }
+
     @media print {
       body { padding: 20px; }
       .no-print { display: none; }
     }
   </style>
 </head>
+
 <body>
+
+  <!-- ===== HEADER WITH LOGO ===== -->
   <div class="header">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td align="center" style="padding-bottom: 15px;">
+          <img
+            src="https://feyza.app/feyza.png"
+            alt="Feyza Logo"
+            height="48"
+            style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+          />
+        </td>
+      </tr>
+    </table>
+
     <h1>LOAN AGREEMENT</h1>
     <p>Contract ID: ${loan.id}</p>
     <p>Date: ${createdDate}</p>
   </div>
 
+  <!-- ===== PARTIES ===== -->
   <div class="section">
     <h2>Parties to this Agreement</h2>
     <div class="parties">
@@ -334,171 +377,68 @@ function generateContractHtml(loan: any): string {
         <p>Email: ${borrower.email}</p>
         ${borrower.phone ? `<p>Phone: ${borrower.phone}</p>` : ''}
       </div>
+
       <div class="party">
         <h3>LENDER (${lenderType})</h3>
         <p><strong>${lenderName}</strong></p>
-        ${loan.lender_type === 'business' && loan.business_lender?.location ? 
-          `<p>Location: ${loan.business_lender.location}</p>` : ''}
+        ${loan.lender_type === 'business' && loan.business_lender?.location
+          ? `<p>Location: ${loan.business_lender.location}</p>` : ''}
         ${loan.invite_email ? `<p>Email: ${loan.invite_email}</p>` : ''}
       </div>
     </div>
   </div>
 
+  <!-- ===== LOAN TERMS ===== -->
   <div class="section">
     <h2>Loan Terms</h2>
     <table class="terms-table">
-      <tr>
-        <th>Principal Amount</th>
-        <td>${loan.currency} ${loan.amount.toLocaleString()}</td>
-      </tr>
+      <tr><th>Principal Amount</th><td>${loan.currency} ${loan.amount.toLocaleString()}</td></tr>
       ${loan.interest_rate > 0 ? `
-      <tr>
-        <th>Interest Rate</th>
-        <td>${loan.interest_rate}% APR (${loan.interest_type})</td>
-      </tr>
-      <tr>
-        <th>Total Interest</th>
-        <td>${loan.currency} ${loan.total_interest.toLocaleString()}</td>
-      </tr>
+        <tr><th>Interest Rate</th><td>${loan.interest_rate}% APR (${loan.interest_type})</td></tr>
+        <tr><th>Total Interest</th><td>${loan.currency} ${loan.total_interest.toLocaleString()}</td></tr>
       ` : ''}
-      <tr>
-        <th>Total Amount to Repay</th>
-        <td><strong>${loan.currency} ${loan.total_amount.toLocaleString()}</strong></td>
-      </tr>
-      <tr>
-        <th>Repayment Frequency</th>
-        <td>${loan.repayment_frequency.charAt(0).toUpperCase() + loan.repayment_frequency.slice(1)}</td>
-      </tr>
-      <tr>
-        <th>Installment Amount</th>
-        <td>${loan.currency} ${loan.repayment_amount.toLocaleString()}</td>
-      </tr>
-      <tr>
-        <th>Number of Installments</th>
-        <td>${loan.total_installments}</td>
-      </tr>
-      <tr>
-        <th>Start Date</th>
-        <td>${startDate}</td>
-      </tr>
-      <tr>
-        <th>End Date</th>
-        <td>${endDate}</td>
-      </tr>
-      ${loan.purpose ? `
-      <tr>
-        <th>Purpose</th>
-        <td>${loan.purpose}</td>
-      </tr>
-      ` : ''}
+      <tr><th>Total Amount to Repay</th><td><strong>${loan.currency} ${loan.total_amount.toLocaleString()}</strong></td></tr>
+      <tr><th>Repayment Frequency</th><td>${loan.repayment_frequency.charAt(0).toUpperCase() + loan.repayment_frequency.slice(1)}</td></tr>
+      <tr><th>Installment Amount</th><td>${loan.currency} ${loan.repayment_amount.toLocaleString()}</td></tr>
+      <tr><th>Number of Installments</th><td>${loan.total_installments}</td></tr>
+      <tr><th>Start Date</th><td>${startDate}</td></tr>
+      <tr><th>End Date</th><td>${endDate}</td></tr>
+      ${loan.purpose ? `<tr><th>Purpose</th><td>${loan.purpose}</td></tr>` : ''}
     </table>
   </div>
 
-  ${loan.schedule && loan.schedule.length > 0 ? `
-  <div class="section">
-    <h2>Payment Schedule</h2>
-    <table class="schedule-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Due Date</th>
-          <th>Principal</th>
-          ${loan.interest_rate > 0 ? '<th>Interest</th>' : ''}
-          <th>Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${loan.schedule
-          .sort((a: any, b: any) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
-          .map((item: any, index: number) => `
-          <tr>
-            <td>${index + 1}</td>
-            <td>${format(new Date(item.due_date), 'MMM d, yyyy')}</td>
-            <td>${loan.currency} ${(item.principal_amount || item.amount).toLocaleString()}</td>
-            ${loan.interest_rate > 0 ? `<td>${loan.currency} ${(item.interest_amount || 0).toLocaleString()}</td>` : ''}
-            <td>${loan.currency} ${item.amount.toLocaleString()}</td>
-          </tr>
-        `).join('')}
-      </tbody>
-    </table>
-  </div>
-  ` : ''}
-
-  <div class="section">
-    <h2>Terms and Conditions</h2>
-    
-    <div class="clause">
-      <span class="clause-number">1.</span>
-      <strong>Loan Disbursement:</strong> The Lender agrees to disburse the principal amount to the Borrower upon execution of this agreement by both parties.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">2.</span>
-      <strong>Repayment:</strong> The Borrower agrees to repay the total amount according to the payment schedule specified above. Payments shall be made on or before each due date.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">3.</span>
-      <strong>Late Payment:</strong> In the event of late payment, the Borrower shall notify the Lender immediately. Continued failure to make payments may result in additional actions as permitted by law.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">4.</span>
-      <strong>Early Repayment:</strong> The Borrower may repay the loan in full at any time without penalty.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">5.</span>
-      <strong>Default:</strong> The loan shall be considered in default if the Borrower fails to make any scheduled payment within 30 days of its due date.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">6.</span>
-      <strong>Automatic Payments:</strong> If enabled, the Borrower authorizes automatic debit from their connected PayPal account on each payment due date.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">7.</span>
-      <strong>Governing Law:</strong> This agreement shall be governed by the laws of the jurisdiction in which the Lender is located.
-    </div>
-    
-    <div class="clause">
-      <span class="clause-number">8.</span>
-      <strong>Entire Agreement:</strong> This document constitutes the entire agreement between the parties and supersedes all prior discussions and agreements.
-    </div>
-  </div>
-
+  <!-- ===== SIGNATURES ===== -->
   <div class="signatures">
     <div class="signature-block">
       <div class="signature-line"></div>
       <p class="signature-name">${borrower.full_name}</p>
       <p>Borrower</p>
-      ${loan.borrower_signed ? `
-        <span class="signed-badge">✓ Signed</span>
-        <p class="signature-date">${format(new Date(loan.borrower_signed_at), 'MMM d, yyyy h:mm a')}</p>
-      ` : `
-        <span class="pending-badge">Pending Signature</span>
-      `}
+      ${loan.borrower_signed
+        ? `<span class="signed-badge">✓ Signed</span><p class="signature-date">${format(new Date(loan.borrower_signed_at), 'MMM d, yyyy h:mm a')}</p>`
+        : `<span class="pending-badge">Pending Signature</span>`
+      }
     </div>
+
     <div class="signature-block">
       <div class="signature-line"></div>
       <p class="signature-name">${lenderName}</p>
       <p>Lender</p>
-      ${loan.lender_signed ? `
-        <span class="signed-badge">✓ Signed</span>
-        <p class="signature-date">${format(new Date(loan.lender_signed_at), 'MMM d, yyyy h:mm a')}</p>
-      ` : `
-        <span class="pending-badge">Pending Signature</span>
-      `}
+      ${loan.lender_signed
+        ? `<span class="signed-badge">✓ Signed</span><p class="signature-date">${format(new Date(loan.lender_signed_at), 'MMM d, yyyy h:mm a')}</p>`
+        : `<span class="pending-badge">Pending Signature</span>`
+      }
     </div>
   </div>
 
+  <!-- ===== FOOTER ===== -->
   <div class="footer">
     <p>This loan agreement was generated by Feyza</p>
     <p>Document ID: ${loan.id}</p>
     <p>Generated: ${format(new Date(), 'MMMM d, yyyy h:mm a')}</p>
   </div>
+
 </body>
 </html>
-  `;
+`;
+
 }

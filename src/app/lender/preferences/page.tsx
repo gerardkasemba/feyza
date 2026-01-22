@@ -6,10 +6,6 @@ import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Input } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
-import { 
-  FaStar, FaThumbsUp, FaExclamationTriangle, FaBan, FaGlobeAmericas,
-  FaUserPlus, FaCheckCircle, FaInfoCircle, FaShieldAlt, FaLightbulb
-} from 'react-icons/fa';
 import {
   Settings,
   DollarSign,
@@ -25,6 +21,7 @@ import {
   Clock,
   Star,
   UserPlus,
+  CreditCard,
 } from 'lucide-react';
 
 interface Country {
@@ -33,13 +30,22 @@ interface Country {
   enabled: boolean;
 }
 
+interface LoanType {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  isSelected?: boolean;
+}
+
 const RATINGS = [
-  { value: 'great', label: 'Great', icon: <FaStar className="w-4 h-4" />, description: 'Only top borrowers' },
-  { value: 'good', label: 'Good', icon: <FaThumbsUp className="w-4 h-4" />, description: 'Reliable borrowers' },
-  { value: 'neutral', label: 'Neutral', icon: <FaUserPlus className="w-4 h-4" />, description: 'Including new borrowers' },
-  { value: 'poor', label: 'Poor', icon: <FaExclamationTriangle className="w-4 h-4" />, description: 'Higher risk tolerance' },
-  { value: 'bad', label: 'Bad', icon: <FaBan className="w-4 h-4" />, description: 'Very high risk' },
-  { value: 'worst', label: 'Any', icon: <FaGlobeAmericas className="w-4 h-4" />, description: 'Accept everyone' },
+  { value: 'great', label: 'Great ⭐', description: 'Only top borrowers' },
+  { value: 'good', label: 'Good 👍', description: 'Reliable borrowers' },
+  { value: 'neutral', label: 'Neutral 🆕', description: 'Including new borrowers' },
+  { value: 'poor', label: 'Poor ⚠️', description: 'Higher risk tolerance' },
+  { value: 'bad', label: 'Bad ⛔', description: 'Very high risk' },
+  { value: 'worst', label: 'Any', description: 'Accept everyone' },
 ];
 
 interface Preferences {
@@ -73,6 +79,12 @@ export default function LenderPreferencesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isBusinessLender, setIsBusinessLender] = useState(false);
   const [availableCountries, setAvailableCountries] = useState<Country[]>([]);
+  
+  // Loan types state
+  const [loanTypes, setLoanTypes] = useState<LoanType[]>([]);
+  const [selectedLoanTypeIds, setSelectedLoanTypeIds] = useState<string[]>([]);
+  const [loadingLoanTypes, setLoadingLoanTypes] = useState(false);
+  const [savingLoanTypes, setSavingLoanTypes] = useState(false);
 
   const [preferences, setPreferences] = useState<Preferences>({
     is_active: true,
@@ -156,6 +168,69 @@ export default function LenderPreferencesPage() {
     }
   };
 
+  // Fetch loan types when component mounts and isBusinessLender is known
+  useEffect(() => {
+    const fetchLoanTypes = async () => {
+      if (!isBusinessLender) return;
+      
+      setLoadingLoanTypes(true);
+      try {
+        const response = await fetch('/api/business/loan-types');
+        if (response.ok) {
+          const data = await response.json();
+          setLoanTypes(data.loanTypes || []);
+          // Set initially selected loan types
+          const selected = (data.loanTypes || [])
+            .filter((lt: LoanType) => lt.isSelected)
+            .map((lt: LoanType) => lt.id);
+          setSelectedLoanTypeIds(selected);
+        }
+      } catch (error) {
+        console.error('Failed to fetch loan types:', error);
+      } finally {
+        setLoadingLoanTypes(false);
+      }
+    };
+
+    if (isBusinessLender) {
+      fetchLoanTypes();
+    }
+  }, [isBusinessLender]);
+
+  const toggleLoanType = (loanTypeId: string) => {
+    setSelectedLoanTypeIds(prev => 
+      prev.includes(loanTypeId)
+        ? prev.filter(id => id !== loanTypeId)
+        : [...prev, loanTypeId]
+    );
+  };
+
+  const handleSaveLoanTypes = async () => {
+    setSavingLoanTypes(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/business/loan-types', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loanTypeIds: selectedLoanTypeIds,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save loan types');
+      }
+
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (error: any) {
+      setError(error.message || 'Failed to update loan types');
+    } finally {
+      setSavingLoanTypes(false);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     setError(null);
@@ -207,7 +282,7 @@ export default function LenderPreferencesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
         <Navbar user={user} />
         <div className="flex items-center justify-center py-20">
           <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full" />
@@ -217,7 +292,7 @@ export default function LenderPreferencesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900">
       <Navbar user={user} />
       
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -236,15 +311,15 @@ export default function LenderPreferencesPage() {
 
         {/* Success/Error Messages */}
         {success && (
-          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-500 dark:text-green-400" />
+          <div className="mb-6 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
+            <CheckCircle className="w-5 h-5 text-green-500" />
             <span className="text-green-700 dark:text-green-300">Preferences saved successfully!</span>
           </div>
         )}
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400" />
+          <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500" />
             <span className="text-red-700 dark:text-red-300">{error}</span>
           </div>
         )}
@@ -254,7 +329,7 @@ export default function LenderPreferencesPage() {
           <Card>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <Zap className="w-5 h-5 text-yellow-500 dark:text-yellow-400" />
+                <Zap className="w-5 h-5 text-yellow-500" />
                 <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Matching Settings</h2>
               </div>
             </div>
@@ -269,7 +344,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, is_active: !p.is_active }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.is_active ? 'bg-green-500 dark:bg-green-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.is_active ? 'bg-green-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
@@ -279,10 +354,10 @@ export default function LenderPreferencesPage() {
               </div>
 
               {/* Auto-Accept Toggle */}
-              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 rounded-xl border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/10 dark:to-orange-900/10 rounded-xl border border-yellow-200 dark:border-yellow-800">
                 <div>
                   <p className="font-medium text-neutral-900 dark:text-white flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-yellow-500 dark:text-yellow-400" />
+                    <Zap className="w-4 h-4 text-yellow-500" />
                     Auto-Accept Loans
                   </p>
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">Automatically accept matching loan requests</p>
@@ -290,7 +365,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, auto_accept: !p.auto_accept }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.auto_accept ? 'bg-yellow-500 dark:bg-yellow-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.auto_accept ? 'bg-yellow-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
@@ -300,7 +375,7 @@ export default function LenderPreferencesPage() {
               </div>
 
               {preferences.auto_accept && (
-                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl flex items-start gap-3">
+                <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl flex items-start gap-3">
                   <Info className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
                   <p className="text-sm text-yellow-800 dark:text-yellow-300">
                     When enabled, loans matching your criteria will be <strong>automatically accepted</strong>. 
@@ -314,7 +389,7 @@ export default function LenderPreferencesPage() {
           {/* Capital Pool */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <Wallet className="w-5 h-5 text-green-500 dark:text-green-400" />
+              <Wallet className="w-5 h-5 text-green-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Capital Pool</h2>
             </div>
 
@@ -329,7 +404,7 @@ export default function LenderPreferencesPage() {
                     type="number"
                     value={preferences.capital_pool}
                     onChange={(e) => setPreferences(p => ({ ...p, capital_pool: parseFloat(e.target.value) || 0 }))}
-                    className="w-full pl-8 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-lg font-semibold text-neutral-900 dark:text-white"
+                    className="w-full pl-8 pr-4 py-3 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 rounded-xl focus:ring-2 focus:ring-primary-500 text-lg font-semibold dark:text-white"
                     min="0"
                     step="100"
                   />
@@ -344,7 +419,7 @@ export default function LenderPreferencesPage() {
           {/* Amount Range */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <DollarSign className="w-5 h-5 text-green-500 dark:text-green-400" />
+              <DollarSign className="w-5 h-5 text-green-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Loan Amount Range</h2>
             </div>
 
@@ -359,7 +434,7 @@ export default function LenderPreferencesPage() {
                     type="number"
                     value={preferences.min_amount}
                     onChange={(e) => setPreferences(p => ({ ...p, min_amount: parseFloat(e.target.value) || 0 }))}
-                    className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                    className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                     min="0"
                   />
                 </div>
@@ -374,7 +449,7 @@ export default function LenderPreferencesPage() {
                     type="number"
                     value={preferences.max_amount}
                     onChange={(e) => setPreferences(p => ({ ...p, max_amount: parseFloat(e.target.value) || 0 }))}
-                    className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                    className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                     min="0"
                   />
                 </div>
@@ -385,7 +460,7 @@ export default function LenderPreferencesPage() {
           {/* Interest Rate */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <TrendingUp className="w-5 h-5 text-blue-500 dark:text-blue-400" />
+              <TrendingUp className="w-5 h-5 text-blue-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Interest Rate</h2>
             </div>
 
@@ -399,7 +474,7 @@ export default function LenderPreferencesPage() {
                     type="number"
                     value={preferences.interest_rate}
                     onChange={(e) => setPreferences(p => ({ ...p, interest_rate: parseFloat(e.target.value) || 0 }))}
-                    className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                    className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                     min="0"
                     max="100"
                     step="0.5"
@@ -414,7 +489,7 @@ export default function LenderPreferencesPage() {
                 <select
                   value={preferences.interest_type}
                   onChange={(e) => setPreferences(p => ({ ...p, interest_type: e.target.value }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="simple">Simple Interest</option>
                   <option value="compound">Compound Interest</option>
@@ -427,7 +502,7 @@ export default function LenderPreferencesPage() {
           <Card>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
-                <Globe className="w-5 h-5 text-purple-500 dark:text-purple-400" />
+                <Globe className="w-5 h-5 text-green-500" />
                 <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Countries</h2>
               </div>
               <div className="flex gap-2">
@@ -451,7 +526,7 @@ export default function LenderPreferencesPage() {
                   onClick={() => toggleCountry(country.code)}
                   className={`p-3 rounded-xl text-sm font-medium transition-all ${
                     preferences.countries.includes(country.code)
-                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 border-2 border-primary-500 dark:border-primary-400'
+                      ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border-2 border-primary-500'
                       : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-2 border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-700'
                   }`}
                 >
@@ -478,7 +553,7 @@ export default function LenderPreferencesPage() {
           {/* Borrower Requirements */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <Shield className="w-5 h-5 text-orange-500 dark:text-orange-400" />
+              <Shield className="w-5 h-5 text-orange-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Borrower Requirements</h2>
             </div>
 
@@ -494,15 +569,12 @@ export default function LenderPreferencesPage() {
                       onClick={() => setPreferences(p => ({ ...p, min_borrower_rating: rating.value }))}
                       className={`p-3 rounded-xl text-left transition-all ${
                         preferences.min_borrower_rating === rating.value
-                          ? 'bg-primary-100 dark:bg-primary-900/30 border-2 border-primary-500 dark:border-primary-400'
+                          ? 'bg-primary-100 dark:bg-primary-900/30 border-2 border-primary-500'
                           : 'bg-neutral-50 dark:bg-neutral-800 border-2 border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-700'
                       }`}
                     >
-                      <div className="flex items-center gap-2">
-                        {rating.icon}
-                        <p className="font-medium text-neutral-900 dark:text-white">{rating.label}</p>
-                      </div>
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">{rating.description}</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{rating.label}</p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">{rating.description}</p>
                     </button>
                   ))}
                 </div>
@@ -516,7 +588,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, require_verified_borrower: !p.require_verified_borrower }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.require_verified_borrower ? 'bg-primary-500 dark:bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.require_verified_borrower ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
@@ -530,18 +602,15 @@ export default function LenderPreferencesPage() {
           {/* First-Time Borrower Settings */}
           <Card>
             <div className="flex items-center gap-3 mb-4">
-              <UserPlus className="w-5 h-5 text-green-500 dark:text-green-400" />
+              <UserPlus className="w-5 h-5 text-green-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">First-Time Borrower Settings</h2>
             </div>
             
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
-              <div className="flex items-start gap-2">
-                <FaLightbulb className="w-5 h-5 text-blue-500 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  <strong>What is a first-time borrower?</strong> Someone who has never completed a loan on Feyza before. 
-                  Set limits to manage your risk when lending to new users.
-                </p>
-              </div>
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
+                <strong>💡 What is a first-time borrower?</strong> Someone who has never completed a loan on Feyza before. 
+                Set limits to manage your risk when lending to new users.
+              </p>
             </div>
 
             <div className="space-y-4">
@@ -556,7 +625,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, allow_first_time_borrowers: !p.allow_first_time_borrowers }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.allow_first_time_borrowers ? 'bg-primary-500 dark:bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.allow_first_time_borrowers ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
@@ -567,12 +636,12 @@ export default function LenderPreferencesPage() {
 
               {/* Conditional limit input - only show when first-time borrowers are allowed */}
               {preferences.allow_first_time_borrowers && (
-                <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl">
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
                   <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
                     Maximum Loan for First-Time Borrowers
                   </label>
                   <div className="relative">
-                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400 dark:text-neutral-500" />
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
                     <input
                       type="number"
                       value={preferences.first_time_borrower_limit}
@@ -580,7 +649,7 @@ export default function LenderPreferencesPage() {
                         ...p, 
                         first_time_borrower_limit: Math.min(parseFloat(e.target.value) || 0, p.max_amount) 
                       }))}
-                      className="w-full pl-12 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                      className="w-full pl-12 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                       min="0"
                       max={preferences.max_amount}
                       step="50"
@@ -612,23 +681,92 @@ export default function LenderPreferencesPage() {
 
               {/* Warning when first-time borrowers are disabled */}
               {!preferences.allow_first_time_borrowers && (
-                <div className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-                  <div className="flex items-start gap-2">
-                    <FaExclamationTriangle className="w-5 h-5 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-sm text-amber-700 dark:text-amber-300">
-                      <strong>Note:</strong> You won't be matched with first-time borrowers. 
-                      This significantly reduces your potential matches but may lower risk.
-                    </p>
-                  </div>
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    <strong>⚠️ Note:</strong> You won't be matched with first-time borrowers. 
+                    This significantly reduces your potential matches but may lower risk.
+                  </p>
                 </div>
               )}
             </div>
           </Card>
 
+          {/* Loan Types (Business Lenders Only) */}
+          {isBusinessLender && (
+            <Card>
+              <div className="flex items-center gap-3 mb-4">
+                <CreditCard className="w-5 h-5 text-green-500" />
+                <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Loan Types You Offer</h2>
+              </div>
+              
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  <strong>💡 Why set loan types?</strong> Borrowers can filter by loan type when searching. 
+                  You'll only be matched with borrowers requesting loan types you've selected.
+                  If you don't select any, you'll be matched with all loan requests.
+                </p>
+              </div>
+
+              {loadingLoanTypes ? (
+                <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">Loading loan types...</div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {loanTypes.map((loanType) => (
+                      <button
+                        key={loanType.id}
+                        type="button"
+                        onClick={() => toggleLoanType(loanType.id)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${
+                          selectedLoanTypeIds.includes(loanType.id)
+                            ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                            selectedLoanTypeIds.includes(loanType.id)
+                              ? 'bg-green-500 border-green-500'
+                              : 'border-neutral-300 dark:border-neutral-600'
+                          }`}>
+                            {selectedLoanTypeIds.includes(loanType.id) && (
+                              <CheckCircle className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                          <p className="font-medium text-sm text-neutral-900 dark:text-white">{loanType.name}</p>
+                        </div>
+                        {loanType.description && (
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2 ml-6">{loanType.description}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      {selectedLoanTypeIds.length === 0 
+                        ? 'No types selected — you\'ll match with all loan requests'
+                        : `${selectedLoanTypeIds.length} loan type${selectedLoanTypeIds.length !== 1 ? 's' : ''} selected`
+                      }
+                    </p>
+                    <Button 
+                      variant="outline" 
+                      onClick={handleSaveLoanTypes}
+                      loading={savingLoanTypes}
+                    >
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Save Loan Types
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
+
           {/* Loan Terms */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <Clock className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
+              <Clock className="w-5 h-5 text-indigo-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Loan Term Range</h2>
             </div>
 
@@ -641,7 +779,7 @@ export default function LenderPreferencesPage() {
                   type="number"
                   value={preferences.min_term_weeks}
                   onChange={(e) => setPreferences(p => ({ ...p, min_term_weeks: parseInt(e.target.value) || 1 }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                   min="1"
                 />
               </div>
@@ -653,7 +791,7 @@ export default function LenderPreferencesPage() {
                   type="number"
                   value={preferences.max_term_weeks}
                   onChange={(e) => setPreferences(p => ({ ...p, max_term_weeks: parseInt(e.target.value) || 52 }))}
-                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                  className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
                   min="1"
                 />
               </div>
@@ -663,7 +801,7 @@ export default function LenderPreferencesPage() {
           {/* Notifications */}
           <Card>
             <div className="flex items-center gap-3 mb-6">
-              <Bell className="w-5 h-5 text-pink-500 dark:text-pink-400" />
+              <Bell className="w-5 h-5 text-pink-500" />
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Notifications</h2>
             </div>
 
@@ -676,7 +814,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, notify_on_match: !p.notify_on_match }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.notify_on_match ? 'bg-primary-500 dark:bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.notify_on_match ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
@@ -693,7 +831,7 @@ export default function LenderPreferencesPage() {
                 <button
                   onClick={() => setPreferences(p => ({ ...p, notify_email: !p.notify_email }))}
                   className={`relative w-14 h-8 rounded-full transition-colors ${
-                    preferences.notify_email ? 'bg-primary-500 dark:bg-primary-600' : 'bg-neutral-300 dark:bg-neutral-600'
+                    preferences.notify_email ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
                   }`}
                 >
                   <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${

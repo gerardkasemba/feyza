@@ -128,28 +128,130 @@ export async function POST(request: NextRequest) {
           const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           await sendEmail({
             to: loan.borrower.email,
-            subject: '😔 Unable to Find a Matching Lender',
+            subject: 'Unable to Find a Matching Lender',
             html: `
-              <!DOCTYPE html>
-              <html>
-                <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                  <div style="background: #fef9c3; padding: 30px; border-radius: 16px; border: 1px solid #fde047;">
-                    <h2 style="color: #854d0e; margin-top: 0;">Unable to Find a Lender</h2>
-                    <p>Hi ${loan.borrower.full_name || 'there'},</p>
-                    <p>We were unable to find a lender for your ${loan.currency} ${loan.amount.toLocaleString()} loan request.</p>
-                    <p>This could happen if:</p>
-                    <ul>
-                      <li>No lenders matched your criteria</li>
-                      <li>Available lenders didn't respond in time</li>
-                      <li>The loan amount or terms didn't match lender preferences</li>
-                    </ul>
-                    <p>You can submit a new loan request with different terms, or try again later when more lenders are available.</p>
-                    <a href="${APP_URL}/loans/new" style="display: inline-block; background: #854d0e; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; margin-top: 15px;">
-                      Submit New Request
-                    </a>
+            <!DOCTYPE html>
+            <html lang="en">
+              <body style="
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f9fafb;
+              ">
+                <!-- Main Card -->
+                <div style="
+                  background: #ffffff;
+                  border-radius: 20px;
+                  border: 1px solid #bbf7d0;
+                  overflow: hidden;
+                ">
+
+                  <!-- Header -->
+                  <div style="
+                    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                    padding: 30px 25px;
+                    text-align: center;
+                  ">
+                    <!-- Logo (email-safe centered) -->
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                      <tr>
+                        <td align="center" style="padding-bottom: 15px;">
+                          <img
+                            src="https://feyza.app/feyza.png"
+                            alt="Feyza Logo"
+                            height="44"
+                            style="display:block; height:44px; width:auto; border:0; outline:none; text-decoration:none;"
+                          />
+                        </td>
+                      </tr>
+                    </table>
+
+                    <h1 style="
+                      color: #ffffff;
+                      font-size: 22px;
+                      margin: 0;
+                      font-weight: 600;
+                    ">
+                      Loan Update
+                    </h1>
                   </div>
-                </body>
-              </html>
+
+                  <!-- Content -->
+                  <div style="padding: 30px 25px; color: #374151;">
+
+                    <h2 style="
+                      color: #065f46;
+                      font-size: 20px;
+                      margin-top: 0;
+                    ">
+                      Unable to Find a Lender
+                    </h2>
+
+                    <p>Hi ${loan.borrower.full_name || 'there'},</p>
+
+                    <p>
+                      We were unable to find a lender for your
+                      <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong>
+                      loan request at this time.
+                    </p>
+
+                    <p>This can happen if:</p>
+
+                    <ul style="padding-left: 20px; margin: 15px 0;">
+                      <li>No lenders matched your criteria</li>
+                      <li>Available lenders did not respond in time</li>
+                      <li>The loan amount or terms did not align with lender preferences</li>
+                    </ul>
+
+                    <p>
+                      You can submit a new loan request with adjusted terms, or try again later
+                      when more lenders are available on the platform.
+                    </p>
+
+                    <!-- CTA -->
+                    <div style="text-align: center; margin-top: 25px;">
+                      <a
+                        href="${APP_URL}/loans/new"
+                        style="
+                          display: inline-block;
+                          background: #059669;
+                          color: #ffffff;
+                          text-decoration: none;
+                          padding: 14px 28px;
+                          border-radius: 10px;
+                          font-weight: 600;
+                          font-size: 15px;
+                        "
+                      >
+                        Submit New Loan Request
+                      </a>
+                    </div>
+                  </div>
+
+                  <!-- Footer -->
+                  <div style="
+                    background: #f0fdf4;
+                    padding: 20px;
+                    border-top: 1px solid #bbf7d0;
+                    text-align: center;
+                    font-size: 12px;
+                    color: #065f46;
+                  ">
+                    <p style="margin: 0 0 6px 0;">
+                      This is an automated message from Feyza.
+                    </p>
+                    <p style="margin: 0;">
+                      If you have questions, contact
+                      <a href="mailto:support@feyza.com" style="color:#047857; text-decoration:none;">
+                        support@feyza.com
+                      </a>
+                    </p>
+                  </div>
+
+                </div>
+              </body>
+            </html>
             `,
           });
         }
@@ -247,23 +349,124 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
       const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
       await sendEmail({
         to: loan.borrower.email,
-        subject: '⚡ Loan Matched with New Lender!',
+        subject: 'Loan Matched with New Lender!',
         html: `
-          <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-              <h1 style="color: white; margin: 0;">⚡ New Lender Match!</h1>
+      <!DOCTYPE html>
+      <html lang="en">
+        <body style="
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          max-width: 600px;
+          margin: 0 auto;
+          padding: 20px;
+          background-color: #f9fafb;
+        ">
+
+          <!-- MAIN CARD -->
+          <div style="
+            background: white;
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+          ">
+
+            <!-- HEADER -->
+            <div style="
+              background: linear-gradient(135deg, #059669 0%, #047857 100%);
+              padding: 30px;
+              text-align: center;
+            ">
+
+              <!-- LOGO (EMAIL-SAFE CENTERED) -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding-bottom: 15px;">
+                    <img
+                      src="https://feyza.app/feyza.png"
+                      alt="Feyza Logo"
+                      height="40"
+                      style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                    />
+                  </td>
+                </tr>
+              </table>
+
+              <h1 style="color:white; margin:0; font-size:26px; font-weight:700;">
+                ⚡ New Lender Match!
+              </h1>
             </div>
-            <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0;">
-              <p>Hi ${loan.borrower.full_name || 'there'}!</p>
-              <p>Your loan has been matched with <strong>${lenderName}</strong>!</p>
-              <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center;">
-                <p style="font-size: 32px; font-weight: bold; color: #22c55e;">${loan.currency} ${loan.amount.toLocaleString()}</p>
+
+            <!-- CONTENT -->
+            <div style="
+              background:#f0fdf4;
+              padding:30px;
+              border:1px solid #bbf7d0;
+            ">
+
+              <p style="margin:0 0 12px 0; color:#065f46;">
+                Hi ${loan.borrower.full_name || 'there'}!
+              </p>
+
+              <p style="margin:0 0 20px 0; color:#065f46;">
+                Your loan has been matched with <strong>${lenderName}</strong>.
+              </p>
+
+              <!-- AMOUNT -->
+              <div style="
+                background:white;
+                padding:20px;
+                border-radius:12px;
+                margin:20px 0;
+                text-align:center;
+                border:1px solid #bbf7d0;
+              ">
+                <p style="
+                  font-size:32px;
+                  font-weight:bold;
+                  color:#059669;
+                  margin:0;
+                ">
+                  ${loan.currency} ${loan.amount.toLocaleString()}
+                </p>
               </div>
-              <a href="${APP_URL}/loans/${loan.id}" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px; border-radius: 8px; text-align: center;">
+
+              <!-- CTA BUTTON -->
+              <a
+                href="${APP_URL}/loans/${loan.id}"
+                style="
+                  display:block;
+                  background:linear-gradient(to right, #059669, #047857);
+                  color:white;
+                  text-decoration:none;
+                  padding:16px;
+                  border-radius:10px;
+                  text-align:center;
+                  font-weight:600;
+                  font-size:16px;
+                "
+              >
                 View Your Loan →
               </a>
+
             </div>
-          </body>
+
+            <!-- FOOTER -->
+            <div style="
+              background:#f9fafb;
+              padding:20px;
+              text-align:center;
+              font-size:12px;
+              color:#6b7280;
+              border-top:1px solid #e5e7eb;
+            ">
+              <p style="margin:0;">
+                This notification was sent by Feyza
+              </p>
+            </div>
+
+          </div>
+
+        </body>
+      </html>
         `,
       });
     }
@@ -276,26 +479,107 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
     const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     await sendEmail({
       to: lenderEmail,
-      subject: `🎯 New Loan Available: ${loan.currency} ${loan.amount.toLocaleString()}`,
+      subject: `New Loan Available: ${loan.currency} ${loan.amount.toLocaleString()}`,
       html: `
-        <body style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-            <h1 style="color: white; margin: 0;">🎯 Loan Match Available!</h1>
-          </div>
-          <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e5e7eb;">
-            <p>Hi ${lenderName}!</p>
-            <p>A loan that matches your preferences is now available (the previous lender didn't respond).</p>
-            <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center;">
-              <p style="font-size: 32px; font-weight: bold; color: #4f46e5;">${loan.currency} ${loan.amount.toLocaleString()}</p>
-            </div>
-            <p style="color: #854d0e; background: #fef9c3; padding: 12px; border-radius: 8px;">
-              ⏰ You have 24 hours to respond.
-            </p>
-            <a href="${APP_URL}/lender/matches/${match.id}" style="display: block; background: #4f46e5; color: white; text-decoration: none; padding: 16px; border-radius: 8px; text-align: center; margin-top: 20px;">
-              Review & Accept →
-            </a>
-          </div>
-        </body>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>New Loan Available</title>
+    </head>
+
+    <body style="margin:0; padding:0; background:#f9fafb; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb; padding:20px;">
+        <tr>
+          <td align="center">
+
+            <!-- MAIN CARD -->
+            <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px; background:white; border-radius:16px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.05);">
+
+              <!-- HEADER -->
+              <tr>
+                <td style="background:linear-gradient(135deg, #059669 0%, #047857 100%); padding:30px; text-align:center;">
+
+                  <!-- LOGO -->
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td align="center" style="padding-bottom:15px;">
+                        <img
+                          src="https://feyza.app/feyza.png"
+                          alt="Feyza Logo"
+                          height="48"
+                          style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+                        />
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="color:white; margin:0; font-size:26px; font-weight:700;">
+                    New Loan Match Available
+                  </h1>
+                </td>
+              </tr>
+
+              <!-- CONTENT -->
+              <tr>
+                <td style="padding:30px; color:#111827; font-size:15px; line-height:1.6;">
+
+                  <p style="margin-top:0;">Hi <strong>${lenderName}</strong>,</p>
+
+                  <p>
+                    A loan that matches your lending preferences is now available.
+                    The previous lender did not respond within the required timeframe.
+                  </p>
+
+                  <!-- AMOUNT -->
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:25px 0;">
+                    <tr>
+                      <td align="center" style="background:#ecfdf5; border:1px solid #bbf7d0; padding:20px; border-radius:12px;">
+                        <div style="font-size:32px; font-weight:700; color:#065f46;">
+                          ${loan.currency} ${loan.amount.toLocaleString()}
+                        </div>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <!-- TIMER -->
+                  <div style="background:#fef9c3; color:#854d0e; padding:12px; border-radius:8px; font-size:14px; margin-bottom:20px;">
+                    ⏰ You have <strong>24 hours</strong> to review and respond to this loan request.
+                  </div>
+
+                  <!-- CTA -->
+                  <a
+                    href="${APP_URL}/lender/matches/${match.id}"
+                    style="display:block; background:#059669; color:white; text-decoration:none; padding:16px; border-radius:10px; text-align:center; font-weight:600; font-size:16px;"
+                  >
+                    Review & Accept Loan
+                  </a>
+
+                </td>
+              </tr>
+
+              <!-- FOOTER -->
+              <tr>
+                <td style="background:#f9fafb; padding:20px; text-align:center; font-size:12px; color:#6b7280; border-top:1px solid #e5e7eb;">
+                  <p style="margin:0;">
+                    This is an automated notification from Feyza.
+                  </p>
+                  <p style="margin:5px 0 0 0;">
+                    Please log in to your account to take action.
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+
+          </td>
+        </tr>
+      </table>
+
+    </body>
+    </html>
       `,
     });
   }
@@ -306,7 +590,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
       user_id: match.lender_user_id,
       loan_id: loan.id,
       type: 'loan_match_offer',
-      title: '🎯 Loan Match Available!',
+      title: 'Loan Match Available!',
       message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan is now available. You have 24h to respond.`,
     });
   }

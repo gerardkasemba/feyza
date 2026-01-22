@@ -418,60 +418,142 @@ export async function POST(
       try {
         await sendEmail({
           to: borrowerEmail,
-          subject: '💰 Loan Funded! Money is on the way',
+          subject: 'Loan Funded! Money is on the way',
           html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                  <h1 style="color: white; margin: 0;">💰 Loan Funded!</h1>
-                </div>
-                
-                <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e2e8f0;">
-                  <p style="font-size: 18px; color: #374151;">Hi ${borrowerName},</p>
-                  
-                  <p style="color: #374151;">
-                    Great news! <strong>${lender_name || 'Your lender'}</strong> has funded your loan. The money is on its way to your bank account!
-                  </p>
-                  
-                  <div style="background: #d1fae5; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                    <p style="color: #065f46; margin: 0; font-size: 16px;">
-                      💵 <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong> will arrive in 1-3 business days
-                    </p>
-                  </div>
-                  
-                  <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
-                    <h3 style="margin: 0 0 15px 0; color: #374151;">Repayment Terms</h3>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Interest Rate:</span>
-                      <strong style="float: right;">${interest_rate || 0}% (${interest_type})</strong>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Total to Repay:</span>
-                      <strong style="float: right; color: #2563eb;">${loan.currency} ${Math.round(totalAmount).toLocaleString()}</strong>
-                    </div>
-                    <div style="margin-bottom: 10px;">
-                      <span style="color: #6b7280;">Payment:</span>
-                      <strong style="float: right;">${loan.currency} ${Math.round(repaymentAmount).toLocaleString()} ${repayment_frequency}</strong>
-                    </div>
-                    <div>
-                      <span style="color: #6b7280;">First Payment:</span>
-                      <strong style="float: right;">${format(new Date(start_date), 'MMM d, yyyy')}</strong>
-                    </div>
-                  </div>
-                  
-                  <div style="background: #dbeafe; padding: 16px; border-radius: 8px; margin: 16px 0;">
-                    <p style="color: #1e40af; margin: 0; font-size: 14px;">
-                      ✅ <strong>Auto-Pay Enabled</strong> - Payments will be automatically deducted from your bank account on each due date. No action needed!
-                    </p>
-                  </div>
-                  
-                  <a href="${APP_URL}/borrower/${loan.borrower_access_token}" style="display: block; background: #10b981; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
-                    View Loan Details →
-                  </a>
-                </div>
-              </body>
-            </html>
+          <!DOCTYPE html>
+          <html lang="en">
+            <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
+              
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    
+                    <!-- MAIN CARD -->
+                    <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:white;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+                      
+                      <!-- HEADER -->
+                      <tr>
+                        <td style="background:linear-gradient(135deg,#059669 0%,#047857 100%);padding:30px;text-align:center;">
+                          
+                          <!-- LOGO -->
+                          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              <td align="center" style="padding-bottom:15px;">
+                                <img
+                                  src="https://feyza.app/feyza.png"
+                                  alt="Feyza Logo"
+                                  height="48"
+                                  style="display:block;height:48px;width:auto;border:0;outline:none;text-decoration:none;"
+                                />
+                              </td>
+                            </tr>
+                          </table>
+
+                          <h1 style="color:white;margin:0;font-size:28px;font-weight:700;">
+                            💰 Loan Funded!
+                          </h1>
+                        </td>
+                      </tr>
+
+                      <!-- CONTENT -->
+                      <tr>
+                        <td style="padding:30px;background:#f8fafc;">
+                          
+                          <p style="font-size:18px;color:#374151;margin:0 0 15px 0;">
+                            Hi ${borrowerName},
+                          </p>
+
+                          <p style="color:#374151;margin:0 0 20px 0;">
+                            Great news! <strong>${lender_name || 'Your lender'}</strong> has funded your loan.
+                            The money is on its way to your bank account!
+                          </p>
+
+                          <!-- AMOUNT -->
+                          <div style="background:#d1fae5;padding:16px;border-radius:8px;margin:16px 0;">
+                            <p style="color:#065f46;margin:0;font-size:16px;">
+                              💵 <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong> will arrive in
+                              1–3 business days
+                            </p>
+                          </div>
+
+                          <!-- TERMS -->
+                          <div style="background:white;padding:20px;border-radius:12px;margin:20px 0;border:1px solid #e5e7eb;">
+                            <h3 style="margin:0 0 15px 0;color:#065f46;font-size:16px;">
+                              Repayment Terms
+                            </h3>
+
+                            <div style="margin-bottom:10px;overflow:hidden;">
+                              <span style="color:#6b7280;">Interest Rate:</span>
+                              <strong style="float:right;">${interest_rate || 0}% (${interest_type})</strong>
+                            </div>
+
+                            <div style="margin-bottom:10px;overflow:hidden;">
+                              <span style="color:#6b7280;">Total to Repay:</span>
+                              <strong style="float:right;color:#047857;">
+                                ${loan.currency} ${Math.round(totalAmount).toLocaleString()}
+                              </strong>
+                            </div>
+
+                            <div style="margin-bottom:10px;overflow:hidden;">
+                              <span style="color:#6b7280;">Payment:</span>
+                              <strong style="float:right;">
+                                ${loan.currency} ${Math.round(repaymentAmount).toLocaleString()} ${repayment_frequency}
+                              </strong>
+                            </div>
+
+                            <div style="overflow:hidden;">
+                              <span style="color:#6b7280;">First Payment:</span>
+                              <strong style="float:right;">
+                                ${format(new Date(start_date), 'MMM d, yyyy')}
+                              </strong>
+                            </div>
+                          </div>
+
+                          <!-- AUTOPAY -->
+                          <div style="background:#ecfdf5;padding:16px;border-radius:8px;margin:16px 0;">
+                            <p style="color:#065f46;margin:0;font-size:14px;">
+                              ✅ <strong>Auto-Pay Enabled</strong> — Payments will be automatically deducted on each due date.
+                            </p>
+                          </div>
+
+                          <!-- CTA -->
+                          <a
+                            href="${APP_URL}/borrower/${loan.borrower_access_token}"
+                            style="
+                              display:block;
+                              background:#059669;
+                              color:white;
+                              text-decoration:none;
+                              padding:16px 32px;
+                              border-radius:8px;
+                              font-weight:600;
+                              text-align:center;
+                              margin:24px 0;
+                            "
+                          >
+                            View Loan Details →
+                          </a>
+
+                        </td>
+                      </tr>
+
+                      <!-- FOOTER -->
+                      <tr>
+                        <td style="background:#f9fafb;padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
+                          <p style="color:#9ca3af;font-size:12px;margin:0;">
+                            This is an automated message from Feyza. Please do not reply.
+                          </p>
+                        </td>
+                      </tr>
+
+                    </table>
+
+                  </td>
+                </tr>
+              </table>
+
+            </body>
+          </html>
           `,
         });
       } catch (emailError) {

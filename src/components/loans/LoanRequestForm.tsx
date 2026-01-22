@@ -5,18 +5,27 @@ import { useForm } from 'react-hook-form';
 import { Button, Input, Select, Card } from '@/components/ui';
 import { BusinessProfile, DisbursementMethod } from '@/types';
 import { formatCurrency, formatPercentage, calculateTotalInterest, calculateLoanTermMonths } from '@/lib/utils';
-import { getRepaymentPresets, validateRepaymentSchedule, RepaymentPreset } from '@/lib/smartSchedule';
+import { 
+  getRepaymentPresets, 
+  validateRepaymentSchedule, 
+  RepaymentPreset,
+  PayFrequency,
+  ComfortLevel,
+  formatPayFrequency,
+} from '@/lib/smartSchedule';
 import { DisbursementMethodForm } from './DisbursementMethodForm';
 import { 
   Building2, Users, ChevronRight, ChevronLeft, MapPin, Percent, Info, 
   AlertCircle, FileText, CreditCard, Check, AlertTriangle, Shield,
-  TrendingUp, Lock, Star, Zap, Calendar, Clock, Edit3, Search, AtSign, Loader2
+  TrendingUp, Lock, Star, Zap, Calendar, Clock, Edit3, Search, AtSign, Loader2,
+  Wallet, Sparkles
 } from 'lucide-react';
 
 // Full form data type
 export interface LoanRequestFormData {
   lenderType: 'business' | 'personal';
   businessId?: string;
+  loanTypeId?: string;
   inviteEmail?: string;
   invitePhone?: string;
   inviteUsername?: string;
@@ -111,6 +120,33 @@ export function LoanRequestForm({
   const [businessEligibility, setBusinessEligibility] = useState<BorrowingEligibility | null>(null);
   const [loadingLimit, setLoadingLimit] = useState(true);
   
+  // Trust level state for specific business (graduated trust system)
+  const [businessTrust, setBusinessTrust] = useState<{
+    maxAmount: number;
+    isGraduated: boolean;
+    completedLoans: number;
+    loansUntilGraduation: number;
+    trustStatus: string;
+    firstTimeAmount: number;
+    standardMaxAmount: number;
+    canBorrow: boolean;
+    reason?: string;
+    message?: string;
+  } | null>(null);
+  const [loadingTrust, setLoadingTrust] = useState(false);
+
+  // Loan types state
+  const [loanTypes, setLoanTypes] = useState<Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    icon?: string;
+    display_order: number;
+  }>>([]);
+  const [selectedLoanTypeId, setSelectedLoanTypeId] = useState<string | null>(null);
+  const [loadingLoanTypes, setLoadingLoanTypes] = useState(false);
+  
   // Disbursement state
   const [disbursementData, setDisbursementData] = useState<any>({
     disbursement_method: 'bank_transfer',
@@ -119,6 +155,18 @@ export function LoanRequestForm({
   // Smart schedule state
   const [useSmartSchedule, setUseSmartSchedule] = useState(true);
   const [selectedPresetIndex, setSelectedPresetIndex] = useState<number | null>(null);
+  
+  // Income-based smart schedule state
+  const [financialProfile, setFinancialProfile] = useState<{
+    payFrequency: PayFrequency;
+    payAmount: number;
+    monthlyIncome: number;
+    monthlyExpenses: number;
+    disposableIncome: number;
+    comfortLevel: ComfortLevel;
+  } | null>(null);
+  const [loadingFinancialProfile, setLoadingFinancialProfile] = useState(true);
+  const [selectedComfortLevel, setSelectedComfortLevel] = useState<ComfortLevel>('balanced');
 
   const {
     register,
@@ -163,6 +211,63 @@ export function LoanRequestForm({
     return getRepaymentPresets(amount);
   }, [amount]);
 
+  // Income-based smart schedule suggestions (if user has financial profile)
+  const incomeBasedSchedule = useMemo(() => {
+    if (!financialProfile || !amount || amount <= 0) return null;
+    
+    const disposable = financialProfile.disposableIncome;
+    
+    // If disposable income is <= 0, return object with that info so warning can show
+    if (disposable <= 0) {
+      return {
+        hasProfile: true,
+        monthlyIncome: financialProfile.monthlyIncome,
+        monthlyExpenses: financialProfile.monthlyExpenses,
+        disposableIncome: disposable,
+        payFrequency: financialProfile.payFrequency,
+        suggestions: null, // Can't calculate suggestions with no disposable income
+        recommended: null,
+      };
+    }
+    
+    // Calculate suggestions based on disposable income
+    const percentages = { comfortable: 0.15, balanced: 0.22, aggressive: 0.30 };
+    
+    const calculateForLevel = (level: ComfortLevel) => {
+      const monthlyPayment = disposable * percentages[level];
+      const multiplier = { weekly: 4.33, biweekly: 2.17, semimonthly: 2, monthly: 1 }[financialProfile.payFrequency];
+      let paymentAmount = Math.round(monthlyPayment / multiplier);
+      paymentAmount = Math.max(paymentAmount, Math.ceil(amount / 12)); // Min payment
+      const numberOfPayments = Math.ceil(amount / paymentAmount);
+      const weeksPerPayment = financialProfile.payFrequency === 'weekly' ? 1 : 
+                              financialProfile.payFrequency === 'biweekly' ? 2 : 4;
+      return {
+        amount: paymentAmount,
+        frequency: financialProfile.payFrequency,
+        percentOfDisposable: Math.round((paymentAmount * multiplier / disposable) * 100),
+        numberOfPayments,
+        weeksToPayoff: numberOfPayments * weeksPerPayment,
+        totalRepayment: paymentAmount * numberOfPayments,
+        description: level === 'comfortable' ? 'Easy on your budget' : 
+                     level === 'balanced' ? 'Recommended' : 'Fastest payoff',
+      };
+    };
+    
+    return {
+      hasProfile: true,
+      monthlyIncome: financialProfile.monthlyIncome,
+      monthlyExpenses: financialProfile.monthlyExpenses,
+      disposableIncome: disposable,
+      payFrequency: financialProfile.payFrequency,
+      suggestions: {
+        comfortable: calculateForLevel('comfortable'),
+        balanced: calculateForLevel('balanced'),
+        aggressive: calculateForLevel('aggressive'),
+      },
+      recommended: calculateForLevel(selectedComfortLevel),
+    };
+  }, [financialProfile, amount, interestRate, selectedComfortLevel]);
+
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
 
   // When amount changes, reset preset selection
@@ -170,13 +275,24 @@ export function LoanRequestForm({
     setSelectedPresetIndex(null);
   }, [amount]);
 
-  // When preset is selected, update form values
+  // When preset is selected (simple presets), update form values
   useEffect(() => {
-    if (selectedPreset && useSmartSchedule) {
+    if (selectedPreset && useSmartSchedule && !financialProfile) {
       setValue('repaymentFrequency', selectedPreset.frequency);
       setValue('totalInstallments', selectedPreset.installments);
     }
-  }, [selectedPreset, useSmartSchedule, setValue]);
+  }, [selectedPreset, useSmartSchedule, setValue, financialProfile]);
+
+  // When income-based schedule is selected, update form values
+  useEffect(() => {
+    if (incomeBasedSchedule && incomeBasedSchedule.suggestions && useSmartSchedule && financialProfile) {
+      const suggestion = incomeBasedSchedule.suggestions[selectedComfortLevel];
+      if (suggestion) {
+        setValue('repaymentFrequency', suggestion.frequency as any);
+        setValue('totalInstallments', suggestion.numberOfPayments);
+      }
+    }
+  }, [incomeBasedSchedule, useSmartSchedule, selectedComfortLevel, setValue, financialProfile]);
 
   // Fetch borrowing limit on mount
   useEffect(() => {
@@ -205,6 +321,55 @@ export function LoanRequestForm({
     fetchBorrowingLimits();
   }, []);
 
+  // Fetch user's financial profile for income-based suggestions
+  useEffect(() => {
+    const fetchFinancialProfile = async () => {
+      try {
+        const response = await fetch('/api/financial-profile');
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.pay_amount > 0) {
+            setFinancialProfile({
+              payFrequency: data.pay_frequency as PayFrequency,
+              payAmount: parseFloat(data.pay_amount) || 0,
+              monthlyIncome: parseFloat(data.monthly_income) || 0,
+              monthlyExpenses: parseFloat(data.monthly_expenses) || 0,
+              disposableIncome: parseFloat(data.disposable_income) || 0,
+              comfortLevel: (data.comfort_level || 'balanced') as ComfortLevel,
+            });
+            setSelectedComfortLevel((data.comfort_level || 'balanced') as ComfortLevel);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch financial profile:', error);
+      } finally {
+        setLoadingFinancialProfile(false);
+      }
+    };
+
+    fetchFinancialProfile();
+  }, []);
+
+  // Fetch loan types on mount
+  useEffect(() => {
+    const fetchLoanTypes = async () => {
+      setLoadingLoanTypes(true);
+      try {
+        const response = await fetch('/api/loan-types');
+        if (response.ok) {
+          const data = await response.json();
+          setLoanTypes(data.loanTypes || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch loan types:', error);
+      } finally {
+        setLoadingLoanTypes(false);
+      }
+    };
+
+    fetchLoanTypes();
+  }, []);
+
   // Sync lenderType state with form (important for preferredLender case)
   useEffect(() => {
     if (lenderType) {
@@ -227,6 +392,33 @@ export function LoanRequestForm({
       }
     }
   }, [selectedBusinessId, businesses, setValue]);
+
+  // Fetch trust level when a specific business is selected (graduated trust system)
+  useEffect(() => {
+    const fetchBusinessTrust = async () => {
+      if (!selectedBusiness?.id) {
+        setBusinessTrust(null);
+        return;
+      }
+
+      setLoadingTrust(true);
+      try {
+        const response = await fetch(`/api/borrower/trust?business_id=${selectedBusiness.id}`);
+        if (response.ok) {
+          const data = await response.json();
+          setBusinessTrust(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch business trust:', error);
+      } finally {
+        setLoadingTrust(false);
+      }
+    };
+
+    if (lenderType === 'business' && selectedBusiness) {
+      fetchBusinessTrust();
+    }
+  }, [selectedBusiness, lenderType]);
 
   // Check if amount exceeds limit (only for personal lending)
   const isAmountOverLimit = lenderType === 'personal' && borrowingLimit && 
@@ -302,8 +494,24 @@ export function LoanRequestForm({
       }
     }
     
-    // For business lending, just check if there are any lenders who can support this amount
-    if (lenderType === 'business' && businessEligibility) {
+    // For business lending with a specific business selected, check trust-based limits
+    if (lenderType === 'business' && selectedBusiness && businessTrust) {
+      if (!businessTrust.canBorrow) {
+        setStepError(businessTrust.reason || 'You are not eligible to borrow from this business');
+        return false;
+      }
+      if (values.amount > businessTrust.maxAmount) {
+        if (businessTrust.isGraduated) {
+          setStepError(`Amount exceeds the maximum of ${formatCurrency(businessTrust.maxAmount)} for this lender.`);
+        } else {
+          setStepError(`As a new borrower with ${selectedBusiness.business_name}, you can borrow up to ${formatCurrency(businessTrust.maxAmount)}. Complete ${businessTrust.loansUntilGraduation} more loan(s) to unlock up to ${formatCurrency(businessTrust.standardMaxAmount)}.`);
+        }
+        return false;
+      }
+    }
+    
+    // For business lending without specific business (auto-match), just check if there are any lenders who can support this amount
+    if (lenderType === 'business' && !selectedBusiness && businessEligibility) {
       if (businessEligibility.maxAvailableFromBusinesses !== undefined && 
           values.amount > businessEligibility.maxAvailableFromBusinesses) {
         setStepError(`No business lenders currently support ${formatCurrency(values.amount)}. Try ${formatCurrency(businessEligibility.maxAvailableFromBusinesses)} or less.`);
@@ -509,7 +717,7 @@ export function LoanRequestForm({
         </div>
         <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-primary-500 dark:bg-primary-400 transition-all duration-300"
+            className="h-full bg-primary-500 transition-all duration-300"
             style={{ width: `${progressPercent}%` }}
           />
         </div>
@@ -517,8 +725,8 @@ export function LoanRequestForm({
 
       {/* Error Display */}
       {(stepError || submitError) && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 dark:text-red-400 flex-shrink-0 mt-0.5" />
+        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-red-700 dark:text-red-300">{stepError || submitError}</div>
         </div>
       )}
@@ -530,12 +738,12 @@ export function LoanRequestForm({
           {!userBankConnected && (
             <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
               <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/40 rounded-xl flex items-center justify-center">
+                <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
                   <CreditCard className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-900 dark:text-yellow-200">Connect Bank First</h3>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                  <h3 className="font-semibold text-yellow-900 dark:text-yellow-300">Connect Bank First</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">
                     You need to connect your Bank account before requesting a loan. 
                     This ensures secure payment processing.
                   </p>
@@ -554,8 +762,8 @@ export function LoanRequestForm({
           )}
 
           {userBankConnected && (
-            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl">
-              <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+              <Check className="w-5 h-5 text-green-600" />
               <span className="text-sm text-green-700 dark:text-green-300">Bank connected</span>
             </div>
           )}
@@ -596,7 +804,7 @@ export function LoanRequestForm({
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">Borrowing Limit</p>
                         <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">Unlimited ✨</p>
                         {borrowingLimit.totalOutstanding > 0 && (
-                          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                          <p className="text-xs text-neutral-400 mt-1">
                             Outstanding: {formatCurrency(borrowingLimit.totalOutstanding)}
                           </p>
                         )}
@@ -611,13 +819,13 @@ export function LoanRequestForm({
                         </div>
                         <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
                           <div 
-                            className="h-full bg-primary-500 dark:bg-primary-400 transition-all"
+                            className="h-full bg-primary-500 transition-all"
                             style={{ 
                               width: `${borrowingLimit.maxAmount ? ((borrowingLimit.availableAmount || 0) / borrowingLimit.maxAmount) * 100 : 0}%` 
                             }}
                           />
                         </div>
-                        <div className="flex justify-between text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                        <div className="flex justify-between text-xs text-neutral-400 mt-1">
                           <span>Outstanding: {formatCurrency(borrowingLimit.totalOutstanding)}</span>
                           <span>Tier Max: {formatCurrency(borrowingLimit.maxAmount || 0)}</span>
                         </div>
@@ -628,8 +836,8 @@ export function LoanRequestForm({
                   {/* Can't Borrow Warning */}
                   {!borrowingLimit.canBorrow && borrowingLimit.reason && (
                     <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 mt-0.5 flex-shrink-0" />
-                      <p className="text-sm text-red-700 dark:text-red-300">{borrowingLimit.reason}</p>
+                      <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                      <p className="text-sm text-red-700 dark:text-red-400">{borrowingLimit.reason}</p>
                     </div>
                   )}
 
@@ -638,7 +846,7 @@ export function LoanRequestForm({
                     <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-neutral-600 dark:text-neutral-400">
-                          <TrendingUp className="w-4 h-4 inline mr-1 text-green-600 dark:text-green-400" />
+                          <TrendingUp className="w-4 h-4 inline mr-1 text-green-600" />
                           {borrowingLimit.loansNeededToUpgrade} more loan{(borrowingLimit.loansNeededToUpgrade ?? 0) > 1 ? 's' : ''} to unlock {formatCurrency(borrowingLimit.nextTierAmount || 0)}
                         </span>
                       </div>
@@ -649,10 +857,10 @@ export function LoanRequestForm({
 
               {/* Business Lending Card */}
               {lenderType === 'business' && businessEligibility && (
-                <Card className="border-teal-200 dark:border-teal-800 bg-gradient-to-br from-teal-50 to-white dark:from-teal-900/20 dark:to-neutral-800">
+                <Card className="border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50 to-white dark:from-green-900/20 dark:to-neutral-800">
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center">
-                      <Building2 className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+                    <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                     </div>
                     <div>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">Business Lender Matching</p>
@@ -665,7 +873,7 @@ export function LoanRequestForm({
                   <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700">
                     <div className="text-center">
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">Maximum Available from Lenders</p>
-                      <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">
+                      <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {businessEligibility.maxAvailableFromBusinesses 
                           ? formatCurrency(businessEligibility.maxAvailableFromBusinesses)
                           : 'No lenders available'}
@@ -675,7 +883,7 @@ export function LoanRequestForm({
 
                   {businessEligibility.isFirstTimeBorrower && (
                     <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
+                      <p className="text-sm text-blue-700 dark:text-blue-400">
                         <Info className="w-4 h-4 inline mr-1" />
                         <strong>First-time borrower:</strong> You'll be matched with lenders who accept new borrowers at your requested amount.
                       </p>
@@ -702,7 +910,7 @@ export function LoanRequestForm({
             <Card
               hover
               className={`cursor-pointer transition-all ${
-                lenderType === 'business' ? 'ring-2 ring-primary-500 dark:ring-primary-400 border-primary-500 dark:border-primary-400' : ''
+                lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''
               } ${!userBankConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
                 if (userBankConnected && userVerificationStatus === 'verified') {
@@ -736,7 +944,7 @@ export function LoanRequestForm({
             <Card
               hover
               className={`cursor-pointer transition-all ${
-                lenderType === 'personal' ? 'ring-2 ring-primary-500 dark:ring-primary-400 border-primary-500 dark:border-primary-400' : ''
+                lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''
               } ${!userBankConnected ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
                 if (userBankConnected) {
@@ -819,7 +1027,7 @@ export function LoanRequestForm({
                 <p className="text-neutral-500 dark:text-neutral-400">We'll find the best lender for you automatically</p>
               </div>
 
-              <Card className="bg-gradient-to-br from-primary-50 dark:from-primary-900/20 to-yellow-50 dark:to-yellow-900/20 border-primary-200 dark:border-primary-800">
+              <Card className="bg-gradient-to-br from-primary-50 dark:from-primary-900/10 to-yellow-50 dark:to-yellow-900/10 border-primary-200 dark:border-primary-800">
                 <div className="text-center py-6">
                   <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 dark:from-primary-900/30 to-yellow-100 dark:to-yellow-900/30 rounded-full flex items-center justify-center">
                     <Zap className="w-8 h-8 text-primary-600 dark:text-primary-400" />
@@ -827,15 +1035,15 @@ export function LoanRequestForm({
                   <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">How It Works</h3>
                   <div className="text-left max-w-md mx-auto space-y-3 mt-4">
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">1</div>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-300">1</div>
                       <p className="text-sm text-neutral-600 dark:text-neutral-400">You submit your loan request with your terms</p>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">2</div>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-300">2</div>
                       <p className="text-sm text-neutral-600 dark:text-neutral-400">Our system finds business lenders matching your needs</p>
                     </div>
                     <div className="flex items-start gap-3">
-                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">3</div>
+                      <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-300">3</div>
                       <p className="text-sm text-neutral-600 dark:text-neutral-400">Best match funds your loan instantly or within 24h</p>
                     </div>
                   </div>
@@ -843,12 +1051,49 @@ export function LoanRequestForm({
               </Card>
 
               <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-start gap-3">
-                <Check className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                <Check className="w-5 h-5 text-green-600 mt-0.5" />
                 <div>
                   <p className="font-medium text-green-800 dark:text-green-300">No browsing required</p>
                   <p className="text-sm text-green-700 dark:text-green-400">Continue to set your loan details and we'll handle the rest</p>
                 </div>
               </div>
+
+              {/* Loan Type Selection */}
+              {loanTypes.length > 0 && (
+                <div className="mt-6">
+                  <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">What type of loan do you need?</h3>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">Select a loan type to help us match you with the right lenders</p>
+                  
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {loanTypes.map((loanType) => (
+                      <button
+                        key={loanType.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLoanTypeId(selectedLoanTypeId === loanType.id ? null : loanType.id);
+                          setValue('loanTypeId', selectedLoanTypeId === loanType.id ? undefined : loanType.id);
+                        }}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${
+                          selectedLoanTypeId === loanType.id
+                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
+                        }`}
+                      >
+                        <p className="font-medium text-sm text-neutral-900 dark:text-white">{loanType.name}</p>
+                        {loanType.description && (
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">{loanType.description}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {!selectedLoanTypeId && (
+                    <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-2 italic">
+                      Optional you can skip this and we'll match with all available lenders
+                    </p>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
@@ -882,7 +1127,7 @@ export function LoanRequestForm({
                           }
                         }}
                         placeholder="username"
-                        className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 focus:border-primary-500 dark:focus:border-primary-400 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                        className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-white"
                       />
                     </div>
                     <Button
@@ -902,7 +1147,7 @@ export function LoanRequestForm({
                   {/* Username Found */}
                   {usernameFound && (
                     <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg flex items-center gap-3">
-                      <Check className="w-5 h-5 text-green-600 dark:text-green-400" />
+                      <Check className="w-5 h-5 text-green-600" />
                       <div>
                         <p className="font-medium text-green-800 dark:text-green-300">~{usernameFound.username}</p>
                         <p className="text-sm text-green-700 dark:text-green-400">{usernameFound.displayName}</p>
@@ -913,15 +1158,15 @@ export function LoanRequestForm({
                   {/* Username Error */}
                   {usernameError && (
                     <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400" />
-                      <p className="text-sm text-red-700 dark:text-red-300">{usernameError}</p>
+                      <AlertCircle className="w-4 h-4 text-red-600" />
+                      <p className="text-sm text-red-700 dark:text-red-400">{usernameError}</p>
                     </div>
                   )}
                 </div>
 
                 <div className="flex items-center gap-4 py-2">
                   <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
-                  <span className="text-sm text-neutral-400 dark:text-neutral-500 font-medium">or invite by contact</span>
+                  <span className="text-sm text-neutral-400 font-medium">or invite by contact</span>
                   <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700"></div>
                 </div>
 
@@ -1011,6 +1256,81 @@ export function LoanRequestForm({
             </div>
           )}
 
+          {/* Trust Level Display for Specific Business */}
+          {lenderType === 'business' && selectedBusiness && businessTrust && (
+            <Card className={`border-2 ${
+              businessTrust.isGraduated 
+                ? 'border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50 dark:from-green-900/20 to-white dark:to-neutral-800' 
+                : 'border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50 dark:from-amber-900/20 to-white dark:to-neutral-800'
+            }`}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                  businessTrust.isGraduated 
+                    ? 'bg-green-100 dark:bg-green-900/30' 
+                    : 'bg-amber-100 dark:bg-amber-900/30'
+                }`}>
+                  {businessTrust.isGraduated ? (
+                    <Star className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <TrendingUp className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400">Your Trust Level with {selectedBusiness.business_name}</p>
+                  <p className={`font-semibold ${
+                    businessTrust.isGraduated ? 'text-green-700 dark:text-green-400' : 'text-amber-700 dark:text-amber-400'
+                  }`}>
+                    {businessTrust.isGraduated ? 'Graduated Borrower' : 'New Borrower'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-neutral-500 dark:text-neutral-400">Maximum Loan Amount</span>
+                  <span className={`text-lg font-bold ${
+                    businessTrust.isGraduated ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'
+                  }`}>
+                    {formatCurrency(businessTrust.maxAmount)}
+                  </span>
+                </div>
+
+                {!businessTrust.isGraduated && (
+                  <>
+                    <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden mb-2">
+                      <div 
+                        className="h-full bg-amber-500 transition-all"
+                        style={{ width: `${(businessTrust.completedLoans / 3) * 100}%` }}
+                      />
+                    </div>
+                    <div className="flex justify-between text-xs text-neutral-500 dark:text-neutral-400">
+                      <span>{businessTrust.completedLoans}/3 loans completed</span>
+                      <span>Unlocks {formatCurrency(businessTrust.standardMaxAmount)}</span>
+                    </div>
+                    <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
+                      <Lock className="w-3 h-3 inline mr-1" />
+                      Complete {businessTrust.loansUntilGraduation} more loan{businessTrust.loansUntilGraduation > 1 ? 's' : ''} at {formatCurrency(businessTrust.firstTimeAmount)} to unlock higher amounts
+                    </p>
+                  </>
+                )}
+
+                {businessTrust.isGraduated && (
+                  <p className="text-sm text-green-700 dark:text-green-400">
+                    <Check className="w-3 h-3 inline mr-1" />
+                    You've built trust with this lender and can borrow up to their maximum amount
+                  </p>
+                )}
+              </div>
+
+              {!businessTrust.canBorrow && businessTrust.reason && (
+                <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-500 mt-0.5 flex-shrink-0" />
+                  <p className="text-sm text-red-700 dark:text-red-400">{businessTrust.reason}</p>
+                </div>
+              )}
+            </Card>
+          )}
+
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <Input
@@ -1018,7 +1338,13 @@ export function LoanRequestForm({
                 type="number"
                 placeholder="1000"
                 min="1"
-                max={lenderType === 'personal' && borrowingLimit?.borrowingTier !== 6 ? borrowingLimit?.availableAmount || undefined : undefined}
+                max={
+                  lenderType === 'personal' && borrowingLimit?.borrowingTier !== 6 
+                    ? borrowingLimit?.availableAmount || undefined 
+                    : lenderType === 'business' && selectedBusiness && businessTrust
+                      ? businessTrust.maxAmount
+                      : undefined
+                }
                 {...register('amount', { valueAsNumber: true })}
               />
               {/* Show available limit for personal lending */}
@@ -1034,12 +1360,39 @@ export function LoanRequestForm({
                   )}
                 </p>
               )}
-              {/* Show info for business lending */}
-              {lenderType === 'business' && businessEligibility && (
-                <p className="text-xs mt-1 text-teal-600 dark:text-teal-400">
+              {/* Show trust-based limit for specific business */}
+              {lenderType === 'business' && selectedBusiness && businessTrust && (
+                <p className={`text-xs mt-1 ${
+                  amount > businessTrust.maxAmount 
+                    ? 'text-red-600 dark:text-red-400 font-medium' 
+                    : businessTrust.isGraduated 
+                      ? 'text-green-600 dark:text-green-400' 
+                      : 'text-amber-600 dark:text-amber-400'
+                }`}>
+                  {amount > businessTrust.maxAmount ? (
+                    <>
+                      <AlertCircle className="w-3 h-3 inline mr-1" />
+                      Exceeds your limit! Max: {formatCurrency(businessTrust.maxAmount)}
+                    </>
+                  ) : businessTrust.isGraduated ? (
+                    <>
+                      <Star className="w-3 h-3 inline mr-1" />
+                      Graduated: Up to {formatCurrency(businessTrust.maxAmount)}
+                    </>
+                  ) : (
+                    <>
+                      <Lock className="w-3 h-3 inline mr-1" />
+                      New borrower limit: {formatCurrency(businessTrust.maxAmount)}
+                    </>
+                  )}
+                </p>
+              )}
+              {/* Show info for business lending without specific business (auto-match) */}
+              {lenderType === 'business' && !selectedBusiness && businessEligibility && (
+                <p className="text-xs mt-1 text-green-600 dark:text-green-400">
                   <Info className="w-3 h-3 inline mr-1" />
                   {businessEligibility.isFirstTimeBorrower 
-                    ? `First-time borrower — you'll be matched with lenders accepting up to ${formatCurrency(businessEligibility.maxAvailableFromBusinesses || 0)}`
+                    ? `First-time borrower you'll be matched with lenders accepting up to ${formatCurrency(businessEligibility.maxAvailableFromBusinesses || 0)}`
                     : `Max available from lenders: ${formatCurrency(businessEligibility.maxAvailableFromBusinesses || 0)}`
                   }
                 </p>
@@ -1059,7 +1412,7 @@ export function LoanRequestForm({
           />
 
           {/* Smart Repayment Schedule */}
-          {amount > 0 && repaymentPresets.length > 0 && (
+          {amount > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
@@ -1078,51 +1431,189 @@ export function LoanRequestForm({
                   ) : (
                     <>
                       <Zap className="w-4 h-4" />
-                      Use presets
+                      Smart suggestions
                     </>
                   )}
                 </button>
               </div>
 
               {useSmartSchedule ? (
-                <div className="grid gap-3">
-                  {repaymentPresets.map((preset, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => setSelectedPresetIndex(index)}
-                      className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
-                        selectedPresetIndex === index
-                          ? 'border-primary-500 dark:border-primary-400 bg-primary-50 dark:bg-primary-900/30'
-                          : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600 bg-white dark:bg-neutral-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                            selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-800' : 'bg-neutral-100 dark:bg-neutral-700'
-                          }`}>
-                            <Calendar className={`w-5 h-5 ${
-                              selectedPresetIndex === index ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'
-                            }`} />
-                          </div>
-                          <div>
-                            <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                              {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'} payments
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-neutral-900 dark:text-white">
-                            {formatCurrency(preset.paymentAmount)}
-                          </p>
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400">per payment</p>
+                <>
+                  {/* Income-Based Smart Schedule (if user has financial profile) */}
+                  {financialProfile && incomeBasedSchedule && incomeBasedSchedule.disposableIncome > 0 && incomeBasedSchedule.suggestions ? (
+                    <div className="space-y-4">
+                      {/* Income Profile Banner */}
+                      <div className="p-3 bg-gradient-to-r from-green-50 to-green-50 dark:from-green-900/20 dark:to-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                        <div className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                          <Sparkles className="w-4 h-4" />
+                          <span className="text-sm font-medium">
+                            Personalized for your income ({formatCurrency(incomeBasedSchedule.disposableIncome)}/mo disposable)
+                          </span>
                         </div>
                       </div>
-                    </button>
-                  ))}
-                </div>
+
+                      {/* Comfort Level Options */}
+                      <div className="grid gap-3">
+                        {(['comfortable', 'balanced', 'aggressive'] as ComfortLevel[]).map((level) => {
+                          const suggestion = incomeBasedSchedule.suggestions[level];
+                          const isSelected = selectedComfortLevel === level;
+                          const frequencyLabel = suggestion.frequency === 'weekly' ? 'weekly' : 
+                                                 suggestion.frequency === 'biweekly' ? 'bi-weekly' : 
+                                                 suggestion.frequency === 'semimonthly' ? 'semi-monthly' : 'monthly';
+                          
+                          return (
+                            <button
+                              key={level}
+                              type="button"
+                              onClick={() => setSelectedComfortLevel(level)}
+                              className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                                isSelected
+                                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                  : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    isSelected ? 'bg-green-100 dark:bg-green-800' : 'bg-neutral-100 dark:bg-neutral-800'
+                                  }`}>
+                                    {level === 'comfortable' && <Shield className={`w-5 h-5 ${isSelected ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'}`} />}
+                                    {level === 'balanced' && <Star className={`w-5 h-5 ${isSelected ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'}`} />}
+                                    {level === 'aggressive' && <Zap className={`w-5 h-5 ${isSelected ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'}`} />}
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-neutral-900 dark:text-white capitalize">{level}</p>
+                                      {level === 'balanced' && (
+                                        <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full">
+                                          Recommended
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                      {suggestion.numberOfPayments} {frequencyLabel} payments • {suggestion.percentOfDisposable}% of disposable
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-neutral-900 dark:text-white">
+                                    {formatCurrency(suggestion.amount)}
+                                  </p>
+                                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                    ~{suggestion.weeksToPayoff} weeks
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Selected Schedule Summary */}
+                      <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
+                        <Wallet className="w-4 h-4" />
+                        <span>
+                          You'll pay {formatCurrency(incomeBasedSchedule.suggestions[selectedComfortLevel].amount)}{' '}
+                          {formatPayFrequency(incomeBasedSchedule.payFrequency).toLowerCase()} for{' '}
+                          {incomeBasedSchedule.suggestions[selectedComfortLevel].numberOfPayments} payments
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Simple Presets (for users without financial profile OR with $0 disposable) */
+                    repaymentPresets.length > 0 ? (
+                      <div className="space-y-4">
+                        {/* Warning for users with $0 or negative disposable income */}
+                        {financialProfile && financialProfile.disposableIncome <= 0 && (
+                          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm text-amber-700 dark:text-amber-300">
+                                <span className="font-medium">Your expenses match or exceed your income.</span>
+                                {' '}Consider reviewing your budget before taking a loan, or{' '}
+                                <a href="/dashboard" className="font-medium hover:underline">update your income profile</a>.
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Prompt to set up income profile */}
+                        {!loadingFinancialProfile && !financialProfile && (
+                          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+                            <div className="flex items-start gap-2">
+                              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                              <div className="text-sm text-blue-700 dark:text-blue-300">
+                                <a href="/dashboard" className="font-medium hover:underline">Set up your income profile</a>
+                                {' '}to get personalized repayment suggestions based on your budget.
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="grid gap-3">
+                          {repaymentPresets.map((preset, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setSelectedPresetIndex(index)}
+                              className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                                selectedPresetIndex === index
+                                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                                  : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                                    selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-900' : 'bg-neutral-100 dark:bg-neutral-800'
+                                  }`}>
+                                    <Calendar className={`w-5 h-5 ${
+                                      selectedPresetIndex === index ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'
+                                    }`} />
+                                  </div>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
+                                      {preset.recommended && (
+                                        <span className="px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full">
+                                          Recommended
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                      {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'} payments
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-bold text-neutral-900 dark:text-white">
+                                    {formatCurrency(preset.paymentAmount)}
+                                  </p>
+                                  <p className="text-xs text-neutral-500 dark:text-neutral-400">per payment</p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {selectedPreset && (
+                          <div className="p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg flex items-center gap-2 text-primary-700 dark:text-primary-300 text-sm">
+                            <Clock className="w-4 h-4" />
+                            <span>
+                              You'll pay {formatCurrency(selectedPreset.paymentAmount)}{' '}
+                              {selectedPreset.frequency} for {selectedPreset.installments}{' '}
+                              {selectedPreset.installments === 1 ? 'payment' : 'payments'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl text-center text-neutral-500 dark:text-neutral-400">
+                        Enter a loan amount to see repayment options
+                      </div>
+                    )
+                  )}
+                </>
               ) : (
                 <div className="grid md:grid-cols-2 gap-4">
                   <Select
@@ -1137,17 +1628,6 @@ export function LoanRequestForm({
                     min="1"
                     {...register('totalInstallments', { valueAsNumber: true })}
                   />
-                </div>
-              )}
-
-              {selectedPreset && useSmartSchedule && (
-                <div className="p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg flex items-center gap-2 text-primary-700 dark:text-primary-300 text-sm">
-                  <Clock className="w-4 h-4" />
-                  <span>
-                    You'll pay {formatCurrency(selectedPreset.paymentAmount)}{' '}
-                    {selectedPreset.frequency} for {selectedPreset.installments}{' '}
-                    {selectedPreset.installments === 1 ? 'payment' : 'payments'}
-                  </span>
                 </div>
               )}
             </div>
@@ -1178,7 +1658,7 @@ export function LoanRequestForm({
           />
 
           {amount > 0 && totalInstallments > 0 && (
-            <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl space-y-2">
+            <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl space-y-2">
               <h4 className="font-semibold text-neutral-900 dark:text-white">Loan Summary</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-neutral-500 dark:text-neutral-400">Principal:</span>
@@ -1279,16 +1759,16 @@ export function LoanRequestForm({
 
           {/* Loan Summary Card */}
           <Card className="bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
-            <h4 className="font-semibold text-primary-900 dark:text-primary-200 mb-3">Loan Summary</h4>
+            <h4 className="font-semibold text-primary-900 dark:text-primary-300 mb-3">Loan Summary</h4>
             <div className="grid grid-cols-2 gap-2 text-sm">
-              <span className="text-primary-700 dark:text-primary-300">Principal:</span>
-              <span className="text-right font-medium text-primary-900 dark:text-primary-100">{formatCurrency(amount)}</span>
-              <span className="text-primary-700 dark:text-primary-300">Total to Repay:</span>
-              <span className="text-right font-bold text-primary-900 dark:text-primary-100">{formatCurrency(totalAmount)}</span>
-              <span className="text-primary-700 dark:text-primary-300">Installments:</span>
-              <span className="text-right font-medium text-primary-900 dark:text-primary-100">{totalInstallments} × {formatCurrency(repaymentAmount)}</span>
-              <span className="text-primary-700 dark:text-primary-300">Start Date:</span>
-              <span className="text-right font-medium text-primary-900 dark:text-primary-100">
+              <span className="text-primary-700 dark:text-primary-400">Principal:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-300">{formatCurrency(amount)}</span>
+              <span className="text-primary-700 dark:text-primary-400">Total to Repay:</span>
+              <span className="text-right font-bold text-primary-900 dark:text-primary-300">{formatCurrency(totalAmount)}</span>
+              <span className="text-primary-700 dark:text-primary-400">Installments:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-300">{totalInstallments} × {formatCurrency(repaymentAmount)}</span>
+              <span className="text-primary-700 dark:text-primary-400">Start Date:</span>
+              <span className="text-right font-medium text-primary-900 dark:text-primary-300">
                 {startDate ? new Date(startDate).toLocaleDateString() : '-'}
               </span>
             </div>
@@ -1311,7 +1791,7 @@ export function LoanRequestForm({
             </div>
 
             {showFullTerms && (
-              <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-3 max-h-64 overflow-y-auto mb-4 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
+              <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-3 max-h-64 overflow-y-auto mb-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
                 <p><strong>1. Loan Agreement</strong></p>
                 <p>
                   I agree to borrow {formatCurrency(amount)} and repay a total of {formatCurrency(totalAmount)} 
@@ -1349,7 +1829,7 @@ export function LoanRequestForm({
                   setAgreementAccepted(e.target.checked);
                   setStepError(null);
                 }}
-                className="mt-1 w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-700"
+                className="mt-1 w-4 h-4 text-primary-600 dark:text-primary-400 rounded border-neutral-300 dark:border-neutral-600 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800"
               />
               <span className="text-sm text-neutral-700 dark:text-neutral-300">
                 I have read, understood, and agree to the loan agreement terms. 

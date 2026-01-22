@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
-import { StatsCard } from '@/components/dashboard';
+import { StatsCard, BorrowerTrustCard, IncomeProfileCard } from '@/components/dashboard';
 import { DashboardBorrowingLimit } from '@/components/dashboard/DashboardBorrowingLimit';
 import { LoanCard } from '@/components/loans';
 import { formatCurrency } from '@/lib/utils';
@@ -219,7 +219,7 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
       <Navbar user={userProfile} />
 
       <main className="flex-1">
@@ -252,16 +252,16 @@ export default async function DashboardPage() {
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   profile?.verification_status === 'submitted'
-                    ? 'bg-blue-100 dark:bg-blue-900/30'
+                    ? 'bg-blue-100 dark:bg-blue-900/50'
                     : profile?.verification_status === 'rejected'
-                    ? 'bg-red-100 dark:bg-red-900/30'
-                    : 'bg-yellow-100 dark:bg-yellow-900/30'
+                    ? 'bg-red-100 dark:bg-red-900/50'
+                    : 'bg-yellow-100 dark:bg-yellow-900/50'
                 }`}>
                   <Shield className={`w-5 h-5 ${
                     profile?.verification_status === 'submitted'
-                      ? 'text-blue-600 dark:text-blue-400'
+                      ? 'text-blue-600'
                       : profile?.verification_status === 'rejected'
-                      ? 'text-red-600 dark:text-red-400'
+                      ? 'text-red-600'
                       : 'text-yellow-600 dark:text-yellow-400'
                   }`} />
                 </div>
@@ -349,7 +349,7 @@ export default async function DashboardPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Application Under Review</h3>
                   <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                    Your business profile for <strong className="text-yellow-900 dark:text-yellow-300">{businessProfile.business_name}</strong> is being reviewed. 
+                    Your business profile for <strong>{businessProfile.business_name}</strong> is being reviewed. 
                     This usually takes 1-2 business days. We'll email you once it's approved!
                   </p>
                 </div>
@@ -364,7 +364,7 @@ export default async function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
                   <span className="text-sm text-green-700 dark:text-green-400 font-medium">
-                    ✓ <strong className="text-green-800 dark:text-green-300">{businessProfile.business_name}</strong> is verified and active
+                    ✓ <strong>{businessProfile.business_name}</strong> is verified and active
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -389,11 +389,11 @@ export default async function DashboardPage() {
                 <div className="flex-1">
                   <h3 className="font-semibold text-red-800 dark:text-red-300 mb-1">Business Application Not Approved</h3>
                   <p className="text-sm text-red-700 dark:text-red-400 mb-3">
-                    Your application for <strong className="text-red-900 dark:text-red-300">{businessProfile.business_name}</strong> was not approved. 
+                    Your application for <strong>{businessProfile.business_name}</strong> was not approved. 
                     Please contact support for more information or to resubmit.
                   </p>
                   <a href="mailto:support@feyza.app">
-                    <Button variant="outline" size="sm" className="border-red-300 dark:border-red-700 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30">
+                    <Button variant="outline" size="sm" className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30">
                       Contact Support
                     </Button>
                   </a>
@@ -415,7 +415,7 @@ export default async function DashboardPage() {
                     Link your bank account to receive loan funds and make repayments securely. We use bank-level encryption to keep your information safe.
                   </p>
                   <Link href="/settings?tab=payments">
-                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700 text-white">
+                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white">
                       <Building className="w-4 h-4 mr-2" />
                       Connect Bank
                     </Button>
@@ -425,40 +425,40 @@ export default async function DashboardPage() {
             </div>
           )}
 
-          {/* Stats Grid with Borrowing Limit */}
-          <div className="grid lg:grid-cols-4 gap-4 mb-8">
-            <div className="lg:col-span-3">
-              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatsCard
-                  title="Total Borrowed"
-                  value={formatCurrency(totalBorrowed)}
-                  subtitle={`${activeLoansAsBorrower.length} active loan${activeLoansAsBorrower.length !== 1 ? 's' : ''}`}
-                  icon={TrendingDown}
-                />
-                <StatsCard
-                  title="Total Lent"
-                  value={formatCurrency(totalLent)}
-                  subtitle={`${activeLoansAsLender.length} active loan${activeLoansAsLender.length !== 1 ? 's' : ''}`}
-                  icon={TrendingUp}
-                />
-                <StatsCard
-                  title="Due This Week"
-                  value={dueThisWeekCount > 0 ? formatCurrency(dueThisWeekAmount) : '0'}
-                  subtitle={dueThisWeekCount > 0 ? `${dueThisWeekCount} payment${dueThisWeekCount !== 1 ? 's' : ''} to make` : 'No payments due'}
-                  icon={AlertCircle}
-                  highlight={dueThisWeekCount > 0}
-                />
-                <StatsCard
-                  title="Expected This Week"
-                  value={expectedThisWeekCount > 0 ? formatCurrency(expectedThisWeekAmount) : '0'}
-                  subtitle={expectedThisWeekCount > 0 ? `${expectedThisWeekCount} payment${expectedThisWeekCount !== 1 ? 's' : ''} incoming` : 'No payments expected'}
-                  icon={Clock}
-                />
-              </div>
-            </div>
-            <div className="lg:col-span-1">
-              <DashboardBorrowingLimit />
-            </div>
+          {/* Stats Row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <StatsCard
+              title="Total Borrowed"
+              value={formatCurrency(totalBorrowed)}
+              subtitle={`${activeLoansAsBorrower.length} active loan${activeLoansAsBorrower.length !== 1 ? 's' : ''}`}
+              icon={TrendingDown}
+            />
+            <StatsCard
+              title="Total Lent"
+              value={formatCurrency(totalLent)}
+              subtitle={`${activeLoansAsLender.length} active loan${activeLoansAsLender.length !== 1 ? 's' : ''}`}
+              icon={TrendingUp}
+            />
+            <StatsCard
+              title="Due This Week"
+              value={dueThisWeekCount > 0 ? formatCurrency(dueThisWeekAmount) : '$0'}
+              subtitle={dueThisWeekCount > 0 ? `${dueThisWeekCount} payment${dueThisWeekCount !== 1 ? 's' : ''} to make` : 'No payments due'}
+              icon={AlertCircle}
+              highlight={dueThisWeekCount > 0}
+            />
+            <StatsCard
+              title="Expected This Week"
+              value={expectedThisWeekCount > 0 ? formatCurrency(expectedThisWeekAmount) : '$0'}
+              subtitle={expectedThisWeekCount > 0 ? `${expectedThisWeekCount} payment${expectedThisWeekCount !== 1 ? 's' : ''} incoming` : 'No payments expected'}
+              icon={Clock}
+            />
+          </div>
+
+          {/* Borrowing Limit, Trust Level & Income Profile Row */}
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <DashboardBorrowingLimit />
+            <BorrowerTrustCard userId={userProfile.id} />
+            <IncomeProfileCard />
           </div>
 
           {/* Loans Tabs */}
@@ -467,7 +467,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="borrowed" className="relative">
                 Borrowed
                 {activeLoansAsBorrower.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full">
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-primary-100 text-primary-700 rounded-full">
                     {activeLoansAsBorrower.length}
                   </span>
                 )}
@@ -475,7 +475,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="lent" className="relative">
                 Lent
                 {activeLoansAsLender.length > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full">
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded-full">
                     {activeLoansAsLender.length}
                   </span>
                 )}
@@ -483,7 +483,7 @@ export default async function DashboardPage() {
               <TabsTrigger value="pending" className="relative">
                 Pending
                 {totalPendingCount > 0 && (
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 rounded-full">
+                  <span className="ml-2 px-2 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded-full">
                     {totalPendingCount}
                   </span>
                 )}
@@ -535,7 +535,7 @@ export default async function DashboardPage() {
                   {/* Pending requests you sent (as borrower) */}
                   {pendingLoansAsBorrower.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                      <h3 className="text-sm font-medium text-neutral-500 mb-3">
                         Requests You Sent ({pendingLoansAsBorrower.length})
                       </h3>
                       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -556,7 +556,7 @@ export default async function DashboardPage() {
                   {/* Pending requests you received (as lender) */}
                   {pendingLoansAsLender.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                      <h3 className="text-sm font-medium text-neutral-500 mb-3">
                         Requests You Received ({pendingLoansAsLender.length})
                       </h3>
                       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -586,13 +586,13 @@ export default async function DashboardPage() {
               <Card hover className="group">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-primary-100 dark:bg-primary-900/30 rounded-xl group-hover:bg-primary-200 dark:group-hover:bg-primary-900/50 transition-colors">
-                    <Plus className="w-6 h-6 text-primary-600 dark:text-primary-500" />
+                    <Plus className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-neutral-900 dark:text-white">Request a Loan</h3>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">From business or personal network</p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
+                  <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors" />
                 </div>
               </Card>
             </Link>
@@ -601,13 +601,13 @@ export default async function DashboardPage() {
               <Card hover className="group">
                 <div className="flex items-center gap-4">
                   <div className="p-3 bg-blue-100 dark:bg-blue-900/30 rounded-xl group-hover:bg-blue-200 dark:group-hover:bg-blue-900/50 transition-colors">
-                    <FileText className="w-6 h-6 text-blue-600 dark:text-blue-500" />
+                    <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div className="flex-1">
                     <h3 className="font-semibold text-neutral-900 dark:text-white">View All Loans</h3>
                     <p className="text-sm text-neutral-500 dark:text-neutral-400">See your complete history</p>
                   </div>
-                  <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-blue-600 dark:group-hover:text-blue-500 transition-colors" />
+                  <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors" />
                 </div>
               </Card>
             </Link>
@@ -617,13 +617,13 @@ export default async function DashboardPage() {
                 <Card hover className="group">
                   <div className="flex items-center gap-4">
                     <div className="p-3 bg-accent-100 dark:bg-accent-900/30 rounded-xl group-hover:bg-accent-200 dark:group-hover:bg-accent-900/50 transition-colors">
-                      <TrendingUp className="w-6 h-6 text-accent-600 dark:text-accent-500" />
+                      <TrendingUp className="w-6 h-6 text-accent-600 dark:text-accent-400" />
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-neutral-900 dark:text-white">Business Dashboard</h3>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">Manage your lending business</p>
                     </div>
-                    <ArrowRight className="w-5 h-5 text-neutral-400 dark:text-neutral-500 group-hover:text-accent-600 dark:group-hover:text-accent-500 transition-colors" />
+                    <ArrowRight className="w-5 h-5 text-neutral-400 group-hover:text-accent-600 dark:group-hover:text-accent-400 transition-colors" />
                   </div>
                 </Card>
               </Link>
@@ -649,8 +649,8 @@ function EmptyState({
   actionHref?: string;
 }) {
   return (
-    <Card className="text-center py-12 bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800">
-      <FileText className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
+    <Card className="text-center py-12">
+      <FileText className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
       <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">{title}</h3>
       <p className="text-neutral-500 dark:text-neutral-400 mb-6">{description}</p>
       {actionLabel && actionHref && (

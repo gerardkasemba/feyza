@@ -65,130 +65,139 @@ export function getLoanInviteEmail(params: {
 
 return {
   subject: `${borrowerName} is requesting a loan from you`,
-  html: `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Loan Request - Feyza</title>
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <!-- Header with logo -->
-        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 40px 30px 30px 30px; border-radius: 16px 16px 0 0; text-align: center;">
-          <!-- Logo -->
-          <div style="margin-bottom: 20px;">
-            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                 alt="Feyza Logo" 
-                 style="height: 45px; width: auto; filter: brightness(0) invert(1);">
-          </div>
-          <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">💰 New Loan Request</h1>
-          <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">You've received a loan request</p>
-        </div>
-        
-        <!-- Main content -->
-        <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-          <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi there! 👋</p>
-          
-          <p style="color: #166534; line-height: 1.6; margin-bottom: 25px;">
-            <strong style="color: #065f46;">${borrowerName}</strong> has sent you a loan request through Feyza:
+html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Request - Feyza</title>
+  </head>
+
+  <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background:#f9fafb;">
+
+    <!-- ===== HEADER ===== -->
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      <tr>
+        <td style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 40px 30px 30px; border-radius: 16px 16px 0 0;" align="center">
+
+          <!-- Logo (email-safe center) -->
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding-bottom:20px;">
+                <img
+                  src="https://feyza.app/feyza.png"
+                  alt="Feyza Logo"
+                  height="45"
+                  style="display:block; height:45px; width:auto; border:0; outline:none; text-decoration:none;"
+                />
+              </td>
+            </tr>
+          </table>
+
+          <h1 style="color:white; margin:0; font-size:28px; font-weight:600;">💰 New Loan Request</h1>
+          <p style="color:rgba(255,255,255,0.9); margin:10px 0 0; font-size:16px;">
+            You've received a loan request
           </p>
-          
-          <!-- Loan details card -->
-          <div style="background: white; padding: 25px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.08);">
-            <h3 style="color: #065f46; margin: 0 0 20px 0; font-size: 20px; font-weight: 600; text-align: center;">Loan Request Details</h3>
-            
-            <div style="background: linear-gradient(to right, #f0fdf4, #dcfce7); padding: 20px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #86efac;">
-              <div style="text-align: center;">
-                <div style="color: #065f46; font-size: 14px; margin-bottom: 8px; font-weight: 500;">REQUESTED AMOUNT</div>
-                <div style="font-weight: bold; font-size: 32px; color: #059669; margin: 10px 0;">${currency} ${amount.toLocaleString()}</div>
-              </div>
-            </div>
-            
-            ${purpose ? `
-            <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-              <div style="color: #065f46; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center;">
-                <span style="background: #d1fae5; padding: 4px 12px; border-radius: 20px; font-size: 14px; margin-right: 10px;">📋</span>
-                Loan Purpose
-              </div>
-              <div style="background: #f9fafb; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <p style="margin: 0; color: #4b5563; line-height: 1.5;">${purpose}</p>
-              </div>
-            </div>
-            ` : ''}
-            
-            ${borrowerName ? `
-            <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-              <div style="color: #065f46; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center;">
-                <span style="background: #d1fae5; padding: 4px 12px; border-radius: 20px; font-size: 14px; margin-right: 10px;">👤</span>
-                Borrower
-              </div>
-              <p style="margin: 0; color: #4b5563; padding-left: 34px;">${borrowerName}</p>
-            </div>
-            ` : ''}
+        </td>
+      </tr>
+    </table>
+
+    <!-- ===== CONTENT ===== -->
+    <div style="background:#f0fdf4; padding:30px; border-radius:0 0 16px 16px; border:1px solid #bbf7d0; border-top:none;">
+
+      <p style="font-size:18px; color:#166534; margin-bottom:20px;">Hi there! 👋</p>
+
+      <p style="color:#166534; margin-bottom:25px;">
+        <strong style="color:#065f46;">${borrowerName}</strong> has sent you a loan request through Feyza:
+      </p>
+
+      <!-- ===== LOAN CARD ===== -->
+      <div style="background:white; padding:25px; border-radius:12px; margin:25px 0; border:1px solid #bbf7d0; box-shadow:0 4px 12px rgba(5,150,105,.08);">
+
+        <h3 style="color:#065f46; margin:0 0 20px; font-size:20px; text-align:center;">
+          Loan Request Details
+        </h3>
+
+        <div style="background:linear-gradient(to right,#f0fdf4,#dcfce7); padding:20px; border-radius:8px; border:1px solid #86efac; text-align:center;">
+          <div style="color:#065f46; font-size:14px; margin-bottom:8px; font-weight:500;">
+            REQUESTED AMOUNT
           </div>
-          
-          <!-- Action section -->
-          <div style="background: white; padding: 25px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.08);">
-            <h3 style="color: #065f46; margin: 0 0 15px 0; font-size: 18px; font-weight: 600;">Next Steps</h3>
-            <p style="color: #4b5563; line-height: 1.6; margin-bottom: 20px;">
-              Review this loan request and decide whether to accept or decline it. 
-              <strong style="color: #059669;">No account is required</strong> to review and respond.
-            </p>
-            
-            <div style="text-align: center;">
-              <a href="${inviteUrl}" 
-                 style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
-                        color: white; text-decoration: none; padding: 18px 40px; border-radius: 10px; 
-                        font-weight: 600; text-align: center; font-size: 18px; margin: 10px 0;
-                        box-shadow: 0 6px 16px rgba(5, 150, 105, 0.25); transition: all 0.3s ease;"
-                 onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 10px 25px rgba(5, 150, 105, 0.35)';"
-                 onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.25)';">
-                🔍 View Full Request Details →
-              </a>
-            </div>
-            
-            <div style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 25px; border: 1px solid #fcd34d;">
-              <p style="color: #92400e; margin: 0; font-size: 14px; text-align: center;">
-                ⏰ <strong>This link expires in 7 days</strong> • Respond promptly to secure this opportunity
-              </p>
-            </div>
-          </div>
-          
-          <!-- Benefits section -->
-          <div style="background: #dcfce7; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #86efac;">
-            <h4 style="color: #065f46; margin: 0 0 15px 0; font-weight: 600; font-size: 16px;">🌟 Why Use Feyza?</h4>
-            <ul style="margin: 0; padding-left: 20px; color: #065f46;">
-              <li style="margin-bottom: 8px; font-size: 14px;"><strong>Secure:</strong> End-to-end encrypted communication</li>
-              <li style="margin-bottom: 8px; font-size: 14px;"><strong>Simple:</strong> No account needed to review requests</li>
-              <li style="font-size: 14px;"><strong>Transparent:</strong> Clear terms and automatic documentation</li>
-            </ul>
-          </div>
-          
-          <!-- Footer -->
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-            <p style="margin: 0 0 10px 0;">Have questions about this request?</p>
-            <p style="margin: 0;">
-              <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                📧 Contact Support
-              </a>
-              <a href="${APP_URL}/lender/faq" style="color: #059669; text-decoration: none; font-weight: 500;">
-                ❓ View FAQ
-              </a>
-            </p>
+          <div style="font-weight:bold; font-size:32px; color:#059669;">
+            ${currency} ${amount.toLocaleString()}
           </div>
         </div>
-        
-        <!-- Signature -->
-        <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-          <p style="margin: 0; padding: 10px;">
-            Sent via <strong style="color: #059669;">Feyza</strong> • Modern loan management platform<br>
-            <span style="font-size: 11px; color: #9ca3af;">This is an automated notification. Please do not reply to this email.</span>
+
+        ${purpose ? `
+        <div style="border-top:1px solid #e5e7eb; padding-top:20px; margin-top:20px;">
+          <p style="color:#065f46; font-weight:600; margin-bottom:10px;">📋 Loan Purpose</p>
+          <div style="background:#f9fafb; padding:15px; border-radius:8px; border:1px solid #e5e7eb;">
+            <p style="margin:0; color:#4b5563;">${purpose}</p>
+          </div>
+        </div>` : ''}
+
+        ${borrowerName ? `
+        <div style="border-top:1px solid #e5e7eb; padding-top:20px; margin-top:20px;">
+          <p style="color:#065f46; font-weight:600;">👤 Borrower</p>
+          <p style="margin:0; color:#4b5563;">${borrowerName}</p>
+        </div>` : ''}
+
+      </div>
+
+      <!-- ===== ACTION ===== -->
+      <div style="background:white; padding:25px; border-radius:12px; margin:25px 0; border:1px solid #bbf7d0; box-shadow:0 4px 12px rgba(5,150,105,.08);">
+
+        <h3 style="color:#065f46; margin:0 0 15px; font-size:18px;">Next Steps</h3>
+
+        <p style="color:#4b5563; margin-bottom:20px;">
+          Review this loan request and decide whether to accept or decline it.
+          <strong style="color:#059669;">No account required.</strong>
+        </p>
+
+        <div style="text-align:center;">
+          <a href="${inviteUrl}"
+             style="display:inline-block; background:linear-gradient(to right,#059669,#047857);
+                    color:white; text-decoration:none; padding:18px 40px; border-radius:10px;
+                    font-weight:600; font-size:18px; box-shadow:0 6px 16px rgba(5,150,105,.25);">
+            🔍 View Full Request →
+          </a>
+        </div>
+
+        <div style="background:#fef3c7; padding:15px; border-radius:8px; margin-top:25px; border:1px solid #fcd34d;">
+          <p style="color:#92400e; margin:0; font-size:14px; text-align:center;">
+            ⏰ <strong>This link expires in 7 days</strong>
           </p>
         </div>
-      </body>
-    </html>
-  `,
+      </div>
+
+      <!-- ===== BENEFITS ===== -->
+      <div style="background:#dcfce7; padding:20px; border-radius:8px; border:1px solid #86efac;">
+        <h4 style="color:#065f46; margin:0 0 15px;">🌟 Why Use Feyza?</h4>
+        <ul style="margin:0; padding-left:20px; color:#065f46; font-size:14px;">
+          <li><strong>Secure:</strong> Encrypted communication</li>
+          <li><strong>Simple:</strong> No account required</li>
+          <li><strong>Transparent:</strong> Clear terms</li>
+        </ul>
+      </div>
+
+      <!-- ===== FOOTER ===== -->
+      <div style="margin-top:30px; padding-top:20px; border-top:1px solid #bbf7d0; font-size:14px; color:#047857;">
+        <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none; font-weight:500;">Contact Support</a>
+        &nbsp;•&nbsp;
+        <a href="${APP_URL}/lender/faq" style="color:#059669; text-decoration:none; font-weight:500;">View FAQ</a>
+      </div>
+
+    </div>
+
+    <!-- ===== SIGNATURE ===== -->
+    <div style="text-align:center; margin-top:20px; font-size:12px; color:#6b7280;">
+      Sent via <strong style="color:#059669;">Feyza</strong><br>
+      This is an automated message. Do not reply.
+    </div>
+
+  </body>
+</html>
+`
 };
 }
 
@@ -206,143 +215,214 @@ export function getPaymentReminderEmail(params: {
   const loanUrl = loanLink ? `${APP_URL}${loanLink}` : `${APP_URL}/loans/${loanId}`;
 
   const subject = isManual && lenderName 
-    ? `💬 Payment Reminder from ${lenderName}`
+    ? `Payment Reminder from ${lenderName}`
     : `Friendly reminder: Payment due ${dueDate}`;
 
   return {
     subject,
-    html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <!-- Header with gradient and logo -->
-          <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-            <!-- Logo -->
-            <div style="margin-bottom: 20px;">
-              <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                  alt="Feyza Logo" 
-                  style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-            </div>
-            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">
-              ${isManual ? `💬 Reminder from ${lenderName}` : '📅 Payment Reminder'}
-            </h1>
-            ${isManual && lenderName 
-              ? `<p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Personal reminder from your lender</p>`
-              : `<p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Friendly payment reminder</p>`
-            }
-          </div>
-          
-          <!-- Content area -->
-          <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-            <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${borrowerName}! 👋</p>
-            
-            ${isManual && lenderName 
-              ? `<p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-                  <strong style="color: #059669;">${lenderName}</strong> has sent you a friendly reminder about your upcoming payment:
-                </p>`
-              : `<p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-                  Just a friendly reminder about your upcoming payment:
-                </p>`
-            }
-            
-            <!-- Payment details card -->
-            <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
-              <h3 style="margin: 0 0 15px 0; color: #065f46; font-size: 20px; font-weight: 600;">Payment Details</h3>
-              
-              <div style="margin-bottom: 15px; display: flex; align-items: center;">
-                <div style="width: 24px; height: 24px; background: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                  <span style="color: white; font-size: 12px; font-weight: bold;">$$</span>
-                </div>
-                <div>
-                  <span style="color: #047857; font-weight: 500;">Amount Due:</span>
-                  <span style="font-weight: bold; font-size: 24px; color: #065f46; margin-left: 10px;">${currency} ${amount.toLocaleString()}</span>
-                </div>
-              </div>
-              
-              <div style="margin-bottom: 15px; display: flex; align-items: center;">
-                <div style="width: 24px; height: 24px; background: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                  <span style="color: white; font-size: 12px; font-weight: bold;">📅</span>
-                </div>
-                <div>
-                  <span style="color: #047857; font-weight: 500;">Due Date:</span>
-                  <span style="font-weight: bold; color: #065f46; margin-left: 10px; font-size: 18px;">${dueDate}</span>
-                </div>
-              </div>
-              
-              ${isManual && lenderName 
-                ? `<div style="display: flex; align-items: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
-                    <div style="width: 24px; height: 24px; background: #059669; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 12px;">
-                      <span style="color: white; font-size: 12px; font-weight: bold;">👤</span>
-                    </div>
-                    <div>
-                      <span style="color: #047857; font-weight: 500;">From:</span>
-                      <span style="font-weight: bold; color: #065f46; margin-left: 10px;">${lenderName}</span>
-                    </div>
-                  </div>`
-                : ''
-              }
-            </div>
-            
-            <!-- Action section -->
-            <div style="background: #dcfce7; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #86efac;">
-              <h4 style="color: #065f46; margin: 0 0 10px 0; font-weight: 600; font-size: 16px;">💡 Important Reminder:</h4>
-              <p style="color: #065f46; font-size: 14px; line-height: 1.5; margin: 0;">
-                Once you've made the payment, don't forget to mark it as paid in the app so your lender can confirm it.
-                This helps maintain accurate records and ensures timely confirmation.
-              </p>
-            </div>
-            
-            <!-- CTA Button -->
-            <a href="${loanUrl}" 
-              style="display: block; background: linear-gradient(to right, #059669, #047857); 
-                      color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; margin: 24px 0; font-size: 16px;
-                      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
-              onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-              onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
-              View Loan Details & Payment Instructions →
-            </a>
-            
-            <!-- Help section -->
-            <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #bbf7d0;">
-              <h4 style="color: #065f46; margin: 0 0 15px 0; font-weight: 600; font-size: 16px;">Need Assistance?</h4>
-              <div style="display: flex; flex-wrap: wrap; gap: 15px;">
-                <a href="${APP_URL}/help/making-payments" 
-                  style="display: inline-block; background: white; color: #059669; text-decoration: none; 
-                          padding: 10px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;
-                          border: 1px solid #059669; transition: all 0.2s ease;"
-                  onmouseover="this.style.background='#f0fdf4';this.style.transform='translateY(-1px)';"
-                  onmouseout="this.style.background='white';this.style.transform='translateY(0)';">
-                  Payment Help Guide
-                </a>
-                <a href="${APP_URL}/contact" 
-                  style="display: inline-block; background: white; color: #059669; text-decoration: none; 
-                          padding: 10px 20px; border-radius: 6px; font-weight: 500; font-size: 14px;
-                          border: 1px solid #059669; transition: all 0.2s ease;"
-                  onmouseover="this.style.background='#f0fdf4';this.style.transform='translateY(-1px)';"
-                  onmouseout="this.style.background='white';this.style.transform='translateY(0)';">
-                  Contact Support
-                </a>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Footer -->
-          <div style="text-align: center; margin-top: 20px; color: #047857; font-size: 12px;">
-            <p style="margin: 0 0 5px 0;">Sent via Feyza • Simple loan tracking for everyone</p>
-            <p style="margin: 0;">
-              <a href="${APP_URL}/privacy" style="color: #059669; text-decoration: none; margin: 0 10px;">Privacy</a> • 
-              <a href="${APP_URL}/terms" style="color: #059669; text-decoration: none; margin: 0 10px;">Terms</a> • 
-              <a href="${APP_URL}/unsubscribe" style="color: #059669; text-decoration: none; margin: 0 10px;">Unsubscribe</a>
-            </p>
-          </div>
-        </body>
-      </html>
-    `,
+html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+
+  <body style="
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #ffffff;
+  ">
+
+    <!-- ===== HEADER ===== -->
+    <div style="
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      padding: 30px;
+      border-radius: 16px 16px 0 0;
+      text-align: center;
+    ">
+
+      <!-- Logo (email-safe centered) -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="padding-bottom: 20px;">
+            <img
+              src="https://feyza.app/feyza.png"
+              alt="Feyza Logo"
+              height="40"
+              style="
+                display:block;
+                height:40px;
+                width:auto;
+                border:0;
+                outline:none;
+                text-decoration:none;
+              "
+            />
+          </td>
+        </tr>
+      </table>
+
+      <h1 style="
+        color: #ffffff;
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+      ">
+        ${isManual ? `💬 Reminder from ${lenderName}` : '📅 Payment Reminder'}
+      </h1>
+
+      <p style="
+        color: rgba(255, 255, 255, 0.9);
+        margin: 10px 0 0 0;
+        font-size: 16px;
+      ">
+        ${isManual && lenderName
+          ? 'Personal reminder from your lender'
+          : 'Friendly payment reminder'}
+      </p>
+    </div>
+
+    <!-- ===== CONTENT ===== -->
+    <div style="
+      background: #f0fdf4;
+      padding: 30px;
+      border-radius: 0 0 16px 16px;
+      border: 1px solid #bbf7d0;
+      border-top: none;
+    ">
+
+      <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">
+        Hi ${borrowerName}! 👋
+      </p>
+
+      <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
+        ${isManual && lenderName
+          ? `<strong style="color:#059669;">${lenderName}</strong> has sent you a friendly reminder about your upcoming payment:`
+          : 'Just a friendly reminder about your upcoming payment:'}
+      </p>
+
+      <!-- ===== PAYMENT CARD ===== -->
+      <div style="
+        background: #ffffff;
+        padding: 24px;
+        border-radius: 12px;
+        margin: 20px 0;
+        border: 1px solid #bbf7d0;
+        box-shadow: 0 2px 8px rgba(5,150,105,0.1);
+      ">
+        <h3 style="
+          margin: 0 0 15px 0;
+          color: #065f46;
+          font-size: 20px;
+          font-weight: 600;
+        ">
+          Payment Details
+        </h3>
+
+        <p style="margin-bottom: 12px;">
+          <strong style="color:#047857;">Amount Due:</strong>
+          <span style="font-size: 22px; font-weight: bold; color:#065f46;">
+            ${currency} ${amount.toLocaleString()}
+          </span>
+        </p>
+
+        <p style="margin-bottom: 12px;">
+          <strong style="color:#047857;">Due Date:</strong>
+          <span style="font-weight: bold; color:#065f46;">
+            ${dueDate}
+          </span>
+        </p>
+
+        ${isManual && lenderName ? `
+          <p style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+            <strong style="color:#047857;">From:</strong>
+            <span style="font-weight: bold; color:#065f46;">
+              ${lenderName}
+            </span>
+          </p>
+        ` : ''}
+      </div>
+
+      <!-- ===== REMINDER NOTE ===== -->
+      <div style="
+        background: #dcfce7;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 20px 0;
+        border: 1px solid #86efac;
+      ">
+        <h4 style="color:#065f46; margin:0 0 10px 0; font-size:16px;">
+          💡 Important Reminder
+        </h4>
+        <p style="color:#065f46; font-size:14px; margin:0;">
+          Once you've made the payment, please mark it as paid in the app so your lender can confirm it.
+        </p>
+      </div>
+
+      <!-- ===== CTA ===== -->
+      <a href="${loanUrl}" style="
+        display:block;
+        background: linear-gradient(to right, #059669, #047857);
+        color:#ffffff;
+        text-decoration:none;
+        padding:16px 32px;
+        border-radius:8px;
+        font-weight:600;
+        text-align:center;
+        margin:24px 0;
+        font-size:16px;
+        box-shadow: 0 4px 12px rgba(5,150,105,0.25);
+      ">
+        View Loan Details & Payment Instructions →
+      </a>
+
+      <!-- ===== HELP ===== -->
+      <div style="
+        margin-top: 25px;
+        padding-top: 20px;
+        border-top: 1px solid #bbf7d0;
+      ">
+        <h4 style="color:#065f46; margin-bottom:15px; font-size:16px;">
+          Need Assistance?
+        </h4>
+
+        <a href="${APP_URL}/help/making-payments"
+           style="display:inline-block;margin-right:10px;color:#059669;text-decoration:none;font-weight:500;">
+          Payment Help Guide
+        </a>
+
+        <a href="${APP_URL}/contact"
+           style="display:inline-block;color:#059669;text-decoration:none;font-weight:500;">
+          Contact Support
+        </a>
+      </div>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <div style="
+      text-align:center;
+      margin-top:20px;
+      color:#047857;
+      font-size:12px;
+    ">
+      <p style="margin:0 0 5px 0;">
+        Sent via Feyza • Simple loan tracking for everyone
+      </p>
+      <p style="margin:0;">
+        <a href="${APP_URL}/privacy" style="color:#059669;text-decoration:none;">Privacy</a> •
+        <a href="${APP_URL}/terms" style="color:#059669;text-decoration:none;">Terms</a> •
+        <a href="${APP_URL}/unsubscribe" style="color:#059669;text-decoration:none;">Unsubscribe</a>
+      </p>
+    </div>
+
+  </body>
+</html>
+`,
   };
 }
 
@@ -357,11 +437,11 @@ export function getPaymentConfirmationEmail(params: {
   const loanUrl = `${APP_URL}/loans/${loanId}`;
   
   const message = role === 'borrower' 
-    ? 'Your payment has been confirmed by your lender! 🎉'
+    ? 'Your payment has been confirmed by your lender!'
     : 'A payment has been marked as paid and needs your confirmation.';
 
   return {
-    subject: role === 'borrower' ? 'Payment confirmed! 🎉' : 'Payment needs confirmation',
+    subject: role === 'borrower' ? 'Payment confirmed!' : 'Payment needs confirmation',
     html: `
       <!DOCTYPE html>
       <html>
@@ -496,11 +576,18 @@ return {
         <!-- Header with logo and gradient -->
         <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
           <!-- Logo -->
-          <div style="margin-bottom: 15px;">
-            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                 alt="Feyza Logo" 
-                 style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-          </div>
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding-bottom: 15px;">
+                <img
+                  src="https://feyza.app/feyza.png"
+                  alt="Feyza Logo"
+                  height="40"
+                  style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                />
+              </td>
+            </tr>
+          </table>
           <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">🎉 Loan Accepted!</h1>
           <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Your funding is confirmed</p>
         </div>
@@ -618,120 +705,156 @@ export function getOverduePaymentEmail(params: {
   const loanUrl = loanLink ? `${APP_URL}${loanLink}` : `${APP_URL}/loans/${loanId}`;
 
 return {
-  subject: `⚠️ OVERDUE: Your payment is ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} late`,
+  subject: `OVERDUE: Your payment is ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} late`,
   html: `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <!-- Header with logo - keeping red for urgency but adding logo -->
-        <div style="background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-          <!-- Logo -->
-          <div style="margin-bottom: 15px;">
-            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                 alt="Feyza Logo" 
-                 style="height: 35px; width: auto; filter: brightness(0) invert(1);">
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;background:#ffffff;">
+
+      <!-- HEADER -->
+      <div style="background:linear-gradient(135deg,#059669 0%,#047857 100%);padding:30px;border-radius:16px 16px 0 0;text-align:center;">
+
+        <!-- Logo (email-safe centered) -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="padding-bottom:15px;">
+              <img
+                src="https://feyza.app/feyza.png"
+                alt="Feyza Logo"
+                height="36"
+                style="display:block;height:36px;width:auto;border:0;outline:none;text-decoration:none;"
+              />
+            </td>
+          </tr>
+        </table>
+
+        <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:600;">
+          ⚠️ Overdue Payment Notice
+        </h1>
+      </div>
+
+      <!-- CONTENT -->
+      <div style="background:#f0fdf4;padding:30px;border-radius:0 0 16px 16px;border:1px solid #bbf7d0;border-top:none;">
+
+        <p style="font-size:18px;margin-bottom:20px;color:#065f46;">
+          Hi ${borrowerName},
+        </p>
+
+        <!-- ALERT CARD -->
+        <div style="background:#ffffff;padding:24px;border-radius:12px;margin:20px 0;border:1px solid #bbf7d0;box-shadow:0 2px 8px rgba(5,150,105,0.15);">
+
+          <h2 style="color:#047857;margin:0 0 15px 0;font-size:20px;font-weight:600;">
+            Payment Overdue
+          </h2>
+
+          <p style="color:#047857;font-weight:600;font-size:16px;line-height:1.5;margin-bottom:15px;">
+            Your payment to <strong>${lenderName}</strong> is
+            <strong>${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue</strong>.
+          </p>
+
+          <!-- PAYMENT DETAILS -->
+          <div style="background:#ecfdf5;padding:20px;border-radius:8px;margin:20px 0;border:1px solid #bbf7d0;">
+
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="color:#6b7280;">Amount Due:</td>
+                <td align="right" style="font-weight:bold;font-size:20px;color:#047857;">
+                  ${currency} ${amount.toLocaleString()}
+                </td>
+              </tr>
+              <tr>
+                <td style="color:#6b7280;padding-top:8px;">Original Due Date:</td>
+                <td align="right" style="font-weight:bold;color:#065f46;padding-top:8px;">
+                  ${dueDate}
+                </td>
+              </tr>
+              <tr>
+                <td style="color:#6b7280;padding-top:8px;">Days Overdue:</td>
+                <td align="right" style="font-weight:bold;color:#065f46;padding-top:8px;">
+                  ${daysOverdue}
+                </td>
+              </tr>
+            </table>
+
           </div>
-          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">⚠️ Overdue Payment Notice</h1>
-        </div>
-        
-        <div style="background: #fef2f2; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #fecaca; border-top: none;">
-          <p style="font-size: 18px; margin-bottom: 20px; color: #166534;">Hi ${borrowerName},</p>
-          
-          <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #fecaca; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.1);">
-            <h2 style="color: #dc2626; margin: 0 0 15px 0; font-size: 20px; font-weight: 600;">⚠️ Payment Overdue</h2>
-            <p style="color: #dc2626; font-weight: 600; font-size: 16px; line-height: 1.5; margin-bottom: 15px;">
-              Your payment to ${lenderName} is <strong>${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue</strong>.
+
+          <!-- WARNING -->
+          <div style="background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:16px;margin:20px 0;">
+            <p style="margin:0;color:#065f46;font-size:14px;font-weight:600;margin-bottom:6px;">
+              Immediate Attention Required
             </p>
-            
-            <!-- Payment details -->
-            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border: 1px solid #fecaca;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                <span style="color: #6b7280;">Amount Due:</span>
-                <span style="font-weight: bold; font-size: 20px; color: #dc2626;">${currency} ${amount.toLocaleString()}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-bottom: 12px;">
-                <span style="color: #6b7280;">Original Due Date:</span>
-                <span style="font-weight: bold; color: #991b1b;">${dueDate}</span>
-              </div>
-              <div style="display: flex; justify-content: space-between;">
-                <span style="color: #6b7280;">Days Overdue:</span>
-                <span style="font-weight: bold; color: #991b1b;">${daysOverdue}</span>
-              </div>
-            </div>
-            
-            <!-- Urgent warning -->
-            <div style="background: linear-gradient(to right, #fee2e2, #fecaca); border: 1px solid #fca5a5; border-radius: 8px; padding: 16px; margin: 20px 0;">
-              <div style="display: flex; align-items: flex-start;">
-                <span style="font-size: 24px; margin-right: 12px; color: #dc2626;">⚠️</span>
-                <div>
-                  <p style="margin: 0; color: #991b1b; font-size: 14px; font-weight: 600; margin-bottom: 5px;">Immediate Attention Required</p>
-                  <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5;">
-                    Late payments negatively affect your borrower rating and may limit your ability to borrow in the future. Immediate payment is required.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Action buttons -->
-          <div style="margin: 30px 0;">
-            <a href="${loanUrl}" 
-               style="display: block; background: linear-gradient(to right, #dc2626, #b91c1c); 
-                      color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; font-size: 16px; margin-bottom: 15px;
-                      box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2); transition: all 0.2s ease;"
-               onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(220, 38, 38, 0.3)';"
-               onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(220, 38, 38, 0.2)';">
-              Make Payment Now →
-            </a>
-            
-            <a href="${APP_URL}/help/payment-issues" 
-               style="display: block; background: white; 
-                      color: #059669; text-decoration: none; padding: 14px 32px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; font-size: 16px; border: 2px solid #059669;
-                      box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1); transition: all 0.2s ease;"
-               onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';this.style.background='#f0fdf4';"
-               onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(5, 150, 105, 0.1)';this.style.background='white';">
-              Need Payment Assistance?
-            </a>
-          </div>
-          
-          <!-- Additional information -->
-          <div style="background: #f8fafc; padding: 20px; border-radius: 8px; margin: 25px 0; border: 1px solid #e2e8f0;">
-            <h4 style="color: #065f46; margin: 0 0 10px 0; font-weight: 600;">📋 Important Information:</h4>
-            <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px;">
-              <li style="margin-bottom: 8px;">If you've already made this payment, please mark it as paid in your account</li>
-              <li style="margin-bottom: 8px;">Contact your lender directly if you need to discuss payment arrangements</li>
-              <li>Late fees may apply as per your loan agreement</li>
-            </ul>
-          </div>
-          
-          <!-- Footer -->
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #fecaca; color: #991b1b; font-size: 14px;">
-            <p style="margin: 0 0 10px 0;">For questions about your loan terms:</p>
-            <p style="margin: 0;">
-              <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                Contact Feyza Support
-              </a>
-              <a href="${APP_URL}/help" style="color: #059669; text-decoration: none; font-weight: 500;">
-                Help Center
-              </a>
+            <p style="margin:0;color:#065f46;font-size:14px;line-height:1.5;">
+              Late payments may affect your borrower rating and limit future borrowing.
+              Please take action as soon as possible.
             </p>
           </div>
+
         </div>
-        
-        <!-- Signature with green branding -->
-        <div style="text-align: center; margin-top: 20px; padding: 15px; border-radius: 8px; background: #f0fdf4; border: 1px solid #bbf7d0;">
-          <p style="margin: 0; color: #047857; font-size: 12px;">
-            <strong>Feyza</strong> • Building Financial Relationships • <span style="color: #059669;">support@feyza.com</span>
+
+        <!-- ACTION BUTTONS -->
+        <div style="margin:30px 0;">
+
+          <a href="${loanUrl}"
+            style="display:block;background:linear-gradient(to right,#059669,#047857);
+                    color:#ffffff;text-decoration:none;padding:16px 32px;border-radius:8px;
+                    font-weight:600;text-align:center;font-size:16px;margin-bottom:15px;
+                    box-shadow:0 4px 12px rgba(5,150,105,0.3);">
+            Make Payment Now →
+          </a>
+
+          <a href="${APP_URL}/help/payment-issues"
+            style="display:block;background:#ffffff;
+                    color:#059669;text-decoration:none;padding:14px 32px;border-radius:8px;
+                    font-weight:600;text-align:center;font-size:16px;
+                    border:2px solid #059669;
+                    box-shadow:0 2px 8px rgba(5,150,105,0.15);">
+            Need Payment Assistance?
+          </a>
+
+        </div>
+
+        <!-- INFO -->
+        <div style="background:#f8fafc;padding:20px;border-radius:8px;margin:25px 0;border:1px solid #e2e8f0;">
+          <h4 style="color:#065f46;margin:0 0 10px 0;font-weight:600;">
+            Important Information
+          </h4>
+          <ul style="margin:0;padding-left:20px;color:#475569;font-size:14px;">
+            <li style="margin-bottom:8px;">If you already paid, please mark it as paid in your account</li>
+            <li style="margin-bottom:8px;">Contact your lender if you need alternative arrangements</li>
+            <li>Late fees may apply per your agreement</li>
+          </ul>
+        </div>
+
+        <!-- FOOTER -->
+        <div style="margin-top:30px;padding-top:20px;border-top:1px solid #bbf7d0;color:#065f46;font-size:14px;text-align:center;">
+          <p style="margin:0 0 10px 0;">Questions about your loan?</p>
+          <p style="margin:0;">
+            <a href="mailto:support@feyza.com" style="color:#059669;text-decoration:none;font-weight:500;margin-right:15px;">
+              Contact Feyza Support
+            </a>
+            <a href="${APP_URL}/help" style="color:#059669;text-decoration:none;font-weight:500;">
+              Help Center
+            </a>
           </p>
         </div>
-      </body>
-    </html>
+
+      </div>
+
+      <!-- BRAND SIGNATURE -->
+      <div style="text-align:center;margin-top:20px;padding:15px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;">
+        <p style="margin:0;color:#047857;font-size:12px;">
+          <strong>Feyza</strong> • Building Financial Relationships •
+          <span style="color:#059669;">support@feyza.com</span>
+        </p>
+      </div>
+
+    </body>
+  </html>
   `,
 };
 }
@@ -751,115 +874,160 @@ export function getMissedPaymentLenderNotification(params: {
 return {
   subject: `Payment missed: ${borrowerName}'s payment is ${daysOverdue} days overdue`,
   html: `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <!-- Header with logo and gradient -->
-        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-          <div style="margin-bottom: 15px;">
-            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                 alt="Feyza Logo" 
-                 style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-          </div>
-          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">⚠️ Missed Payment Notice</h1>
-        </div>
-        
-        <!-- Content area -->
-        <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-          <p style="font-size: 18px; margin-bottom: 20px; color: #166534;">Hi ${lenderName},</p>
-          
-          <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #dc2626; box-shadow: 0 2px 8px rgba(220, 38, 38, 0.1);">
-            <h3 style="margin: 0 0 15px 0; color: #dc2626; font-size: 20px; font-weight: 600;">
-              ⚠️ Overdue Payment Alert
-            </h3>
-            <p style="color: #166534; margin-bottom: 20px;">
-              We're writing to inform you that <strong style="color: #065f46;">${borrowerName}</strong> has a payment that is now 
-              <strong style="color: #dc2626;">${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue</strong>.
-            </p>
-            
-            <!-- Payment details -->
-            <div style="background: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca; margin: 20px 0;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-                <div>
-                  <div style="color: #6b7280; font-size: 14px;">Amount Due</div>
-                  <div style="font-weight: bold; font-size: 24px; color: #dc2626;">
+  <!DOCTYPE html>
+  <html>
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+
+    <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;line-height:1.6;color:#333;max-width:600px;margin:0 auto;padding:20px;background:#f9fafb;">
+
+      <!-- ===== HEADER ===== -->
+      <div style="background:linear-gradient(135deg,#059669 0%,#047857 100%);padding:30px;border-radius:16px 16px 0 0;text-align:center;">
+
+        <!-- Logo (email-safe centered) -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td align="center" style="padding-bottom:15px;">
+              <img
+                src="https://feyza.app/feyza.png"
+                alt="Feyza Logo"
+                height="40"
+                style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;"
+              />
+            </td>
+          </tr>
+        </table>
+
+        <h1 style="color:white;margin:0;font-size:24px;font-weight:600;">
+          ⚠️ Missed Payment Notice
+        </h1>
+      </div>
+
+      <!-- ===== CONTENT ===== -->
+      <div style="background:#f0fdf4;padding:30px;border-radius:0 0 16px 16px;border:1px solid #bbf7d0;border-top:none;">
+
+        <p style="font-size:18px;margin-bottom:20px;color:#166534;">
+          Hi ${lenderName},
+        </p>
+
+        <!-- Alert Card -->
+        <div style="background:white;padding:24px;border-radius:12px;margin:20px 0;border:1px solid #dc2626;box-shadow:0 2px 8px rgba(220,38,38,0.1);">
+
+          <h3 style="margin:0 0 15px 0;color:#dc2626;font-size:20px;font-weight:600;">
+            ⚠️ Overdue Payment Alert
+          </h3>
+
+          <p style="color:#166534;margin-bottom:20px;">
+            We're writing to inform you that
+            <strong style="color:#065f46;">${borrowerName}</strong>
+            has a payment that is now
+            <strong style="color:#dc2626;">
+              ${daysOverdue} day${daysOverdue > 1 ? 's' : ''} overdue
+            </strong>.
+          </p>
+
+          <!-- Payment Details -->
+          <div style="background:#fef2f2;padding:20px;border-radius:8px;border:1px solid #fecaca;margin:20px 0;">
+
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td>
+                  <div style="color:#6b7280;font-size:14px;">Amount Due</div>
+                  <div style="font-weight:bold;font-size:24px;color:#dc2626;">
                     ${currency} ${amount.toLocaleString()}
                   </div>
-                </div>
-                <div style="background: #dc2626; color: white; padding: 6px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">
-                  ${daysOverdue} DAY${daysOverdue > 1 ? 'S' : ''} LATE
-                </div>
-              </div>
-              
-              <div style="border-top: 1px solid #fecaca; padding-top: 15px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                  <span style="color: #6b7280;">Due Date</span>
-                  <span style="font-weight: 600; color: #065f46;">${dueDate}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between;">
-                  <span style="color: #6b7280;">Days Overdue</span>
-                  <span style="font-weight: 600; color: #dc2626;">${daysOverdue} day${daysOverdue > 1 ? 's' : ''}</span>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Action information -->
-            <div style="background: #fffbeb; padding: 16px; border-radius: 8px; border: 1px solid #fde68a; margin: 20px 0;">
-              <p style="margin: 0; color: #92400e; font-size: 14px;">
-                <strong>📢 Notification Sent:</strong> We've automatically sent the borrower a payment reminder. 
-                You can also contact them directly through the app.
-              </p>
+                </td>
+                <td align="right">
+                  <span style="background:#dc2626;color:white;padding:6px 12px;border-radius:20px;font-size:14px;font-weight:600;">
+                    ${daysOverdue} DAY${daysOverdue > 1 ? 'S' : ''} LATE
+                  </span>
+                </td>
+              </tr>
+            </table>
+
+            <div style="border-top:1px solid #fecaca;padding-top:15px;margin-top:15px;">
+              <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+                <tr>
+                  <td style="color:#6b7280;">Due Date</td>
+                  <td align="right" style="font-weight:600;color:#065f46;">${dueDate}</td>
+                </tr>
+                <tr>
+                  <td style="color:#6b7280;">Days Overdue</td>
+                  <td align="right" style="font-weight:600;color:#dc2626;">
+                    ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}
+                  </td>
+                </tr>
+              </table>
             </div>
           </div>
-          
-          <!-- Recommended actions -->
-          <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0;">
-            <h3 style="margin: 0 0 15px 0; color: #065f46; font-size: 18px; font-weight: 600;">Next Steps</h3>
-            <ul style="margin: 0; padding-left: 20px; color: #166534;">
-              <li style="margin-bottom: 10px;">Review the loan details and payment history</li>
-              <li style="margin-bottom: 10px;">Contact the borrower through the secure messaging system</li>
-              <li style="margin-bottom: 10px;">Consider your options based on the loan agreement terms</li>
-            </ul>
-          </div>
-          
-          <!-- CTA Button -->
-          <a href="${loanUrl}" 
-             style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
-                    color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                    font-weight: 600; text-align: center; margin: 24px 0; font-size: 16px; width: 100%;
-                    box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
-             onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-             onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
-            View Loan Details & Contact Borrower →
-          </a>
-          
-          <!-- Support information -->
-          <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-            <p style="margin: 0 0 10px 0; font-weight: 600;">Need assistance with overdue payments?</p>
-            <p style="margin: 0;">
-              <a href="${APP_URL}/help/overdue-payments" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                📚 Overdue Payment Guide
-              </a>
-              <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
-                📧 Contact Support
-              </a>
+
+          <!-- Notification Info -->
+          <div style="background:#fffbeb;padding:16px;border-radius:8px;border:1px solid #fde68a;margin:20px 0;">
+            <p style="margin:0;color:#92400e;font-size:14px;">
+              <strong>📢 Notification Sent:</strong>
+              We've automatically sent the borrower a payment reminder.
+              You can also contact them directly through the app.
             </p>
           </div>
         </div>
-        
-        <!-- Signature -->
-        <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-          <p style="margin: 0;">Feyza • Payment Tracking System</p>
-          <p style="margin: 5px 0 0 0; font-size: 11px;">
-            This is an automated notification. Please do not reply to this email.
+
+        <!-- Next Steps -->
+        <div style="background:white;padding:20px;border-radius:12px;margin:20px 0;border:1px solid #bbf7d0;">
+          <h3 style="margin:0 0 15px 0;color:#065f46;font-size:18px;font-weight:600;">
+            Next Steps
+          </h3>
+          <ul style="margin:0;padding-left:20px;color:#166534;">
+            <li style="margin-bottom:10px;">Review the loan details and payment history</li>
+            <li style="margin-bottom:10px;">Contact the borrower through the secure messaging system</li>
+            <li style="margin-bottom:10px;">Consider your options based on the loan agreement terms</li>
+          </ul>
+        </div>
+
+        <!-- CTA -->
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td align="center">
+              <a
+                href="${loanUrl}"
+                style="display:block;background:linear-gradient(to right,#059669,#047857);
+                      color:white;text-decoration:none;padding:16px 32px;border-radius:8px;
+                      font-weight:600;text-align:center;font-size:16px;
+                      box-shadow:0 4px 12px rgba(5,150,105,0.2);">
+                View Loan Details & Contact Borrower →
+              </a>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Support -->
+        <div style="margin-top:30px;padding-top:20px;border-top:1px solid #bbf7d0;color:#047857;font-size:14px;">
+          <p style="margin:0 0 10px 0;font-weight:600;">
+            Need assistance with overdue payments?
+          </p>
+          <p style="margin:0;">
+            <a href="${APP_URL}/help/overdue-payments" style="color:#059669;text-decoration:none;font-weight:500;margin-right:15px;">
+              📚 Overdue Payment Guide
+            </a>
+            <a href="mailto:support@feyza.com" style="color:#059669;text-decoration:none;font-weight:500;">
+              📧 Contact Support
+            </a>
           </p>
         </div>
-      </body>
-    </html>
+
+      </div>
+
+      <!-- ===== FOOTER ===== -->
+      <div style="text-align:center;margin-top:20px;color:#6b7280;font-size:12px;">
+        <p style="margin:0;">Feyza • Payment Tracking System</p>
+        <p style="margin:5px 0 0 0;font-size:11px;">
+          This is an automated notification. Please do not reply to this email.
+        </p>
+      </div>
+
+    </body>
+  </html>
   `,
 };
 }
@@ -876,138 +1044,215 @@ export function getCashPickupReminderEmail(params: {
   const { borrowerName, recipientName, amount, currency, pickupLocation, pickupCode, daysWaiting } = params;
 
 return {
-  subject: `⏰ Reminder: Cash waiting for ${recipientName} (${daysWaiting} days)`,
-  html: `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-        <!-- Header with logo -->
-        <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-          <div style="margin-bottom: 15px;">
-            <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                 alt="Feyza Logo" 
-                 style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-          </div>
-          <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 600;">⏰ Cash Pickup Reminder</h1>
-        </div>
-        
-        <!-- Content area -->
-        <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-          <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${borrowerName},</p>
-          
-          <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-            This is a friendly reminder that <strong style="color: #059669;">${currency} ${amount.toLocaleString()}</strong> has been waiting for <strong style="color: #059669;">${recipientName}</strong> to pick up for <strong style="color: #059669;">${daysWaiting} days</strong>.
+  subject: `Reminder: Cash waiting for ${recipientName} (${daysWaiting} days)`,
+html: `
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  </head>
+
+  <body style="
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #ffffff;
+  ">
+
+    <!-- ===== HEADER ===== -->
+    <div style="
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      padding: 30px 20px;
+      border-radius: 16px 16px 0 0;
+    ">
+
+      <!-- Centered Logo (email-safe) -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="center" style="padding-bottom: 15px;">
+            <img
+              src="https://feyza.app/feyza.png"
+              alt="Feyza Logo"
+              height="40"
+              style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+            />
+          </td>
+        </tr>
+      </table>
+
+      <h1 style="
+        color: #ffffff;
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+        text-align: center;
+      ">
+        ⏰ Cash Pickup Reminder
+      </h1>
+    </div>
+
+    <!-- ===== CONTENT ===== -->
+    <div style="
+      background: #f0fdf4;
+      padding: 30px 20px;
+      border-radius: 0 0 16px 16px;
+      border: 1px solid #bbf7d0;
+      border-top: none;
+    ">
+
+      <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">
+        Hi ${borrowerName},
+      </p>
+
+      <p style="color: #166534; margin-bottom: 20px;">
+        This is a friendly reminder that
+        <strong style="color:#059669;">${currency} ${amount.toLocaleString()}</strong>
+        has been waiting for
+        <strong style="color:#059669;">${recipientName}</strong>
+        to pick up for
+        <strong style="color:#059669;">${daysWaiting} days</strong>.
+      </p>
+
+      <!-- ===== AMOUNT CARD ===== -->
+      <div style="
+        background: #ffffff;
+        padding: 24px;
+        border-radius: 12px;
+        margin: 25px 0;
+        border: 1px solid #bbf7d0;
+        box-shadow: 0 4px 12px rgba(5,150,105,0.1);
+      ">
+
+        <p style="color:#047857; text-align:center; font-size:14px; margin:0;">
+          AMOUNT WAITING
+        </p>
+
+        <p style="
+          font-size: 36px;
+          font-weight: bold;
+          color: #059669;
+          text-align: center;
+          margin: 10px 0 5px 0;
+        ">
+          ${currency} ${amount.toLocaleString()}
+        </p>
+
+        <p style="color:#065f46; text-align:center; font-size:14px; margin:0;">
+          Has been waiting for ${daysWaiting} days
+        </p>
+
+        <hr style="border:none;border-top:1px solid #ecfdf5;margin:20px 0;">
+
+        <p style="color:#047857; font-size:14px; margin-bottom:5px;">
+          📍 PICKUP LOCATION
+        </p>
+        <p style="color:#166534; font-size:16px; margin-bottom:15px;">
+          ${pickupLocation}
+        </p>
+
+        <p style="color:#047857; font-size:14px; margin-bottom:5px;">
+          👤 RECIPIENT
+        </p>
+        <p style="color:#166534; font-size:16px;">
+          ${recipientName}
+        </p>
+
+        <!-- Pickup Code -->
+        <p style="color:#047857; font-size:14px; margin:20px 0 10px 0;">
+          🔑 PICKUP CODE
+        </p>
+
+        <div style="
+          background: #ecfdf5;
+          padding: 20px;
+          border-radius: 10px;
+          text-align: center;
+          border: 2px dashed #059669;
+        ">
+          <span style="
+            font-size: 32px;
+            font-weight: bold;
+            letter-spacing: 4px;
+            color: #065f46;
+            font-family: 'Courier New', monospace;
+          ">
+            ${pickupCode}
+          </span>
+          <p style="color:#047857; font-size:12px; margin-top:8px;">
+            Share this code with the recipient
           </p>
-          
-          <!-- Cash details card -->
-          <div style="background: white; padding: 24px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.1);">
-            <div style="text-align: center; margin-bottom: 20px;">
-              <p style="color: #047857; margin: 0; font-weight: 500; font-size: 14px;">AMOUNT WAITING</p>
-              <p style="font-size: 36px; font-weight: bold; color: #059669; margin: 10px 0 5px 0;">
-                ${currency} ${amount.toLocaleString()}
-              </p>
-              <p style="color: #065f46; margin: 0; font-size: 14px;">Has been waiting for ${daysWaiting} days</p>
-            </div>
-            
-            <div style="border-top: 2px solid #f0fdf4; padding-top: 20px;">
-              <div style="display: grid; grid-template-columns: 1fr; gap: 15px; margin-bottom: 20px;">
-                <div>
-                  <p style="color: #047857; margin: 0 0 5px 0; font-weight: 500; font-size: 14px;">📍 PICKUP LOCATION</p>
-                  <p style="color: #166534; margin: 0; font-size: 16px;">${pickupLocation}</p>
-                </div>
-                
-                <div>
-                  <p style="color: #047857; margin: 0 0 5px 0; font-weight: 500; font-size: 14px;">👤 RECIPIENT</p>
-                  <p style="color: #166534; margin: 0; font-size: 16px;">${recipientName}</p>
-                </div>
-              </div>
-              
-              <!-- Pickup code section -->
-              <div>
-                <p style="color: #047857; margin: 0 0 10px 0; font-weight: 500; font-size: 14px;">🔑 PICKUP CODE</p>
-                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 20px; border-radius: 10px; text-align: center; border: 2px dashed #059669;">
-                  <span style="font-size: 36px; font-weight: bold; letter-spacing: 4px; color: #065f46; font-family: 'Courier New', monospace;">
-                    ${pickupCode}
-                  </span>
-                  <p style="color: #047857; margin: 10px 0 0 0; font-size: 12px;">Share this code with the recipient</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Important note -->
-          <div style="background: #dcfce7; border: 1px solid #86efac; border-left: 4px solid #059669; border-radius: 8px; padding: 20px; margin: 25px 0;">
-            <div style="display: flex; align-items: flex-start; gap: 12px;">
-              <div style="color: #059669; font-size: 20px;">💡</div>
-              <div>
-                <p style="margin: 0 0 8px 0; color: #065f46; font-weight: 600; font-size: 15px;">Important Information</p>
-                <p style="margin: 0; color: #166534; font-size: 14px; line-height: 1.5;">
-                  The cash will be held indefinitely until ${recipientName} picks it up. Please remind them to bring:
-                </p>
-                <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #166534; font-size: 14px;">
-                  <li>Valid government-issued photo ID</li>
-                  <li>This pickup code: <strong style="color: #059669;">${pickupCode}</strong></li>
-                </ul>
-              </div>
-            </div>
-          </div>
-          
-          <!-- Action buttons -->
-          <div style="display: flex; gap: 15px; margin: 30px 0; flex-wrap: wrap;">
-            <a href="${APP_URL}/loans" 
-               style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
-                      color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; font-size: 16px;
-                      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;
-                      flex: 1; min-width: 200px;"
-               onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-               onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
+        </div>
+      </div>
+
+      <!-- ===== IMPORTANT NOTE ===== -->
+      <div style="
+        background: #dcfce7;
+        border: 1px solid #86efac;
+        border-left: 4px solid #059669;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 25px 0;
+      ">
+        <p style="color:#065f46; font-weight:600; margin-bottom:8px;">
+          💡 Important Information
+        </p>
+        <p style="color:#166534; font-size:14px; margin-bottom:10px;">
+          The cash will be held until ${recipientName} picks it up. Please remind them to bring:
+        </p>
+        <ul style="padding-left:20px; color:#166534; font-size:14px;">
+          <li>Valid government-issued photo ID</li>
+          <li>This pickup code: <strong style="color:#059669;">${pickupCode}</strong></li>
+        </ul>
+      </div>
+
+      <!-- ===== ACTION BUTTONS ===== -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:30px 0;">
+        <tr>
+          <td align="center">
+            <a href="${APP_URL}/loans"
+              style="
+                display:inline-block;
+                background:#059669;
+                color:#ffffff;
+                text-decoration:none;
+                padding:14px 28px;
+                border-radius:8px;
+                font-weight:600;
+                font-size:16px;
+              ">
               View Loan Details →
             </a>
-            
-            <a href="${APP_URL}/help/pickup" 
-               style="display: inline-block; background: white; 
-                      color: #059669; text-decoration: none; padding: 14px 28px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; font-size: 16px; border: 2px solid #059669;
-                      box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1); transition: all 0.2s ease;
-                      flex: 1; min-width: 200px;"
-               onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';this.style.background='#f0fdf4';"
-               onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(5, 150, 105, 0.1)';this.style.background='white';">
-              Pickup Instructions
-            </a>
-          </div>
-          
-          <!-- Support section -->
-          <div style="margin-top: 25px; padding-top: 20px; border-top: 1px solid #bbf7d0;">
-            <p style="color: #047857; margin: 0 0 10px 0; font-weight: 500; font-size: 15px;">Need assistance?</p>
-            <div style="display: flex; gap: 20px; font-size: 14px;">
-              <div>
-                <p style="color: #166534; margin: 0 0 5px 0;">📞 Contact Support</p>
-                <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
-                  support@feyza.com
-                </a>
-              </div>
-              <div>
-                <p style="color: #166534; margin: 0 0 5px 0;">📋 Issues with pickup?</p>
-                <a href="${APP_URL}/support/pickup-issues" style="color: #059669; text-decoration: none; font-weight: 500;">
-                  Report an issue
-                </a>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Footer -->
-        <div style="text-align: center; margin-top: 30px; color: #6b7280; font-size: 12px;">
-          <p style="margin: 0; color: #047857;">Feyza • Simple loan tracking for everyone</p>
-          <p style="margin: 5px 0 0 0;">This is an automated reminder. Please do not reply to this email.</p>
-        </div>
-      </body>
-    </html>
-  `,
+          </td>
+        </tr>
+      </table>
+
+      <!-- ===== SUPPORT ===== -->
+      <div style="border-top:1px solid #bbf7d0; padding-top:20px;">
+        <p style="color:#047857; font-weight:500;">
+          Need assistance?
+        </p>
+        <p style="font-size:14px; color:#166534;">
+          📞 <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none;">support@feyza.com</a>
+        </p>
+        <p style="font-size:14px; color:#166534;">
+          📋 <a href="${APP_URL}/support/pickup-issues" style="color:#059669; text-decoration:none;">Report a pickup issue</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- ===== FOOTER ===== -->
+    <div style="text-align:center; margin-top:30px; font-size:12px; color:#047857;">
+      <p style="margin:0;">Feyza • Simple loan tracking for everyone</p>
+      <p style="margin-top:5px;">This is an automated reminder. Please do not reply.</p>
+    </div>
+
+  </body>
+</html>
+`,
+
 };
 }

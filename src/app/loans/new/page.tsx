@@ -11,7 +11,6 @@ import { BusinessProfile } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
 import { ArrowLeft, Building2, CheckCircle, Building, AlertCircle, Loader2 } from 'lucide-react';
 import { usePlaidLink } from 'react-plaid-link';
-import { FaAmbulance, FaStethoscope, FaGraduationCap, FaBriefcase, FaHome, FaFileAlt, FaShieldAlt, FaMoneyBillWave } from 'react-icons/fa';
 
 interface BankInfo {
   dwolla_customer_url?: string;
@@ -257,6 +256,33 @@ function NewLoanContent() {
 
     const targetLenderId = preferredLender?.id || null;
 
+    // Validate trust level if borrowing from a specific business
+    if (data.lenderType === 'business' && targetLenderId) {
+      try {
+        const trustResponse = await fetch(`/api/borrower/trust?business_id=${targetLenderId}`);
+        if (trustResponse.ok) {
+          const trustData = await trustResponse.json();
+          
+          if (!trustData.canBorrow) {
+            throw new Error(trustData.reason || 'You are not eligible to borrow from this lender.');
+          }
+          
+          if (data.amount > trustData.maxAmount) {
+            const message = trustData.isGraduated 
+              ? `Amount exceeds the maximum of $${trustData.maxAmount} for this lender.`
+              : `As a new borrower with ${trustData.businessName}, you can borrow up to $${trustData.maxAmount}. Complete ${trustData.loansUntilGraduation} more loan(s) at this amount to unlock higher amounts.`;
+            throw new Error(message);
+          }
+        }
+      } catch (error: any) {
+        if (error.message) {
+          throw error; // Re-throw validation errors
+        }
+        console.error('Failed to check trust level:', error);
+        // Continue with loan creation if trust check fails (fallback)
+      }
+    }
+
     // If inviting by username, look up the user to get their ID and email
     let invitedLenderInfo: { id: string; email: string; full_name: string } | null = null;
 
@@ -281,6 +307,7 @@ function NewLoanContent() {
       borrower_id: user.id,
       lender_type: data.lenderType,
       business_lender_id: targetLenderId,
+      loan_type_id: data.loanTypeId || null,
       // Use invited user's email if found by username
       invite_email: data.lenderType === 'personal' 
         ? (invitedLenderInfo?.email || data.inviteEmail || null) 
@@ -457,14 +484,14 @@ function NewLoanContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
         <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
       <Navbar user={user} />
 
       <main className="flex-1">
@@ -485,13 +512,13 @@ function NewLoanContent() {
                   {preferredLender.logo_url ? (
                     <img src={preferredLender.logo_url} alt={preferredLender.business_name} className="w-full h-full object-cover" />
                   ) : (
-                    <Building2 className="w-6 h-6 text-primary-600 dark:text-primary-500" />
+                    <Building2 className="w-6 h-6 text-primary-600 dark:text-primary-400" />
                   )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-neutral-900 dark:text-white">{preferredLender.business_name}</span>
-                    <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-500" />
+                    <CheckCircle className="w-4 h-4 text-green-600" />
                   </div>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">
                     Your loan request will be sent directly to this lender
@@ -503,34 +530,33 @@ function NewLoanContent() {
 
           {/* Verification Required Block */}
           {verificationRequired && preferredLender && (
-            <Card className="mb-6 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/30">
+            <Card className="mb-6 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
               <div className="flex items-start gap-4">
-                <div className="p-3 bg-amber-100 dark:bg-amber-900/50 rounded-xl">
-                  <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-500" />
+                <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
+                  <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-amber-900 dark:text-amber-200 mb-2">Identity Verification Required</h3>
-                  <p className="text-sm text-amber-800 dark:text-amber-300 mb-4">
-                    To borrow from <strong className="text-amber-900 dark:text-amber-100">{preferredLender.business_name}</strong>, you need to verify your identity first. 
+                  <h3 className="font-semibold text-amber-900 dark:text-amber-300 mb-2">Identity Verification Required</h3>
+                  <p className="text-sm text-amber-800 dark:text-amber-400 mb-4">
+                    To borrow from <strong className="text-amber-900 dark:text-amber-300">{preferredLender.business_name}</strong>, you need to verify your identity first. 
                     This helps protect both you and the lender.
                   </p>
                   <div className="space-y-2 mb-4">
                     <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-500" />
+                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                       <span>Takes less than 5 minutes</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-500" />
+                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                       <span>Secure and encrypted</span>
                     </div>
                     <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-500" />
+                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
                       <span>Required for all business loans</span>
                     </div>
                   </div>
                   <Link href={`/verify?redirect=${encodeURIComponent(`/loans/new?lender=${lenderSlug}`)}`}>
-                    <Button className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600">
-                      <FaShieldAlt className="w-4 h-4 mr-2" />
+                    <Button className="w-full sm:w-auto">
                       Verify My Identity
                     </Button>
                   </Link>
@@ -543,78 +569,78 @@ function NewLoanContent() {
           {(!verificationRequired || !preferredLender) && (
             <>
               {/* Bank Connection Card for ACH */}
-          <Card className="mb-6">
-            <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
-              <Building className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-              Your Bank Account
-            </h3>
-            <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
-            </p>
+              <Card className="mb-6">
+                <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
+                  <Building className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                  Your Bank Account
+                </h3>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                  Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
+                </p>
 
-            {bankConnected && bankInfo ? (
-              <div className="p-4 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-xl">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center">
-                      <Building className="w-5 h-5 text-green-600 dark:text-green-500" />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
-                        <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-500" />
+                {bankConnected && bankInfo ? (
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                          <Building className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
+                            <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                          </div>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">Account ••••{bankInfo.account_mask}</p>
+                        </div>
                       </div>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">Account ••••{bankInfo.account_mask}</p>
+                      <Badge variant="success">Connected</Badge>
                     </div>
                   </div>
-                  <Badge variant="success">Connected</Badge>
-                </div>
-              </div>
-            ) : (
-              <div className="p-4 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-                <div className="flex items-start gap-3 mb-4">
-                  <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-amber-800 dark:text-amber-300">Bank not connected</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-400">
-                      Connect your bank to receive loan funds instantly when approved.
-                    </p>
+                ) : (
+                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                    <div className="flex items-start gap-3 mb-4">
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800 dark:text-amber-300">Bank not connected</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-400">
+                          Connect your bank to receive loan funds instantly when approved.
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={handleConnectBank}
+                      disabled={connectingBank || !plaidReady}
+                      className="w-full"
+                    >
+                      {connectingBank ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Connecting...
+                        </>
+                      ) : (
+                        <>
+                          <Building className="w-4 h-4 mr-2" />
+                          Connect Bank Account
+                        </>
+                      )}
+                    </Button>
                   </div>
-                </div>
-                <Button
-                  onClick={handleConnectBank}
-                  disabled={connectingBank || !plaidReady}
-                  className="w-full bg-primary-600 hover:bg-primary-700 dark:bg-primary-700 dark:hover:bg-primary-600"
-                >
-                  {connectingBank ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Connecting...
-                    </>
-                  ) : (
-                    <>
-                      <Building className="w-4 h-4 mr-2" />
-                      Connect Bank Account
-                    </>
-                  )}
-                </Button>
-              </div>
-            )}
-          </Card>
+                )}
+              </Card>
 
-          <Card>
-            <LoanRequestForm 
-              businesses={businesses} 
-              preferredLender={preferredLender}
-              userBankConnected={bankConnected}
-              userVerificationStatus={user?.verification_status || 'pending'}
-              userBankName={bankInfo?.bank_name}
-              userBankAccountMask={bankInfo?.account_mask}
-              onSubmit={handleSubmit}
-              onConnectBank={handleConnectBank}
-              onStartVerification={() => router.push('/verify')}
-            />
-          </Card>
+              <Card>
+                <LoanRequestForm 
+                  businesses={businesses} 
+                  preferredLender={preferredLender}
+                  userBankConnected={bankConnected}
+                  userVerificationStatus={user?.verification_status || 'pending'}
+                  userBankName={bankInfo?.bank_name}
+                  userBankAccountMask={bankInfo?.account_mask}
+                  onSubmit={handleSubmit}
+                  onConnectBank={handleConnectBank}
+                  onStartVerification={() => router.push('/verify')}
+                />
+              </Card>
             </>
           )}
         </div>
@@ -628,7 +654,7 @@ function NewLoanContent() {
 export default function NewLoanPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-neutral-950">
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
         <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
       </div>
     }>

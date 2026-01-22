@@ -1,16 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Input, Select } from '@/components/ui';
+import { PlaidLinkButton, ConnectedBank } from '@/components/payments/PlaidLink';
 import { createClient } from '@/lib/supabase/client';
 import { 
   ArrowLeft, Building2, Percent, CreditCard, Bell, Shield, 
   CheckCircle, AlertCircle, Save, Trash2, Upload, Image as ImageIcon,
   Eye, EyeOff, Pause, Play, Globe, MapPin, Users, DollarSign,
-  Link2, Copy, ExternalLink
+  Link2, Copy, ExternalLink, Landmark, Loader2, Building
 } from 'lucide-react';
 
 const US_STATES = [
@@ -83,14 +84,26 @@ const REVENUE_RANGES = [
   { value: '5m_plus', label: '$5M+' },
 ];
 
-export default function BusinessSettingsPage() {
+// Force dynamic rendering due to useSearchParams
+export const dynamic = 'force-dynamic';
+
+function BusinessSettingsContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [user, setUser] = useState<any>(null);
   const [business, setBusiness] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Sync activeTab with URL param
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['profile', 'lending', 'payments', 'visibility', 'account'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // Profile form state
   const [businessName, setBusinessName] = useState('');
@@ -117,6 +130,7 @@ export default function BusinessSettingsPage() {
   const [interestType, setInterestType] = useState('simple');
   const [minLoanAmount, setMinLoanAmount] = useState('');
   const [maxLoanAmount, setMaxLoanAmount] = useState('');
+  const [firstTimeBorrowerAmount, setFirstTimeBorrowerAmount] = useState('50');
 
   // Public profile
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(false);
@@ -130,8 +144,8 @@ export default function BusinessSettingsPage() {
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [suspendingAccount, setSuspendingAccount] = useState(false);
 
-  // Payment
-  const [paypalEmail, setPaypalEmail] = useState('');
+  // Bank connection
+  const [disconnectingBank, setDisconnectingBank] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -182,7 +196,7 @@ export default function BusinessSettingsPage() {
       setInterestType(businessData.interest_type || 'simple');
       setMinLoanAmount(businessData.min_loan_amount?.toString() || '');
       setMaxLoanAmount(businessData.max_loan_amount?.toString() || '');
-      setPaypalEmail(businessData.paypal_email || '');
+      setFirstTimeBorrowerAmount(businessData.first_time_borrower_amount?.toString() || '50');
       setPublicProfileEnabled(businessData.public_profile_enabled || false);
       if (businessData.logo_url) {
         setLogoPreview(businessData.logo_url);
@@ -301,6 +315,7 @@ export default function BusinessSettingsPage() {
           interest_type: interestType,
           min_loan_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
           max_loan_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
+          first_time_borrower_amount: firstTimeBorrowerAmount ? parseFloat(firstTimeBorrowerAmount) : 50,
           updated_at: new Date().toISOString(),
         })
         .eq('id', business.id);
@@ -315,6 +330,7 @@ export default function BusinessSettingsPage() {
           interest_type: interestType,
           min_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
           max_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
+          first_time_borrower_limit: firstTimeBorrowerAmount ? parseFloat(firstTimeBorrowerAmount) : 50,
         })
         .eq('business_id', business.id);
 
@@ -428,6 +444,59 @@ export default function BusinessSettingsPage() {
     navigator.clipboard.writeText(link);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Bank connection handlers
+  const handleBankConnected = (data: any) => {
+    // Update local user state
+    setUser({
+      ...user,
+      bank_connected: true,
+      bank_name: data.bank_name,
+      bank_account_mask: data.account_mask,
+      bank_account_type: data.account_type,
+    });
+    setMessage({ type: 'success', text: 'Bank account connected successfully!' });
+  };
+
+  const handleDisconnectBank = async () => {
+    if (!confirm('Are you sure you want to disconnect your bank account?')) return;
+
+    setDisconnectingBank(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('users')
+        .update({
+          plaid_access_token: null,
+          plaid_item_id: null,
+          plaid_account_id: null,
+          dwolla_funding_source_url: null,
+          dwolla_funding_source_id: null,
+          bank_name: null,
+          bank_account_mask: null,
+          bank_account_type: null,
+          bank_connected: false,
+          bank_connected_at: null,
+        })
+        .eq('id', user.id);
+
+      if (!error) {
+        setUser({
+          ...user,
+          bank_connected: false,
+          bank_name: null,
+          bank_account_mask: null,
+        });
+        setMessage({ type: 'success', text: 'Bank account disconnected' });
+      } else {
+        setMessage({ type: 'error', text: 'Failed to disconnect bank account' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to disconnect bank account' });
+    } finally {
+      setDisconnectingBank(false);
+    }
   };
 
   if (loading) {
@@ -589,11 +658,42 @@ export default function BusinessSettingsPage() {
                       <Input label="Maximum Loan ($)" type="number" min="1" value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} />
                     </div>
 
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
-                      <p className="text-sm text-blue-700 dark:text-blue-300">
-                        <strong>Note:</strong> For more advanced settings like first-time borrower limits and auto-matching preferences, visit{' '}
-                        <Link href="/lender/preferences" className="underline">Lender Preferences</Link>.
+                    {/* Graduated Trust System */}
+                    <div className="border-t border-neutral-200 dark:border-neutral-700 pt-6 mt-6">
+                      <h3 className="font-semibold text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-primary-500" />
+                        First-Time Borrower Limits
+                      </h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                        New borrowers must complete 3 loans at this amount before they can borrow larger amounts from you.
                       </p>
+
+                      <div className="grid md:grid-cols-2 gap-4 mb-4">
+                        <Input 
+                          label="First-Time Borrower Amount ($)" 
+                          type="number" 
+                          min="1" 
+                          value={firstTimeBorrowerAmount} 
+                          onChange={(e) => setFirstTimeBorrowerAmount(e.target.value)}
+                          helperText="Maximum amount for new borrowers"
+                        />
+                        <div className="flex items-end pb-6">
+                          <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                            <p className="font-medium">After 3 successful loans:</p>
+                            <p>Unlocks up to ${maxLoanAmount || '5000'}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-6">
+                        <h4 className="font-medium text-amber-800 dark:text-amber-300 mb-2">How it works:</h4>
+                        <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
+                          <li>• New borrowers can only borrow up to ${firstTimeBorrowerAmount || '50'}</li>
+                          <li>• After completing 3 loans at this amount, they "graduate"</li>
+                          <li>• Graduated borrowers can borrow up to your maximum (${maxLoanAmount || '5000'})</li>
+                          <li>• If a borrower defaults, their trust resets</li>
+                        </ul>
+                      </div>
                     </div>
 
                     <div className="flex justify-end">
@@ -608,23 +708,56 @@ export default function BusinessSettingsPage() {
 
               {/* Payments Tab */}
               {activeTab === 'payments' && (
-                <Card>
-                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-6">Payment Settings</h2>
-                  
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl mb-6">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="w-5 h-5 text-green-600" />
+                <div className="space-y-6">
+                  <Card>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                        <Building className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                      </div>
                       <div>
-                        <p className="font-medium text-green-800 dark:text-green-300">PayPal Connected</p>
-                        <p className="text-sm text-green-700 dark:text-green-400">{paypalEmail}</p>
+                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Bank Account</h2>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Connect your bank to send and receive payments</p>
                       </div>
                     </div>
-                  </div>
 
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    To change your PayPal account, please contact support.
-                  </p>
-                </Card>
+                    {user?.bank_connected ? (
+                      <ConnectedBank
+                        bankName={user.bank_name}
+                        accountMask={user.bank_account_mask}
+                        accountType={user.bank_account_type}
+                        onDisconnect={handleDisconnectBank}
+                      />
+                    ) : (
+                      <div className="text-center py-8">
+                        <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
+                          <Building className="w-8 h-8 text-neutral-400" />
+                        </div>
+                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No Bank Connected</h3>
+                        <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto">
+                          Connect your bank account to receive loan funds and make repayments securely.
+                        </p>
+                        <PlaidLinkButton
+                          onSuccess={handleBankConnected}
+                          onError={(err) => setMessage({ type: 'error', text: err })}
+                          buttonText="Connect Bank Account"
+                        />
+                      </div>
+                    )}
+                  </Card>
+
+                  <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                    <div className="flex items-start gap-3">
+                      <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-blue-800 dark:text-blue-300">Secure & Protected</h4>
+                        <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                          We use Plaid to securely connect to your bank. We never store your bank login credentials. 
+                          All transfers are processed through Dwolla, a licensed money transmitter.
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                </div>
               )}
 
               {/* Public Profile Tab */}
@@ -783,5 +916,18 @@ export default function BusinessSettingsPage() {
 
       <Footer />
     </div>
+  );
+}
+
+// Wrapper component with Suspense for useSearchParams
+export default function BusinessSettingsPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-900 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+      </div>
+    }>
+      <BusinessSettingsContent />
+    </Suspense>
   );
 }

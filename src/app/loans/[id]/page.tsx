@@ -81,6 +81,9 @@ export default function LoanDetailPage() {
   // Platform fee hook
   const { settings: feeSettings, loading: feeLoading, calculateFee } = usePlatformFee();
 
+  // Terms section state
+  const [termsExpanded, setTermsExpanded] = useState(false);
+
   const loanId = params.id as string;
 
   // Load dismissed notifications from localStorage
@@ -1471,6 +1474,55 @@ export default function LoanDetailPage() {
               )}
             </div>
           </Card>
+
+          {/* Lender Terms (shown for business lenders with terms) - NEW SECTION */}
+          {loan.business_lender_id && (loan.business_lender as any)?.lending_terms && (
+            <Card className="mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-blue-500 dark:text-blue-400" />
+                  <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white">
+                    Lender Terms & Conditions
+                  </h2>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setTermsExpanded(!termsExpanded)}
+                  className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+                >
+                  {termsExpanded ? (
+                    <>
+                      <ChevronUp className="w-4 h-4 mr-1" />
+                      Show Less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4 mr-1" />
+                      Show More
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              <div className={`bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 overflow-hidden transition-all duration-300 ${
+                termsExpanded ? 'max-h-[500px] overflow-y-auto' : 'max-h-32'
+              }`}>
+                <div className={`relative ${!termsExpanded ? 'gradient-mask-b-10' : ''}`}>
+                  <p className="text-sm text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
+                    {(loan.business_lender as any)?.lending_terms}
+                  </p>
+                  {!termsExpanded && (
+                    <div className="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-blue-50/90 to-transparent dark:from-blue-900/20 dark:to-transparent"></div>
+                  )}
+                </div>
+              </div>
+              
+              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-3">
+                By accepting this loan, you agree to these terms set by {(loan.business_lender as any)?.business_name}
+              </p>
+            </Card>
+          )}
 
           {/* Payment Timeline */}
           {loan.status === 'active' && (

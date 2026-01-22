@@ -88,72 +88,144 @@ export async function GET(request: NextRequest) {
         // Send reminder email to borrower
         await sendEmail({
           to: borrowerEmail,
-          subject: `⏰ Payment Reminder - $${payment.amount.toFixed(2)} due in 3 days`,
+          subject: `Payment Reminder - $${payment.amount.toFixed(2)} due in 3 days`,
           html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc;">
-                <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-                  <div style="text-align: center; margin-bottom: 30px;">
-                    <h1 style="color: #10b981; font-size: 28px; margin: 0;">Feyza</h1>
-                  </div>
-                  
-                  <div style="background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0;">
-                    <div style="text-align: center; margin-bottom: 20px;">
-                      <div style="width: 60px; height: 60px; background: #dbeafe; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-                        <span style="font-size: 28px;">⏰</span>
-                      </div>
-                    </div>
-                    
-                    <h2 style="color: #1e40af; text-align: center; margin-bottom: 20px;">Payment Reminder</h2>
-                    
-                    <p style="font-size: 16px; color: #374151;">Hi ${borrowerName},</p>
-                    
-                    <p style="color: #374151;">
-                      This is a friendly reminder that you have a loan payment coming up in <strong>3 days</strong>.
-                    </p>
-                    
-                    <div style="background: #dbeafe; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center;">
-                      <p style="color: #1e40af; margin: 0; font-size: 28px; font-weight: bold;">
-                        $${payment.amount.toFixed(2)}
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+          <title>Payment Reminder</title>
+        </head>
+
+        <body style="margin:0; padding:0; background-color:#f8fafc; font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding:40px 20px;">
+
+                <!-- Container -->
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px; width:100%;">
+
+                  <!-- Header / Logo -->
+                  <tr>
+                    <td align="center" style="padding-bottom:30px;">
+                      <img
+                        src="https://feyza.app/feyza.png"
+                        alt="Feyza"
+                        height="48"
+                        style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+                      />
+                    </td>
+                  </tr>
+
+                  <!-- Card -->
+                  <tr>
+                    <td style="background:#ffffff; border-radius:16px; border:1px solid #e5e7eb; padding:30px;">
+
+                      <!-- Icon -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td align="center" style="padding-bottom:20px;">
+                            <div style="width:60px; height:60px; background:#ecfdf5; border-radius:50%; line-height:60px; text-align:center; font-size:28px;">
+                              ⏰
+                            </div>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- Title -->
+                      <h2 style="margin:0 0 20px 0; text-align:center; color:#065f46; font-size:22px;">
+                        Payment Reminder
+                      </h2>
+
+                      <!-- Greeting -->
+                      <p style="font-size:16px; color:#374151; margin-bottom:12px;">
+                        Hi ${borrowerName},
                       </p>
-                      <p style="color: #3b82f6; margin: 8px 0 0 0; font-size: 14px;">
-                        Due ${format(new Date(payment.due_date), 'EEEE, MMMM d, yyyy')}
+
+                      <p style="font-size:16px; color:#374151; margin-bottom:20px;">
+                        This is a friendly reminder that you have a loan payment coming up in
+                        <strong>3 days</strong>.
                       </p>
-                    </div>
-                    
-                    <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                      <p style="color: #374151; margin: 0; font-size: 14px;">
-                        <strong>Payment ${paymentNumber} of ${totalPayments}</strong><br>
-                        Loan from: ${lenderName}
-                      </p>
-                    </div>
-                    
-                    ${loan.borrower_bank_connected ? `
-                      <div style="background: #d1fae5; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                        <p style="color: #065f46; margin: 0; font-size: 14px;">
-                          ✅ <strong>Auto-Pay Enabled</strong> - This payment will be automatically deducted from your bank account on the due date. No action needed!
+
+                      <!-- Amount Box -->
+                      <div style="background:#ecfdf5; padding:20px; border-radius:12px; text-align:center; margin-bottom:20px;">
+                        <p style="margin:0; font-size:28px; font-weight:bold; color:#047857;">
+                          $${payment.amount.toFixed(2)}
+                        </p>
+                        <p style="margin-top:8px; font-size:14px; color:#059669;">
+                          Due ${format(new Date(payment.due_date), 'EEEE, MMMM d, yyyy')}
                         </p>
                       </div>
-                    ` : `
-                      <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                        <p style="color: #92400e; margin: 0; font-size: 14px;">
-                          ⚠️ Please ensure you have sufficient funds in your connected bank account.
+
+                      <!-- Payment Info -->
+                      <div style="background:#f9fafb; padding:16px; border-radius:8px; margin-bottom:20px;">
+                        <p style="margin:0; font-size:14px; color:#374151;">
+                          <strong>Payment ${paymentNumber} of ${totalPayments}</strong><br/>
+                          Loan from: ${lenderName}
                         </p>
                       </div>
-                    `}
-                    
-                    <a href="${APP_URL}/borrower/${loan.borrower_access_token}" style="display: block; background: #10b981; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 24px;">
-                      View Loan Details →
-                    </a>
-                    
-                    <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 24px;">
-                      Questions? Reply to this email or contact your lender directly.
-                    </p>
-                  </div>
-                </div>
-              </body>
-            </html>
+
+                      <!-- Auto Pay / Warning -->
+                      ${
+                        loan.borrower_bank_connected
+                          ? `
+                        <div style="background:#d1fae5; padding:16px; border-radius:8px; margin-bottom:20px;">
+                          <p style="margin:0; font-size:14px; color:#065f46;">
+                            ✅ <strong>Auto-Pay Enabled</strong><br/>
+                            This payment will be automatically deducted on the due date.
+                          </p>
+                        </div>
+                      `
+                          : `
+                        <div style="background:#fef3c7; padding:16px; border-radius:8px; margin-bottom:20px;">
+                          <p style="margin:0; font-size:14px; color:#92400e;">
+                            ⚠️ Please ensure you have sufficient funds in your connected bank account.
+                          </p>
+                        </div>
+                      `
+                      }
+
+                      <!-- CTA -->
+                      <a
+                        href="${APP_URL}/borrower/${loan.borrower_access_token}"
+                        style="
+                          display:block;
+                          background:#059669;
+                          color:#ffffff;
+                          text-decoration:none;
+                          padding:14px 28px;
+                          border-radius:8px;
+                          font-weight:600;
+                          text-align:center;
+                          margin-top:24px;
+                        "
+                      >
+                        View Loan Details →
+                      </a>
+
+                      <!-- Footer Note -->
+                      <p style="margin-top:24px; font-size:12px; color:#9ca3af; text-align:center;">
+                        Questions? Reply to this email or contact your lender directly.
+                      </p>
+
+                    </td>
+                  </tr>
+
+                  <!-- Bottom Footer -->
+                  <tr>
+                    <td align="center" style="padding-top:20px; font-size:12px; color:#9ca3af;">
+                      © ${new Date().getFullYear()} Feyza
+                    </td>
+                  </tr>
+
+                </table>
+
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
           `,
         });
 
@@ -245,25 +317,91 @@ export async function POST(request: NextRequest) {
 
     await sendEmail({
       to: borrowerEmail,
-      subject: `⏰ Payment Reminder (Test) - $${payment.amount.toFixed(2)}`,
+      subject: `Payment Reminder - $${payment.amount.toFixed(2)}`,
       html: `
-        <!DOCTYPE html>
-        <html>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc;">
-            <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-              <div style="background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0;">
-                <h2 style="color: #1e40af; text-align: center;">⏰ Payment Reminder (Test)</h2>
-                <p>Hi ${borrowerName},</p>
-                <p>Your payment of <strong>$${payment.amount.toFixed(2)}</strong> is due on ${format(new Date(payment.due_date), 'MMMM d, yyyy')}.</p>
-                <p>Loan from: ${lenderName}</p>
-                ${loan.borrower_bank_connected 
-                  ? '<p style="color: green;">✅ Auto-Pay is enabled - no action needed!</p>'
-                  : '<p style="color: orange;">⚠️ Please ensure you have sufficient funds.</p>'
-                }
-              </div>
-            </div>
-          </body>
-        </html>
+    <!DOCTYPE html>
+    <html lang="en">
+      <body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+        
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8fafc;padding:40px 0;">
+          <tr>
+            <td align="center">
+
+              <!-- Card -->
+              <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:16px;border:1px solid #e2e8f0;overflow:hidden;">
+                
+                <!-- Header -->
+                <tr>
+                  <td align="center" style="padding:30px 20px 20px;border-bottom:1px solid #bbf7d0;background:#f0fdf4;">
+                    <img
+                      src="https://feyza.app/feyza.png"
+                      alt="Feyza Logo"
+                      height="40"
+                      style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;margin-bottom:15px;"
+                    />
+                    <h2 style="margin:0;color:#065f46;font-size:22px;font-weight:600;">
+                      ⏰ Payment Reminder
+                    </h2>
+                  </td>
+                </tr>
+
+                <!-- Body -->
+                <tr>
+                  <td style="padding:30px 30px 10px;color:#334155;font-size:16px;line-height:1.6;">
+                    <p style="margin:0 0 15px;">Hi <strong>${borrowerName}</strong>,</p>
+
+                    <p style="margin:0 0 15px;">
+                      This is a friendly reminder that your payment of
+                      <strong>$${payment.amount.toFixed(2)}</strong>
+                      is due on
+                      <strong>${format(new Date(payment.due_date), 'MMMM d, yyyy')}</strong>.
+                    </p>
+
+                    <p style="margin:0 0 15px;">
+                      Loan from: <strong>${lenderName}</strong>
+                    </p>
+
+                    ${
+                      loan.borrower_bank_connected
+                        ? `
+                        <div style="margin-top:20px;padding:15px;border-radius:10px;background:#ecfdf5;border:1px solid #bbf7d0;color:#065f46;">
+                          ✅ <strong>Auto-Pay is enabled</strong><br />
+                          No action is needed on your part.
+                        </div>
+                      `
+                        : `
+                        <div style="margin-top:20px;padding:15px;border-radius:10px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;">
+                          ⚠️ <strong>Manual payment required</strong><br />
+                          Please ensure you have sufficient funds available.
+                        </div>
+                      `
+                    }
+                  </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                  <td align="center" style="padding:20px 30px 30px;border-top:1px solid #e5e7eb;color:#64748b;font-size:13px;">
+                    <p style="margin:0 0 6px;">
+                      This is an automated reminder from Feyza.
+                    </p>
+                    <p style="margin:0;">
+                      If you have questions, contact support at
+                      <a href="mailto:support@feyza.com" style="color:#059669;text-decoration:none;font-weight:500;">
+                        support@feyza.com
+                      </a>
+                    </p>
+                  </td>
+                </tr>
+
+              </table>
+
+            </td>
+          </tr>
+        </table>
+
+      </body>
+    </html>
       `,
     });
 

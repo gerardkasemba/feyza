@@ -226,22 +226,75 @@ export async function POST(request: NextRequest) {
           to: loan.invite_email,
           subject: 'Your Lending Dashboard - Feyza',
           html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                  <h1 style="color: white; margin: 0;">📊 Your Lending Dashboard</h1>
+          <!DOCTYPE html>
+          <html lang="en">
+            <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:600px;margin:0 auto;padding:20px;background-color:#f9fafb;">
+
+              <!-- Main Card -->
+              <div style="background:white;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
+
+                <!-- Header -->
+                <div style="background:linear-gradient(135deg,#059669 0%,#047857 100%);padding:32px 24px;text-align:center;">
+
+                  <!-- Logo (email-safe centered) -->
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" style="padding-bottom:16px;">
+                        <img
+                          src="https://feyza.app/feyza.png"
+                          alt="Feyza Logo"
+                          height="42"
+                          style="display:block;height:42px;width:auto;border:0;outline:none;text-decoration:none;"
+                        />
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="color:white;margin:0;font-size:24px;font-weight:700;">
+                    Your Lending Dashboard
+                  </h1>
                 </div>
-                <div style="background: #f9fafb; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e5e7eb;">
-                  <p>Hi ${lenderName},</p>
-                  <p>Thanks for accepting the loan request! You can track all your loans and repayments using your personal dashboard.</p>
-                  <a href="${dashboardUrl}" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
-                    View Your Dashboard →
-                  </a>
-                  <p style="color: #6b7280; font-size: 12px;">Bookmark this link to access your dashboard anytime.</p>
+
+                <!-- Content -->
+                <div style="padding:28px 24px;background:#ffffff;">
+                  <p style="margin:0 0 16px 0;color:#111827;">
+                    Hi <strong>${lenderName}</strong>,
+                  </p>
+
+                  <p style="margin:0 0 20px 0;color:#374151;line-height:1.6;">
+                    Thanks for accepting the loan request. You can now track all your loans,
+                    repayments, and borrower activity from your personal Feyza dashboard.
+                  </p>
+
+                  <!-- CTA -->
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center">
+                        <a
+                          href="${dashboardUrl}"
+                          style="display:inline-block;background:#059669;color:white;text-decoration:none;
+                                padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;">
+                          View Your Dashboard →
+                        </a>
+                      </td>
+                    </tr>
+                  </table>
+
+                  <p style="margin:20px 0 0 0;color:#6b7280;font-size:12px;text-align:center;">
+                    Bookmark this link to access your dashboard anytime.
+                  </p>
                 </div>
-              </body>
-            </html>
+
+                <!-- Footer -->
+                <div style="background:#f0fdf4;padding:16px 24px;border-top:1px solid #bbf7d0;text-align:center;">
+                  <p style="margin:0;color:#065f46;font-size:12px;">
+                    This is an automated message from Feyza.
+                  </p>
+                </div>
+
+              </div>
+            </body>
+          </html>
           `,
         });
       } catch (emailError) {

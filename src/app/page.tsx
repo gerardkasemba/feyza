@@ -93,7 +93,7 @@ export default function HomePage() {
               {/* Already have a loan? - Improved mobile layout */}
               <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
                 <p className="font-medium text-neutral-900 dark:text-white mb-3 text-center lg:text-left">
-                  Already using Feyza?
+                  Already using Feyza as a guest?
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <Link href="/loan-status">
@@ -288,6 +288,123 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ✅ SMARTSCHEDULE SECTION (NEW) */}
+      <section className="py-24 bg-white dark:bg-neutral-900" id="smart-schedule">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left */}
+            <div>
+              <span className="inline-flex items-center gap-2 px-4 py-2 bg-orange-100 dark:bg-orange-900/25 text-orange-700 dark:text-orange-300 rounded-full text-sm font-medium mb-6">
+                <Calendar className="w-4 h-4" />
+                New: SmartSchedule™
+              </span>
+
+              <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-6">
+                Repay based on your paycheck not guesswork
+              </h2>
+
+              <p className="text-xl text-neutral-600 dark:text-neutral-300 mb-8">
+                Tell Feyza how often you get paid (weekly, bi-weekly, or monthly) and your key monthly bills.
+                We recommend a repayment schedule that feels fair, avoids rent week, and helps pay the loan off as fast as possible.
+              </p>
+
+              <div className="space-y-5 mb-10">
+                {[
+                  {
+                    title: 'Payday-aligned payments',
+                    desc: 'We place payments right after paydays so you’re not stretched.',
+                    icon: RefreshCw,
+                  },
+                  {
+                    title: 'Respects rent & important bills',
+                    desc: 'Your schedule avoids the weeks you’re most likely to need cash.',
+                    icon: Wallet,
+                  },
+                  {
+                    title: 'Faster payoff, fewer headaches',
+                    desc: 'A smarter schedule helps you stay consistent and finish sooner.',
+                    icon: PieChart,
+                  },
+                ].map((x) => (
+                  <div key={x.title} className="flex gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-900/40 flex items-center justify-center shrink-0">
+                      <x.icon className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-neutral-900 dark:text-white">{x.title}</div>
+                      <div className="text-sm text-neutral-600 dark:text-neutral-300">{x.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/borrower/request">
+                  <Button className="w-full sm:w-auto">
+                    Try SmartSchedule
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/learn">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    How it works
+                  </Button>
+                </Link>
+              </div>
+
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-4">
+                SmartSchedule is a recommendation tool you can adjust before confirming.
+              </p>
+            </div>
+
+            {/* Right */}
+            <div className="rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-gradient-to-br from-orange-50 via-white to-white dark:from-orange-900/10 dark:via-neutral-900 dark:to-neutral-900 p-6 sm:p-8">
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 flex items-center justify-center">
+                  <Shield className="w-6 h-6 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-neutral-900 dark:text-white">Example schedule preview</div>
+                  <div className="text-sm text-neutral-600 dark:text-neutral-300">
+                    Weekly pay + rent due on the 1st → payments shift to safe weeks.
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3">
+                {[
+                  { label: 'Pay frequency', value: 'Bi-weekly' },
+                  { label: 'Take-home per paycheck', value: '$1,150' },
+                  { label: 'Rent / mortgage', value: '$1,200 / month' },
+                  { label: 'Important bills', value: '$350 / month' },
+                ].map((row) => (
+                  <div key={row.label} className="flex items-center justify-between rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-950/50 px-4 py-3">
+                    <span className="text-sm text-neutral-600 dark:text-neutral-300">{row.label}</span>
+                    <span className="text-sm font-semibold text-neutral-900 dark:text-white">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-orange-200 dark:border-orange-900/40 bg-orange-50/70 dark:bg-orange-900/10 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold text-neutral-900 dark:text-white">Recommended payment</div>
+                  <span className="inline-flex items-center gap-2 text-orange-700 dark:text-orange-300 text-sm font-semibold">
+                    <CheckCircle className="w-4 h-4" />
+                    Balanced
+                  </span>
+                </div>
+                <div className="mt-2 text-sm text-neutral-700 dark:text-neutral-300">
+                  <span className="font-semibold">$85</span> every <span className="font-semibold">2 weeks</span> • Estimated payoff in <span className="font-semibold">6–8 weeks</span>
+                </div>
+                <div className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                  You can adjust before confirming.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FEATURES GRID */}
       <section className="py-24 bg-white dark:bg-neutral-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -322,8 +439,8 @@ export default function HomePage() {
               },
               {
                 icon: Calendar,
-                title: 'Payment Schedules',
-                description: 'Automatic schedule generation - weekly, bi-weekly, or monthly.',
+                title: 'SmartSchedule™',
+                description: 'Repayment recommendations based on pay frequency and key monthly bills.',
                 color: 'green',
               },
               {
@@ -450,22 +567,27 @@ export default function HomePage() {
       <section className="py-24 bg-neutral-50 dark:bg-neutral-900/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
+            {/* Left: Trust Messaging */}
             <div>
               <span className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full text-sm font-medium mb-6">
                 <Shield className="w-4 h-4" />
-                Built on Trust
+                Built for trust
               </span>
+
               <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-6">
-                Why people love Feyza
+                Lending without the awkwardness
               </h2>
+
               <p className="text-xl text-neutral-600 dark:text-neutral-300 mb-8">
-                We built Feyza because lending and borrowing shouldn’t be awkward. Clear records and automated reminders keep relationships clean.
+                Feyza keeps loans clear for both sides so relationships stay clean. Everything is documented, schedules are
+                visible, and payments are easy to track.
               </p>
+
               <div className="space-y-6">
                 {[
                   {
                     title: 'No awkward conversations',
-                    description: 'Reminders and autopay reduce the need for uncomfortable follow-ups.',
+                    description: 'Reminders reduce the need for uncomfortable follow-ups.',
                   },
                   {
                     title: 'Everyone stays aligned',
@@ -473,7 +595,7 @@ export default function HomePage() {
                   },
                   {
                     title: 'Documentation when you need it',
-                    description: 'If questions arise, you have a clear record of every agreement and payment.',
+                    description: 'If questions arise, you have a clear record of the agreement and each payment.',
                   },
                 ].map((item) => (
                   <div key={item.title} className="flex gap-4">
@@ -487,43 +609,109 @@ export default function HomePage() {
                   </div>
                 ))}
               </div>
+
+              {/* Optional: Early access CTA (no fake stats) */}
+              <div className="mt-10 flex flex-col sm:flex-row gap-3">
+                <Link href="/borrower/request">
+                  <Button className="w-full sm:w-auto">
+                    Request a loan
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/business/setup">
+                  <Button variant="outline" className="w-full sm:w-auto">
+                    Become a lender
+                  </Button>
+                </Link>
+              </div>
+
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-3">
+                We’re currently onboarding early lenders and borrowers in select communities.
+              </p>
             </div>
 
-            {/* Stats/Social Proof */}
-            <div className="grid grid-cols-2 gap-6">
+            {/* Right: “Proof” without metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {[
-                { number: '10K+', label: 'Active Users' },
-                { number: '$2M+', label: 'Loans Tracked' },
-                { number: '98%', label: 'On-time Payments' },
-                { number: '4.9★', label: 'User Rating' },
-              ].map((stat) => (
-                <div
-                  key={stat.label}
-                  className="bg-white dark:bg-neutral-800 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-700 text-center"
-                >
-                  <p className="text-3xl font-display font-bold text-primary-600 dark:text-primary-400 mb-1">{stat.number}</p>
-                  <p className="text-neutral-600 dark:text-neutral-300">{stat.label}</p>
-                </div>
-              ))}
+                {
+                  title: 'Transparent by design',
+                  desc: 'Both sides see the same timeline, balance, and payment history.',
+                  icon: Shield,
+                  tone: 'primary',
+                },
+                {
+                  title: 'Bank-to-bank',
+                  desc: 'Autopay with a clear record or track manual payments too.',
+                  icon: Wallet,
+                  tone: 'green',
+                },
+                {
+                  title: 'SmartSchedule™',
+                  desc: 'Recommended repayments based on payday + key monthly bills.',
+                  icon: Calendar,
+                  tone: 'accent',
+                },
+                {
+                  title: 'Privacy first',
+                  desc: 'Loan details stay between borrower and lender. No public feed.',
+                  icon: Lock,
+                  tone: 'purple',
+                },
+              ].map((card) => {
+                const toneClasses: Record<string, string> = {
+                  primary: 'bg-primary-50 dark:bg-primary-900/15 border-primary-100 dark:border-primary-900/30',
+                  green: 'bg-green-50 dark:bg-green-900/15 border-green-100 dark:border-green-900/30',
+                  accent: 'bg-accent-50 dark:bg-amber-900/10 border-accent-100 dark:border-amber-900/20',
+                  purple: 'bg-purple-50 dark:bg-purple-900/15 border-purple-100 dark:border-purple-900/30',
+                };
 
-              <div className="col-span-2 bg-white dark:bg-neutral-800 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-700">
+                const iconClasses: Record<string, string> = {
+                  primary: 'text-primary-600 dark:text-primary-400',
+                  green: 'text-green-600 dark:text-green-400',
+                  accent: 'text-accent-600 dark:text-amber-400',
+                  purple: 'text-purple-600 dark:text-purple-400',
+                };
+
+                const Icon = card.icon;
+
+                return (
+                  <div
+                    key={card.title}
+                    className={`p-6 rounded-2xl border ${toneClasses[card.tone]} bg-white/70 dark:bg-neutral-900/40`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="">
+                        <Icon className={`w-5 h-5 ${iconClasses[card.tone]}`} />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-neutral-900 dark:text-white">{card.title}</p>
+                        <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">{card.desc}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Optional: “Pilot” banner card */}
+              <div className="sm:col-span-2 bg-white dark:bg-neutral-800 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-700">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                    <Shield className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                  <div className="">
+                    <BadgeCheck className="w-5 h-5 text-green-700 dark:text-green-400" />
                   </div>
                   <div>
-                    <p className="font-semibold text-neutral-900 dark:text-white">Transparent by design</p>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-300">
-                      Every schedule, reminder, and payment record stays visible to both borrower and lender no surprises.
+                    <p className="font-semibold text-neutral-900 dark:text-white">Early access program</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
+                      We’re onboarding a small group of lenders and borrowers to refine the experience. If you want in, request
+                      a loan or register as a lender.
                     </p>
                   </div>
                 </div>
               </div>
-
             </div>
           </div>
         </div>
       </section>
+
 
       {/* CTA SECTION */}
       <section className="py-24 bg-gradient-to-br from-primary-600 to-primary-700 dark:from-primary-700 dark:to-primary-800">

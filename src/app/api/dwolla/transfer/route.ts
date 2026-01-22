@@ -170,28 +170,116 @@ export async function POST(request: NextRequest) {
       // Notify borrower
       await sendEmail({
         to: destinationUser.email,
-        subject: '💰 Loan Funds on the Way!',
+        subject: 'Loan Funds on the Way!',
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>Your loan has been disbursed!</h2>
-            <p>Great news! ${sourceUser.full_name || 'Your lender'} has sent you <strong>$${amount}</strong>.</p>
-            <p>The funds should arrive in your bank account within 1-3 business days.</p>
-            <a href="${APP_URL}/loans/${loan_id}" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Loan Details</a>
+    <!DOCTYPE html>
+    <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f9fafb; padding:20px;">
+        <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
+
+          <!-- Header -->
+          <div style="background:linear-gradient(135deg,#059669,#047857);padding:30px;text-align:center;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="padding-bottom:15px;">
+                  <img
+                    src="https://feyza.app/feyza.png"
+                    alt="Feyza"
+                    height="42"
+                    style="display:block;border:0;outline:none;"
+                  />
+                </td>
+              </tr>
+            </table>
+            <h1 style="color:white;margin:0;font-size:26px;">Loan Funds on the Way</h1>
           </div>
+
+          <!-- Content -->
+          <div style="padding:32px;text-align:center;">
+            <p style="font-size:16px;color:#374151;margin-bottom:16px;">
+              Great news! <strong>${sourceUser.full_name || 'Your lender'}</strong> has sent you
+              <strong>$${amount}</strong>.
+            </p>
+
+            <p style="font-size:15px;color:#6b7280;margin-bottom:24px;">
+              The funds should arrive in your bank account within <strong>1–3 business days</strong>.
+            </p>
+
+            <a
+              href="${APP_URL}/loans/${loan_id}"
+              style="display:inline-block;background:#059669;color:white;text-decoration:none;
+                    padding:14px 28px;border-radius:10px;font-weight:600;font-size:16px;"
+            >
+              View Loan Details
+            </a>
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f0fdf4;padding:20px;text-align:center;font-size:12px;color:#065f46;">
+            <p style="margin:0;">This notification was sent by Feyza</p>
+          </div>
+
+        </div>
+      </body>
+    </html>
         `,
       });
-    } else if (type === 'repayment') {
+    }else if (type === 'repayment') {
       // Notify lender
       await sendEmail({
         to: destinationUser.email,
-        subject: '💵 Payment Received!',
+        subject: 'Payment Received!',
         html: `
-          <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2>You received a payment!</h2>
-            <p>${sourceUser.full_name || 'The borrower'} has sent you <strong>$${amount}</strong> for loan repayment.</p>
-            <p>The funds should arrive in your bank account within 1-3 business days.</p>
-            <a href="${APP_URL}/loans/${loan_id}" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Loan Details</a>
+    <!DOCTYPE html>
+    <html>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f9fafb; padding:20px;">
+        <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
+
+          <!-- Header -->
+          <div style="background:linear-gradient(135deg,#059669,#047857);padding:30px;text-align:center;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="padding-bottom:15px;">
+                  <img
+                    src="https://feyza.app/feyza.png"
+                    alt="Feyza"
+                    height="42"
+                    style="display:block;border:0;outline:none;"
+                  />
+                </td>
+              </tr>
+            </table>
+            <h1 style="color:white;margin:0;font-size:26px;">Payment Received</h1>
           </div>
+
+          <!-- Content -->
+          <div style="padding:32px;text-align:center;">
+            <p style="font-size:16px;color:#374151;margin-bottom:16px;">
+              <strong>${sourceUser.full_name || 'The borrower'}</strong> has sent you
+              <strong>$${amount}</strong> as a loan repayment.
+            </p>
+
+            <p style="font-size:15px;color:#6b7280;margin-bottom:24px;">
+              The funds should arrive in your bank account within <strong>1–3 business days</strong>.
+            </p>
+
+            <a
+              href="${APP_URL}/loans/${loan_id}"
+              style="display:inline-block;background:#059669;color:white;text-decoration:none;
+                    padding:14px 28px;border-radius:10px;font-weight:600;font-size:16px;"
+            >
+              View Loan Details
+            </a>
+          </div>
+
+          <!-- Footer -->
+          <div style="background:#f0fdf4;padding:20px;text-align:center;font-size:12px;color:#065f46;">
+            <p style="margin:0;">This notification was sent by Feyza</p>
+          </div>
+
+        </div>
+      </body>
+    </html>
         `,
       });
     }

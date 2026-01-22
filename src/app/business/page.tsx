@@ -6,7 +6,7 @@ import { Button, Card, Badge } from '@/components/ui';
 import { StatsCard } from '@/components/dashboard';
 import { LoanCard } from '@/components/loans';
 import { PendingLoanCard } from '@/components/business/PendingLoanCard';
-import { ShareBusinessCard } from '@/components/business/ShareBusinessCard';
+import { LendingTermsCard } from '@/components/business/LendingTermsCard';
 import { formatCurrency } from '@/lib/utils';
 import { 
   Building2, 
@@ -54,7 +54,7 @@ export default async function BusinessPage() {
   try {
     const { data } = await supabase
       .from('business_profiles')
-      .select('*, slug, public_profile_enabled, verification_status, logo_url')
+      .select('*, slug, public_profile_enabled, verification_status, logo_url, lending_terms, lending_terms_updated_at')
       .eq('user_id', user.id)
       .single();
     businessProfile = data;
@@ -67,8 +67,8 @@ export default async function BusinessPage() {
     redirect('/business/setup');
   }
 
-  // Check if profile is incomplete
-  const isProfileIncomplete = !businessProfile.profile_completed || !businessProfile.paypal_connected;
+  // Check if profile is incomplete - check user's bank_connected from users table
+  const isProfileIncomplete = !businessProfile.profile_completed || !profile?.bank_connected;
 
   // Fetch loans where this business is the lender
   let businessLoans: any[] = [];
@@ -83,15 +83,27 @@ export default async function BusinessPage() {
     console.log('Error fetching business loans');
   }
 
-  // Check if lender preferences are set up
+  // Check if lender preferences are set up and get loan terms
   let hasLenderPrefs = false;
+  let lenderPrefs: { 
+    min_amount: number; 
+    max_amount: number; 
+    interest_rate: number; 
+  } | null = null;
   try {
     const { data } = await supabase
       .from('lender_preferences')
-      .select('id, is_active, capital_pool')
+      .select('id, is_active, capital_pool, min_amount, max_amount, interest_rate')
       .eq('business_id', businessProfile.id)
       .single();
     hasLenderPrefs = !!data;
+    if (data) {
+      lenderPrefs = {
+        min_amount: data.min_amount || 50,
+        max_amount: data.max_amount || 5000,
+        interest_rate: data.interest_rate || 0,
+      };
+    }
   } catch (error) {
     // No preferences set up yet
   }
@@ -109,26 +121,60 @@ export default async function BusinessPage() {
   const totalCollected = activeLoans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
       <Navbar user={userProfile} />
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Auto-Match Setup Prompt */}
-          {!isProfileIncomplete && !hasLenderPrefs && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/30 dark:to-orange-900/30 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+          {/* Profile Incomplete Banner */}
+          {isProfileIncomplete && (
+            <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <Zap className="w-5 h-5 text-yellow-600 dark:text-yellow-500" />
+                  <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-1">Set Up Auto-Matching</h3>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mb-3">
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">Complete Your Business Profile</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+                    {!profile?.bank_connected 
+                      ? 'Connect your bank account via Plaid to receive loan repayments from borrowers.'
+                      : 'Please complete your business profile to start receiving loan requests.'}
+                  </p>
+                  <Link href="/business/settings?tab=payments">
+                    <Button size="sm">
+                      {!profile?.bank_connected ? (
+                        <>
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Connect Bank Account
+                        </>
+                      ) : (
+                        <>
+                          <Settings className="w-4 h-4 mr-2" />
+                          Complete Profile
+                        </>
+                      )}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Auto-Match Setup Prompt */}
+          {!isProfileIncomplete && !hasLenderPrefs && (
+            <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/50 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Zap className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">Set Up Auto-Matching</h3>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
                     Configure your lending preferences to automatically receive matching loan requests from borrowers. 
                     Set your loan amount range, interest rate, and countries you serve.
                   </p>
                   <Link href="/lender/preferences">
-                    <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 dark:bg-yellow-600 dark:hover:bg-yellow-700 text-white">
+                    <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-white">
                       <Zap className="w-4 h-4 mr-2" />
                       Configure Auto-Match
                     </Button>
@@ -145,7 +191,7 @@ export default async function BusinessPage() {
                 {businessProfile.logo_url ? (
                   <img src={businessProfile.logo_url} alt={businessProfile.business_name} className="w-full h-full object-cover" />
                 ) : (
-                  <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-500" />
+                  <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
                 )}
               </div>
               <div>
@@ -171,7 +217,7 @@ export default async function BusinessPage() {
             </div>
             <div className="flex gap-3">
               <Link href="/lender/preferences">
-                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 dark:from-yellow-600 dark:to-orange-600 dark:hover:from-yellow-700 dark:hover:to-orange-700">
+                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600">
                   <Zap className="w-4 h-4 mr-2" />
                   Auto-Match Settings
                 </Button>
@@ -184,18 +230,6 @@ export default async function BusinessPage() {
               </Link>
             </div>
           </div>
-
-          {/* Share Business Card */}
-          {businessProfile.slug && businessProfile.public_profile_enabled && (
-            <div className="mb-8">
-              <ShareBusinessCard 
-                businessName={businessProfile.business_name}
-                slug={businessProfile.slug}
-                tagline={businessProfile.tagline}
-                isApproved={businessProfile.verification_status === 'approved'}
-              />
-            </div>
-          )}
 
           {/* Stats */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -225,6 +259,14 @@ export default async function BusinessPage() {
             />
           </div>
 
+          {/* Loan Types & Terms */}
+          <div className="grid md:grid-cols-2 gap-4 mb-8">
+            <LendingTermsCard 
+              businessId={businessProfile.id} 
+              initialTerms={businessProfile.lending_terms}
+            />
+          </div>
+
           {/* Pending Requests */}
           {pendingRequests.length > 0 && (
             <div className="mb-8">
@@ -251,8 +293,8 @@ export default async function BusinessPage() {
                 ))}
               </div>
             ) : (
-              <Card className="text-center py-12 bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-                <Users className="w-12 h-12 text-neutral-300 dark:text-neutral-700 mx-auto mb-4" />
+              <Card className="text-center py-12">
+                <Users className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
                 <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No active loans</h3>
                 <p className="text-neutral-500 dark:text-neutral-400">
                   When borrowers request loans from your business, they'll appear here

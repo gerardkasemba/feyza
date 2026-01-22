@@ -301,51 +301,89 @@ async function handleMissedPayment(
     try {
       await sendEmail({
         to: lenderEmail,
-        subject: `⚠️ Payment Missed - ${borrowerName}`,
+        subject: `Payment Missed - ${borrowerName}`,
         html: `
-          <!DOCTYPE html>
-          <html>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc;">
-              <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-                <div style="text-align: center; margin-bottom: 30px;">
-                  <h1 style="color: #10b981; font-size: 28px; margin: 0;">Feyza</h1>
-                </div>
-                
-                <div style="background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0;">
-                  <div style="text-align: center; margin-bottom: 20px;">
-                    <div style="width: 60px; height: 60px; background: #fef3c7; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-                      <span style="font-size: 28px;">⚠️</span>
-                    </div>
-                  </div>
-                  
-                  <h2 style="color: #b45309; text-align: center; margin-bottom: 20px;">Payment Missed</h2>
-                  
-                  <p style="font-size: 16px; color: #374151;">Hi ${lenderName},</p>
-                  
-                  <p style="color: #374151;">
-                    A scheduled payment from <strong>${borrowerName}</strong> was not processed.
-                  </p>
-                  
-                  <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin: 20px 0;">
-                    <p style="color: #92400e; margin: 0;">
-                      <strong>Amount:</strong> $${payment.amount.toFixed(2)}<br>
-                      <strong>Due Date:</strong> ${format(new Date(payment.due_date), 'MMMM d, yyyy')}<br>
-                      <strong>Reason:</strong> ${reason}
-                    </p>
-                  </div>
-                  
-                  <p style="color: #6b7280; font-size: 14px;">
-                    We'll automatically retry this payment. You may also want to reach out to ${borrowerName} directly.
-                  </p>
-                  
-                  <a href="${APP_URL}/lender/${loan.invite_token}" style="display: block; background: #10b981; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 24px;">
-                    View Loan Dashboard →
-                  </a>
-                </div>
+        <!DOCTYPE html>
+        <html lang="en">
+          <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; margin:0; padding:0; background-color:#f8fafc;">
+            
+            <div style="max-width:600px; margin:0 auto; padding:40px 20px;">
+
+              <!-- ===== HEADER WITH LOGO ===== -->
+              <div style="margin-bottom:30px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center">
+                      <img
+                        src="https://feyza.app/feyza.png"
+                        alt="Feyza Logo"
+                        height="48"
+                        style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+                      />
+                    </td>
+                  </tr>
+                </table>
               </div>
-            </body>
-          </html>
+
+              <!-- ===== CARD ===== -->
+              <div style="background:#ffffff; padding:30px; border-radius:16px; border:1px solid #e5e7eb; box-shadow:0 10px 25px rgba(0,0,0,0.05);">
+
+                <!-- Icon -->
+                <div style="text-align:center; margin-bottom:20px;">
+                  <div style="width:60px; height:60px; background:#fef3c7; border-radius:50%; display:inline-block; line-height:60px;">
+                    <span style="font-size:28px;">⚠️</span>
+                  </div>
+                </div>
+
+                <!-- Title -->
+                <h2 style="color:#92400e; text-align:center; margin-bottom:20px; font-size:22px;">
+                  Payment Missed
+                </h2>
+
+                <!-- Body -->
+                <p style="font-size:16px; color:#374151;">
+                  Hi ${lenderName},
+                </p>
+
+                <p style="color:#374151; font-size:15px;">
+                  A scheduled payment from <strong>${borrowerName}</strong> was not processed.
+                </p>
+
+                <!-- Details Box -->
+                <div style="background:#fef3c7; padding:16px; border-radius:10px; margin:20px 0; border:1px solid #fde68a;">
+                  <p style="color:#92400e; margin:0; font-size:14px; line-height:1.6;">
+                    <strong>Amount:</strong> $${payment.amount.toFixed(2)}<br>
+                    <strong>Due Date:</strong> ${format(new Date(payment.due_date), 'MMMM d, yyyy')}<br>
+                    <strong>Reason:</strong> ${reason}
+                  </p>
+                </div>
+
+                <p style="color:#6b7280; font-size:14px; line-height:1.6;">
+                  We'll automatically retry this payment. You may also want to reach out to ${borrowerName} directly.
+                </p>
+
+                <!-- CTA -->
+                <a
+                  href="${APP_URL}/lender/${loan.invite_token}"
+                  style="display:block; background:#059669; color:#ffffff; text-decoration:none; padding:14px 28px; border-radius:10px; font-weight:600; text-align:center; margin-top:24px;"
+                >
+                  View Loan Dashboard →
+                </a>
+
+              </div>
+
+              <!-- ===== FOOTER ===== -->
+              <div style="text-align:center; margin-top:30px; font-size:12px; color:#6b7280;">
+                <p style="margin:0;">This notification was sent by Feyza</p>
+                <p style="margin:4px 0 0 0;">Please do not reply to this email</p>
+              </div>
+
+            </div>
+
+          </body>
+        </html>
         `,
+
       });
       console.log(`[Auto-Pay] Sent missed payment email to ${lenderEmail}`);
     } catch (emailErr) {
@@ -371,66 +409,162 @@ async function sendPaymentReceivedEmail(
     await sendEmail({
       to: lenderEmail,
       subject: isCompleted 
-        ? `🎉 Loan Paid Off! - ${borrowerName}` 
-        : `💰 Payment Received - $${payment.amount.toFixed(2)}`,
-      html: `
+        ? `Loan Paid Off! - ${borrowerName}` 
+        : `Payment Received - $${payment.amount.toFixed(2)}`,
+        html: `
         <!DOCTYPE html>
-        <html>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; background-color: #f8fafc;">
+        <html lang="en">
+          <body style="
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f8fafc;
+          ">
             <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-              <div style="text-align: center; margin-bottom: 30px;">
-                <h1 style="color: #10b981; font-size: 28px; margin: 0;">Feyza</h1>
-              </div>
-              
-              <div style="background: white; padding: 30px; border-radius: 16px; border: 1px solid #e2e8f0;">
+
+              <!-- ===== HEADER WITH LOGO ===== -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 30px;">
+                <tr>
+                  <td align="center">
+                    <img
+                      src="https://feyza.app/feyza.png"
+                      alt="Feyza Logo"
+                      height="48"
+                      style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+                    />
+                  </td>
+                </tr>
+              </table>
+
+              <!-- ===== CARD ===== -->
+              <div style="
+                background: white;
+                padding: 30px;
+                border-radius: 16px;
+                border: 1px solid #e5e7eb;
+              ">
+
+                <!-- Icon -->
                 <div style="text-align: center; margin-bottom: 20px;">
-                  <div style="width: 60px; height: 60px; background: #d1fae5; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
-                    <span style="font-size: 28px;">${isCompleted ? '🎉' : '💰'}</span>
+                  <div style="
+                    width: 64px;
+                    height: 64px;
+                    background: #d1fae5;
+                    border-radius: 50%;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                  ">
+                    <span style="font-size: 30px;">
+                      ${isCompleted ? '🎉' : '💰'}
+                    </span>
                   </div>
                 </div>
-                
-                <h2 style="color: #065f46; text-align: center; margin-bottom: 20px;">
+
+                <!-- Title -->
+                <h2 style="
+                  color: #065f46;
+                  text-align: center;
+                  margin: 0 0 20px 0;
+                  font-size: 22px;
+                ">
                   ${isCompleted ? 'Loan Paid in Full!' : 'Payment Received!'}
                 </h2>
-                
-                <p style="font-size: 16px; color: #374151;">Hi ${lenderName},</p>
-                
-                <p style="color: #374151;">
-                  ${isCompleted 
-                    ? `Great news! <strong>${borrowerName}</strong> has paid off their loan in full. 🎉`
-                    : `<strong>${borrowerName}</strong> has made a payment on their loan.`
+
+                <!-- Greeting -->
+                <p style="font-size: 16px; color: #374151; margin: 0 0 10px 0;">
+                  Hi ${lenderName},
+                </p>
+
+                <!-- Message -->
+                <p style="color: #374151; margin: 0 0 20px 0;">
+                  ${
+                    isCompleted
+                      ? `Great news! <strong>${borrowerName}</strong> has paid off their loan in full. 🎉`
+                      : `<strong>${borrowerName}</strong> has made a payment on their loan.`
                   }
                 </p>
-                
-                <div style="background: #d1fae5; padding: 16px; border-radius: 8px; margin: 20px 0; text-align: center;">
-                  <p style="color: #065f46; margin: 0; font-size: 24px; font-weight: bold;">
+
+                <!-- Amount -->
+                <div style="
+                  background: #ecfdf5;
+                  padding: 18px;
+                  border-radius: 10px;
+                  margin: 20px 0;
+                  text-align: center;
+                  border: 1px solid #bbf7d0;
+                ">
+                  <p style="
+                    color: #065f46;
+                    margin: 0;
+                    font-size: 26px;
+                    font-weight: bold;
+                  ">
                     $${payment.amount.toFixed(2)}
                   </p>
-                  <p style="color: #047857; margin: 4px 0 0 0; font-size: 14px;">
+                  <p style="
+                    color: #047857;
+                    margin: 6px 0 0 0;
+                    font-size: 14px;
+                  ">
                     Payment received
                   </p>
                 </div>
-                
+
+                <!-- Remaining balance -->
                 ${!isCompleted ? `
-                  <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+                  <div style="
+                    background: #f9fafb;
+                    padding: 16px;
+                    border-radius: 10px;
+                    margin: 20px 0;
+                    border: 1px solid #e5e7eb;
+                  ">
                     <p style="color: #374151; margin: 0;">
                       <strong>Remaining Balance:</strong> $${amountRemaining.toFixed(2)}
                     </p>
                   </div>
                 ` : ''}
-                
-                <p style="color: #6b7280; font-size: 14px;">
-                  Funds will arrive in your bank account within 1-3 business days.
+
+                <!-- Note -->
+                <p style="color: #6b7280; font-size: 14px; margin-top: 10px;">
+                  Funds will arrive in your bank account within 1–3 business days.
                 </p>
-                
-                <a href="${APP_URL}/lender/${loan.invite_token}" style="display: block; background: #10b981; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; text-align: center; margin-top: 24px;">
+
+                <!-- CTA -->
+                <a
+                  href="${APP_URL}/lender/${loan.invite_token}"
+                  style="
+                    display: block;
+                    background: linear-gradient(to right, #059669, #047857);
+                    color: white;
+                    text-decoration: none;
+                    padding: 14px 28px;
+                    border-radius: 10px;
+                    font-weight: bold;
+                    text-align: center;
+                    margin-top: 26px;
+                  "
+                >
                   View Loan Dashboard →
                 </a>
+
               </div>
+
+              <!-- ===== FOOTER ===== -->
+              <p style="
+                text-align: center;
+                color: #9ca3af;
+                font-size: 12px;
+                margin-top: 30px;
+              ">
+                This is an automated message from Feyza.
+              </p>
+
             </div>
           </body>
         </html>
-      `,
+        `,
     });
     console.log(`[Auto-Pay] Sent payment received email to ${lenderEmail}`);
   } catch (emailErr) {

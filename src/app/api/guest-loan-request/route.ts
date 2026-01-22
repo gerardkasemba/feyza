@@ -123,67 +123,109 @@ export async function POST(request: NextRequest) {
     // Send confirmation email to borrower
     await sendEmail({
       to: email,
-      subject: '✅ Loan Request Submitted - Feyza',
+      subject: 'Loan Request Submitted - Feyza',
       html: `
-        <!DOCTYPE html>
-        <html>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-              <h1 style="color: white; margin: 0;">✅ Request Submitted!</h1>
+      <!DOCTYPE html>
+      <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color:#f9fafb;">
+
+          <!-- Card -->
+          <div style="background:white; border-radius:16px; overflow:hidden; border:1px solid #e5e7eb;">
+
+            <!-- Header -->
+            <div style="background:linear-gradient(135deg, #059669 0%, #047857 100%); padding:30px 20px; text-align:center;">
+
+              <!-- Logo (email-safe centered) -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="padding-bottom:15px;">
+                    <img
+                      src="https://feyza.app/feyza.png"
+                      alt="Feyza Logo"
+                      height="48"
+                      style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
+                    />
+                  </td>
+                </tr>
+              </table>
+
+              <h1 style="color:white; margin:0; font-size:28px; font-weight:700;">
+                ✅ Request Submitted!
+              </h1>
             </div>
-            
-            <div style="background: #f8fafc; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #e2e8f0;">
-              <p style="font-size: 18px; color: #374151;">Hi ${full_name},</p>
-              
-              <p style="color: #374151;">
+
+            <!-- Content -->
+            <div style="background:#f8fafc; padding:30px;">
+
+              <p style="font-size:18px; color:#374151; margin-top:0;">
+                Hi ${full_name},
+              </p>
+
+              <p style="color:#374151;">
                 Your loan request has been submitted successfully! Your bank account is connected and ready to receive funds.
               </p>
-              
-              <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #e2e8f0;">
-                <p style="color: #6b7280; margin: 0 0 10px 0;">Request Amount</p>
-                <p style="font-size: 32px; font-weight: bold; color: #2563eb; margin: 0;">
+
+              <!-- Amount Card -->
+              <div style="background:white; padding:20px; border-radius:12px; margin:20px 0; border:1px solid #e5e7eb; text-align:center;">
+                <p style="color:#6b7280; margin:0 0 10px 0; font-size:14px;">
+                  Request Amount
+                </p>
+                <p style="font-size:32px; font-weight:bold; color:#059669; margin:0;">
                   ${currency} ${amount.toLocaleString()}
                 </p>
-                <p style="color: #6b7280; margin: 10px 0 0 0;">
+                <p style="color:#6b7280; margin:10px 0 0 0; font-size:14px;">
                   Purpose: ${purpose.charAt(0).toUpperCase() + purpose.slice(1)}
                 </p>
               </div>
-              
-              <div style="background: #d1fae5; padding: 12px 16px; border-radius: 8px; margin: 16px 0;">
-                <p style="color: #065f46; margin: 0; font-size: 14px;">
-                  ✅ <strong>Bank Connected</strong> - When your loan is accepted, funds will be sent directly to your bank account via ACH transfer.
+
+              <!-- Bank Connected -->
+              <div style="background:#d1fae5; padding:14px 16px; border-radius:8px; margin:16px 0;">
+                <p style="color:#065f46; margin:0; font-size:14px;">
+                  ✅ <strong>Bank Connected</strong> — When your loan is accepted, funds will be sent directly to your bank account via ACH transfer.
                 </p>
               </div>
-              
-              <h3 style="color: #374151; margin-top: 24px;">What's Next?</h3>
-              <ol style="color: #374151; padding-left: 20px;">
-                <li style="margin-bottom: 12px;">
-                  <strong>Share your request</strong> - Send the link below to friends, family, or anyone who might be willing to lend you money.
+
+              <!-- Next Steps -->
+              <h3 style="color:#374151; margin-top:24px;">
+                What’s next?
+              </h3>
+
+              <ol style="color:#374151; padding-left:20px; margin-top:10px;">
+                <li style="margin-bottom:12px;">
+                  <strong>Share your request</strong> — Send the link below to friends, family, or anyone who might be willing to lend.
                 </li>
-                <li style="margin-bottom: 12px;">
-                  <strong>Wait for a lender</strong> - When someone accepts your request, they'll send money directly to your bank.
+                <li style="margin-bottom:12px;">
+                  <strong>Wait for a lender</strong> — Once accepted, money is sent directly to your bank.
                 </li>
-                <li style="margin-bottom: 12px;">
-                  <strong>Receive funds</strong> - Money typically arrives in 1-3 business days via ACH transfer.
+                <li style="margin-bottom:12px;">
+                  <strong>Receive funds</strong> — Typically arrives in 1–3 business days via ACH.
                 </li>
               </ol>
-              
-              <a href="${APP_URL}/loan-request/${loanRequest.id}?token=${accessToken}" style="display: block; background: #2563eb; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
+
+              <!-- CTA -->
+              <a
+                href="${APP_URL}/loan-request/${loanRequest.id}?token=${accessToken}"
+                style="display:block; background:linear-gradient(to right, #059669, #047857); color:white; text-decoration:none; padding:16px 32px; border-radius:8px; font-weight:600; text-align:center; margin:24px 0;"
+              >
                 View & Share Your Request →
               </a>
-              
-              <div style="background: #fef3c7; padding: 16px; border-radius: 8px; margin-top: 20px;">
-                <p style="color: #92400e; margin: 0; font-size: 14px;">
-                  💡 <strong>Tip:</strong> Share your loan request link with people you trust. The more people see it, the faster you'll find a lender!
+
+              <!-- Tip -->
+              <div style="background:#fef3c7; padding:16px; border-radius:8px; margin-top:20px;">
+                <p style="color:#92400e; margin:0; font-size:14px;">
+                  💡 <strong>Tip:</strong> Share your loan request with people you trust. More visibility increases your chances of finding a lender faster.
                 </p>
               </div>
-              
-              <p style="color: #6b7280; font-size: 14px; margin-top: 30px;">
-                If you have any questions, just reply to this email. This link expires in 7 days.
+
+              <!-- Footer note -->
+              <p style="color:#6b7280; font-size:13px; margin-top:30px; text-align:center;">
+                If you have any questions, reply to this email. This link expires in 7 days.
               </p>
+
             </div>
-          </body>
-        </html>
+          </div>
+        </body>
+      </html>
       `,
     });
 

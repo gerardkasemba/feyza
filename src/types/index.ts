@@ -20,8 +20,8 @@ export interface User {
   plaid_access_token?: string;
   plaid_item_id?: string;
   plaid_account_id?: string;
-  paypal_connected?: string;
-  paypal_email?: string;
+  paypal_email?:string;
+  paypal_connected?:string;
   // Notification preferences
   email_reminders: boolean;
   reminder_days_before: number;
@@ -46,6 +46,8 @@ export interface BusinessProfile {
   interest_type: InterestType;
   min_loan_amount?: number;
   max_loan_amount?: number;
+  // Graduated trust system
+  first_time_borrower_amount?: number;
   // Profile completion
   profile_completed: boolean;
   terms_accepted: boolean;
@@ -91,6 +93,10 @@ export interface Loan {
   lender_id?: string;
   business_lender_id?: string;
   lender_type: LenderType;
+  
+  // Loan type
+  loan_type_id?: string;
+  loan_type?: LoanType;
   
   // For invite-based loans
   invite_email?: string;
@@ -304,4 +310,58 @@ export interface DashboardStats {
   active_loans_as_lender: number;
   pending_payments: number;
   overdue_payments: number;
+}
+
+// Borrower Business Trust (graduated trust system)
+export type TrustStatus = 'new' | 'building' | 'graduated' | 'suspended' | 'banned';
+
+export interface BorrowerBusinessTrust {
+  id: string;
+  borrower_id: string;
+  business_id: string;
+  completed_loan_count: number;
+  total_amount_borrowed: number;
+  total_amount_repaid: number;
+  has_graduated: boolean;
+  graduated_at?: string;
+  has_defaulted: boolean;
+  default_count: number;
+  last_default_at?: string;
+  late_payment_count: number;
+  on_time_payment_count: number;
+  trust_status: TrustStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// Loan Types
+export interface LoanType {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+  is_active: boolean;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+  // When fetched with business context
+  isSelected?: boolean;
+  businessSettings?: {
+    min_amount?: number;
+    max_amount?: number;
+    interest_rate?: number;
+  } | null;
+}
+
+export interface BusinessLoanType {
+  id: string;
+  business_id: string;
+  loan_type_id: string;
+  min_amount?: number;
+  max_amount?: number;
+  interest_rate?: number;
+  is_active: boolean;
+  created_at: string;
+  loan_type?: LoanType;
 }

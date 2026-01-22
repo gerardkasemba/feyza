@@ -3,29 +3,50 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Head from 'next/head';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Badge } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
-import { formatCurrency, formatPercentage } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { BusinessProfile } from '@/types';
-import { 
-  Building2, MapPin, Globe, Calendar, DollarSign, 
-  Percent, Shield, CheckCircle, ArrowRight, Star, Clock,
-  ExternalLink, Mail, Phone, TrendingUp, Target,
-  CreditCard, Hand, FileText, Sparkles,
-  Heart
+import {
+  Building2,
+  MapPin,
+  Globe,
+  Calendar,
+  DollarSign,
+  Percent,
+  Shield,
+  CheckCircle,
+  ArrowRight,
+  Clock,
+  ExternalLink,
+  Mail,
+  Phone,
+  Zap,
+  CreditCard,
+  FileText,
+  TrendingUp,
+  Award,
 } from 'lucide-react';
-import { FaShieldAlt, FaStar, FaRocket, FaHandshake } from 'react-icons/fa';
-import { GiTakeMyMoney } from 'react-icons/gi';
-import { IoMedicalOutline, IoBusinessOutline } from 'react-icons/io5';
-import { BsLightningCharge } from 'react-icons/bs';
+
+interface LenderPreferences {
+  min_amount: number;
+  max_amount: number;
+  interest_rate: number;
+  interest_type: 'simple' | 'compound';
+  min_term_weeks: number;
+  max_term_weeks: number;
+  first_time_borrower_limit?: number;
+}
 
 export default function PublicLenderPage() {
   const params = useParams();
   const router = useRouter();
   const slug = params.slug as string;
-  
+
   const [lender, setLender] = useState<BusinessProfile | null>(null);
+  const [lenderPrefs, setLenderPrefs] = useState<LenderPreferences | null>(null);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -33,601 +54,621 @@ export default function PublicLenderPage() {
   useEffect(() => {
     const fetchLender = async () => {
       const supabase = createClient();
-      
-      try {
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser) {
-          const { data: profile } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', authUser.id)
-            .single();
-          setUser(profile);
-        }
-        
-        const { data: business, error } = await supabase
-          .from('business_profiles')
+
+      // Get current user (optional)
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('users')
           .select('*')
-          .eq('slug', slug)
-          .eq('public_profile_enabled', true)
-          .eq('verification_status', 'approved')
+          .eq('id', authUser.id)
           .single();
-        
-        if (error || !business) {
-          console.error('Lender not found:', error);
-          setNotFound(true);
-          setLoading(false);
-          return;
-        }
-        
-        setLender(business);
-      } catch (error) {
-        console.error('Error fetching lender:', error);
-        setNotFound(true);
-      } finally {
-        setLoading(false);
+        setUser(profile);
       }
+
+      // Fetch lender by slug
+      const { data: business, error } = await supabase
+        .from('business_profiles')
+        .select('*')
+        .eq('slug', slug)
+        .eq('public_profile_enabled', true)
+        .eq('verification_status', 'approved')
+        .single();
+
+      if (error || !business) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      setLender(business);
+
+      // Fetch lender preferences for loan terms
+      const { data: prefs } = await supabase
+        .from('lender_preferences')
+        .select('min_amount, max_amount, interest_rate, interest_type, min_term_weeks, max_term_weeks, first_time_borrower_limit')
+        .eq('business_id', business.id)
+        .single();
+
+      if (prefs) setLenderPrefs(prefs);
+
+      setLoading(false);
     };
 
-    if (slug) fetchLender();
+    fetchLender();
   }, [slug]);
 
   const handleRequestLoan = () => {
-    if (lender) {
-      sessionStorage.setItem('preferred_lender_slug', slug);
-      router.push('/loans/new?lender=' + slug);
-    }
+    sessionStorage.setItem('preferred_lender_slug', slug);
+    router.push('/loans/new?lender=' + slug);
   };
+
+  // Prepare SEO data
+  const minAmount = lenderPrefs?.min_amount || (lender as any)?.min_loan_amount || 50;
+  const maxAmount = lenderPrefs?.max_amount || (lender as any)?.max_loan_amount || 5000;
+  const interestRate = lenderPrefs?.interest_rate || (lender as any)?.default_interest_rate || 0;
+  
+  const businessName = lender?.business_name || '';
+  const tagline = lender?.tagline || '';
+  const description = (lender as any)?.description || '';
+  const businessType = getBusinessTypeLabel((lender as any)?.business_type || '');
+  const state = (lender as any)?.state || '';
+  
+  // Generate SEO-friendly title and descriptions
+  const pageTitle = `${businessName} - Verified Lender on Feyza | Get Loans Up to ${formatCurrency(maxAmount)}`;
+  const metaDescription = `${tagline} ${businessName} offers loans from ${formatCurrency(minAmount)} to ${formatCurrency(maxAmount)} at ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} interest. Fast approval, transparent terms. Apply now!`;
+  const ogDescription = `Need a loan? ${businessName} provides fast, fair loans on Feyza. Apply online in minutes. Verified lender with ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} rates!`;
+  
+  const canonicalUrl = typeof window !== 'undefined' 
+    ? `${window.location.origin}/lend/${slug}`
+    : `https://feyza.app/lend/${slug}`;
+  
+  const shareImage = (lender as any)?.logo_url || '/default-share-image.jpg';
+  
+  // Helper function for business type
+  function getBusinessTypeLabel(type: string) {
+    const types: Record<string, string> = {
+      microfinance: 'Microfinance Institution',
+      credit_union: 'Credit Union',
+      community_lender: 'CDFI',
+      fintech: 'FinTech Lender',
+      peer_lending: 'Peer-to-Peer Platform',
+      payday_lender: 'Licensed Lender',
+      investment_club: 'Investment Club',
+      other: 'Lending Company',
+    };
+    return types[type] || type;
+  }
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-white dark:bg-neutral-950">
-        <Navbar user={user} />
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-4 border-3 border-green-600 dark:border-green-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400">Loading lender profile...</p>
+      <>
+        <Head>
+          <title>Loading Lender Profile - Feyza</title>
+          <meta name="description" content="Loading lender information on Feyza peer-to-peer lending platform." />
+        </Head>
+        <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-neutral-500">Loading lender profile...</p>
           </div>
         </div>
-        <Footer />
-      </div>
+      </>
     );
   }
 
   if (notFound || !lender) {
     return (
-      <div className="min-h-screen bg-white dark:bg-neutral-950">
-        <Navbar user={user} />
-        <div className="flex items-center justify-center min-h-[60vh] px-4">
-          <div className="max-w-md text-center p-6 sm:p-8">
-            <div className="w-14 h-14 sm:w-16 sm:h-16 mx-auto mb-4 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-              <Building2 className="w-7 h-7 sm:w-8 sm:h-8 text-green-600 dark:text-green-400" />
-            </div>
-            <h1 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white mb-2">Lender Not Found</h1>
-            <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 mb-6">
-              This lender profile is either private or has been removed.
-            </p>
-            <Link href="/loans/new">
-              <Button className="bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white w-full sm:w-auto">
-                Browse All Lenders
-              </Button>
-            </Link>
-          </div>
+      <>
+        <Head>
+          <title>Lender Not Found - Feyza</title>
+          <meta name="description" content="The lender profile you're looking for doesn't exist or isn't publicly available on Feyza." />
+          <meta name="robots" content="noindex, follow" />
+        </Head>
+        <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+          <Navbar user={user} />
+          <main className="flex-1 flex items-center justify-center p-4">
+            <Card className="max-w-md text-center p-8">
+              <div className="w-20 h-20 mx-auto mb-6 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
+                <Building2 className="w-10 h-10 text-neutral-400" />
+              </div>
+              <h1 className="text-2xl font-bold text-neutral-900 dark:text-white mb-3">Lender Not Found</h1>
+              <p className="text-neutral-500 dark:text-neutral-400 mb-6">
+                This lender profile doesn't exist or isn't publicly available.
+              </p>
+              <Link href="/loans/new">
+                <Button size="lg">Browse All Lenders</Button>
+              </Link>
+            </Card>
+          </main>
+          <Footer />
         </div>
-        <Footer />
-      </div>
+      </>
     );
   }
 
-  const getBusinessTypeLabel = (type: string) => {
-    const types: Record<string, string> = {
-      microfinance: 'Microfinance',
-      credit_union: 'Credit Union',
-      community_lender: 'Community Lender',
-      fintech: 'FinTech',
-      peer_lending: 'P2P Platform',
-      payday_lender: 'Licensed Lender',
-      investment_club: 'Investment Club',
-      other: 'Lender',
-    };
-    return types[type] || type;
-  };
-
   return (
-    <div className="min-h-screen bg-white dark:bg-neutral-950">
-      <Navbar user={user} />
-      
-      <main className="flex-1">
-        {/* Hero Section */}
-        <div className="bg-green-600 dark:bg-green-700 text-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-            {/* Mobile: Centered stack layout */}
-            <div className="flex flex-col items-center text-center lg:flex-row lg:items-center lg:text-left gap-6 lg:gap-8">
-              {/* Logo & Badges */}
-              <div className="flex flex-col items-center lg:items-start">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 lg:w-28 lg:h-28 bg-white/10 dark:bg-white/20 rounded-xl sm:rounded-2xl border-2 border-white/20 flex items-center justify-center mb-3 sm:mb-4">
-                  {lender.logo_url ? (
-                    <img 
-                      src={lender.logo_url} 
-                      alt={lender.business_name} 
-                      className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-lg sm:rounded-xl object-cover"
-                    />
-                  ) : (
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 lg:w-24 lg:h-24 rounded-lg sm:rounded-xl bg-white/10 dark:bg-white/20 flex items-center justify-center">
-                      <Building2 className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 text-white/80" />
+    <>
+      <Head>
+        {/* Primary Meta Tags */}
+        <title>{pageTitle}</title>
+        <meta name="title" content={pageTitle} />
+        <meta name="description" content={metaDescription} />
+        <meta name="keywords" content={`${businessName}, loan, personal loan, business loan, ${businessType.toLowerCase()}, fast loan, online loan, Feyza, peer-to-peer lending, ${state} loans`} />
+        
+        {/* Canonical URL */}
+        <link rel="canonical" href={canonicalUrl} />
+        
+        {/* Open Graph / Facebook */}
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={ogDescription} />
+        <meta property="og:image" content={shareImage} />
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        <meta property="og:image:alt" content={`${businessName} - Verified Lender on Feyza`} />
+        <meta property="og:site_name" content="Feyza" />
+        
+        {/* Twitter */}
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content={canonicalUrl} />
+        <meta property="twitter:title" content={pageTitle} />
+        <meta property="twitter:description" content={ogDescription} />
+        <meta property="twitter:image" content={shareImage} />
+        <meta property="twitter:image:alt" content={`${businessName} - Verified Lender on Feyza`} />
+        
+        {/* Additional SEO */}
+        <meta name="robots" content="index, follow, max-image-preview:large" />
+        <meta name="author" content={businessName} />
+        
+        {/* Structured Data / Schema.org */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FinancialService",
+            "name": businessName,
+            "description": tagline,
+            "url": canonicalUrl,
+            "logo": shareImage,
+            "sameAs": (lender as any)?.website_url ? [(lender as any).website_url] : [],
+            "address": {
+              "@type": "PostalAddress",
+              "addressRegion": state,
+              "addressCountry": "US"
+            },
+            "offers": {
+              "@type": "Offer",
+              "priceSpecification": {
+                "@type": "UnitPriceSpecification",
+                "priceCurrency": "USD",
+                "minPrice": minAmount,
+                "maxPrice": maxAmount
+              },
+              "eligibleRegion": {
+                "@type": "Country",
+                "name": "United States"
+              }
+            },
+            "areaServed": {
+              "@type": "State",
+              "name": state || "United States"
+            }
+          })}
+        </script>
+
+        {/* Additional structured data for business */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": businessName,
+            "description": tagline,
+            "url": canonicalUrl,
+            "logo": shareImage,
+            "sameAs": (lender as any)?.website_url ? [(lender as any).website_url] : []
+          })}
+        </script>
+      </Head>
+
+      <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
+        <Navbar user={user} />
+
+        {/* Add breadcrumb schema markup */}
+        <script type="application/ld+json">
+          {JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "BreadcrumbList",
+            "itemListElement": [{
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://feyza.app"
+            }, {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Lenders",
+              "item": "https://feyza.app/lenders"
+            }, {
+              "@type": "ListItem",
+              "position": 3,
+              "name": businessName,
+              "item": canonicalUrl
+            }]
+          })}
+        </script>
+
+        <main className="flex-1">
+          {/* Hero Section (grid-based for stable layout) */}
+          <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                {/* Left */}
+                <div className="lg:col-span-8 min-w-0">
+                  <div className="flex items-start gap-6">
+                    {/* Logo */}
+                    <div className="w-24 h-24 rounded-2xl flex-shrink-0 overflow-hidden bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700">
+                      {lender.logo_url ? (
+                        <img
+                          src={lender.logo_url}
+                          alt={`${businessName} logo`}
+                          className="w-full h-full object-cover"
+                          loading="eager"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-500 to-green-600">
+                          <span className="text-white text-3xl font-bold">
+                            {businessName.charAt(0).toUpperCase()}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                
-                <div className="flex flex-wrap justify-center lg:justify-start gap-1.5 sm:gap-2">
-                  <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
-                    <CheckCircle className="w-3 h-3 mr-1" />
-                    Verified
-                  </Badge>
-                  <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
-                    <Shield className="w-3 h-3 mr-1" />
-                    Licensed
-                  </Badge>
-                  {lender.years_in_business && (
-                    <Badge className="bg-white/20 dark:bg-white/30 text-white border-white/30 dark:border-white/40 text-xs sm:text-sm px-2 py-0.5 sm:px-2.5 sm:py-1">
-                      <Calendar className="w-3 h-3 mr-1" />
-                      {lender.years_in_business}+ yrs
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              
-              {/* Business Info */}
-              <div className="flex-1">
-                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2 break-words">
-                  {lender.business_name}
-                </h1>
-                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 sm:gap-4 text-white/80 dark:text-white/90 text-sm sm:text-base mb-3 sm:mb-4">
-                  <span className="flex items-center gap-1.5 sm:gap-2">
-                    <Building2 className="w-4 h-4" />
-                    {getBusinessTypeLabel(lender.business_type)}
-                  </span>
-                  {lender.state && (
-                    <span className="flex items-center gap-1.5 sm:gap-2">
-                      <MapPin className="w-4 h-4" />
-                      {lender.state}, USA
-                    </span>
-                  )}
-                </div>
-                
-                {lender.tagline && (
-                  <p className="text-base sm:text-lg text-white/90 dark:text-white/95 mb-4 sm:mb-6 max-w-lg mx-auto lg:mx-0">
-                    {lender.tagline}
-                  </p>
-                )}
-              </div>
 
-              {/* CTA Button - Full width on mobile */}
-              <div className="w-full sm:w-auto flex-shrink-0">
-                <Button 
-                  size="lg" 
-                  className="w-full sm:w-auto bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200 text-base sm:text-lg px-6 py-3"
-                  onClick={handleRequestLoan}
-                >
-                  <Sparkles className="w-5 h-5 mr-2" />
-                  Request a Loan
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-                <p className="text-white/70 dark:text-white/80 text-xs sm:text-sm mt-2 sm:mt-3 text-center lg:text-left">
-                  No hidden fees • No credit check
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-3 mb-2">
+                        <h1 className="text-3xl font-bold text-neutral-900 dark:text-white break-words">
+                          {businessName}
+                        </h1>
+                        <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          Verified
+                        </Badge>
+                      </div>
 
-        {/* Main Content */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-          {/* Mobile: Quick Action Card at top */}
-          <div className="lg:hidden mb-6">
-            <div className="bg-green-600 dark:bg-green-700 rounded-xl p-5 sm:p-6">
-              <div className="text-center">
-                <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 rounded-full bg-white/20 dark:bg-white/30 flex items-center justify-center">
-                  <Target className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                </div>
-                <h3 className="text-base sm:text-lg font-bold text-white mb-2">Ready to apply?</h3>
-                <p className="text-green-100 dark:text-green-200 text-sm mb-4">
-                  Get a decision in minutes. No obligation.
-                </p>
-                <Button 
-                  className="w-full bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200"
-                  onClick={handleRequestLoan}
-                >
-                  <Heart className="w-5 h-5 mr-2" />
-                  Apply Now
-                </Button>
-                <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-green-200 dark:text-green-300 text-xs sm:text-sm mt-4">
-                  <span>✓ No credit check</span>
-                  <span>✓ Funds in 24h</span>
-                  <span>✓ Flexible terms</span>
-                </div>
-              </div>
-            </div>
-          </div>
+                      {tagline && (
+                        <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-4">
+                          {tagline}
+                        </p>
+                      )}
 
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
-            {/* Left Column - Main Content */}
-            <div className="lg:w-2/3 space-y-5 sm:space-y-6">
-              {/* About Section */}
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                    <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
+                      <div className="flex flex-wrap items-center gap-4 text-sm text-neutral-500 dark:text-neutral-400">
+                        <span className="flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4" />
+                          {businessType}
+                        </span>
+                        {state && (
+                          <span className="flex items-center gap-1.5">
+                            <MapPin className="w-4 h-4" />
+                            {state}, USA
+                          </span>
+                        )}
+                        {(lender as any).years_in_business && (
+                          <span className="flex items-center gap-1.5">
+                            <Calendar className="w-4 h-4" />
+                            {(lender as any).years_in_business}+ years
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <h2 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white">
-                    About {lender.business_name}
+                </div>
+
+                {/* Right */}
+                <div className="lg:col-span-4">
+                  <div className="bg-gradient-to-br from-green-600 to-green-700 dark:from-green-700 dark:to-green-800 rounded-2xl p-6 text-white dark:text-green-50 shadow-xl">
+                    <h3 className="text-lg font-semibold mb-2 dark:text-green-100">Ready to borrow?</h3>
+                    <p className="text-green-100 dark:text-green-200 text-sm mb-4">
+                      Get funds quickly with fair rates and no hidden fees.
+                    </p>
+                    <Button
+                      size="lg"
+                      className="w-full bg-white dark:bg-green-50 text-green-700 dark:text-green-800 hover:bg-green-50 dark:hover:bg-green-100 font-semibold"
+                      onClick={handleRequestLoan}
+                    >
+                      Request a Loan
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Loan Terms Section (equal-height cards) */}
+          <div className="bg-neutral-50 dark:bg-neutral-900/50 py-10">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
+                {/* Loan Amount */}
+                <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Loan Range</p>
+                  <p className="text-lg font-bold text-neutral-900 dark:text-white">
+                    {formatCurrency(minAmount)}
+                  </p>
+                  <p className="text-xs text-neutral-400 mt-auto">to {formatCurrency(maxAmount)}</p>
+                </div>
+
+                {/* Interest Rate */}
+                <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Percent className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Interest Rate</p>
+                  <p className="text-lg font-bold text-neutral-900 dark:text-white">
+                    {interestRate === 0 ? 'Interest Free' : `${interestRate}%`}
+                  </p>
+                  <p className="text-xs text-neutral-400 capitalize mt-auto">{(lenderPrefs?.interest_type || 'simple')} interest</p>
+                </div>
+
+                {/* Fast Approval */}
+                <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <Zap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Approval Time</p>
+                  <p className="text-lg font-bold text-neutral-900 dark:text-white">Fast</p>
+                  <p className="text-xs text-neutral-400 mt-auto">Usually &lt; 24 hours</p>
+                </div>
+
+                {/* No Hidden Fees */}
+                <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
+                  <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                    <Shield className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 uppercase tracking-wide mb-1">Hidden Fees</p>
+                  <p className="text-lg font-bold text-neutral-900 dark:text-white">None</p>
+                  <p className="text-xs text-neutral-400 mt-auto">Transparent pricing</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Left Column */}
+              <div className="lg:col-span-8 space-y-8 min-w-0">
+                {/* About */}
+                {description && (
+                  <div>
+                    <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4">
+                      About {businessName}
+                    </h2>
+                    <p className="text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                      {description}
+                    </p>
+                  </div>
+                )}
+
+                {/* How It Works (equal height, no fragile connector line) */}
+                <div>
+                  <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-6">
+                    How It Works
                   </h2>
-                </div>
-                
-                {lender.description ? (
-                  <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-400 leading-relaxed">
-                    {lender.description}
-                  </p>
-                ) : (
-                  <p className="text-sm sm:text-base text-neutral-500 dark:text-neutral-400 italic">
-                    No description provided.
-                  </p>
-                )}
-              </div>
 
-              {/* Lending Terms */}
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-4 sm:mb-6">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                    <CreditCard className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h2 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white">Lending Terms</h2>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
-                  <div className="p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
-                        <DollarSign className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-medium text-neutral-500 dark:text-neutral-400">Loan Range</p>
-                        <p className="text-sm sm:text-lg font-bold text-neutral-900 dark:text-white truncate">
-                          {formatCurrency(lender.min_loan_amount || 50)} - {formatCurrency(lender.max_loan_amount || 5000)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
-                        <Percent className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-medium text-neutral-500 dark:text-neutral-400">Interest Rate</p>
-                        <p className="text-sm sm:text-lg font-bold text-neutral-900 dark:text-white">
-                          {formatPercentage(lender.default_interest_rate || 0)} APR
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/40 flex items-center justify-center flex-shrink-0">
-                        <Clock className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs sm:text-sm font-medium text-neutral-500 dark:text-neutral-400">Processing</p>
-                        <p className="text-sm sm:text-lg font-bold text-neutral-900 dark:text-white">24-48 hours</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Feature Highlight */}
-                <div className="p-3 sm:p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-                  <div className="flex items-start gap-3">
-                    <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-green-500 dark:bg-green-600 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Sparkles className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <h4 className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-white mb-1">
-                        First-time borrower friendly
-                      </h4>
-                      <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-400">
-                        {lender.business_name} specializes in helping first-time borrowers build credit history.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* How It Works */}
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-4 sm:mb-6">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                    <Hand className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h2 className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white">How It Works</h2>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  {[
-                    {
-                      step: 1,
-                      title: "Apply Online",
-                      description: "Complete a simple 5-minute application.",
-                      icon: FileText
-                    },
-                    {
-                      step: 2,
-                      title: "Get Approved",
-                      description: "Receive a decision within 24 hours.",
-                      icon: CheckCircle
-                    },
-                    {
-                      step: 3,
-                      title: "Receive Funds",
-                      description: "Money sent directly to your account.",
-                      icon: TrendingUp
-                    }
-                  ].map((step) => {
-                    const Icon = step.icon;
-                    return (
-                      <div key={step.step} className="relative">
-                        <div className="absolute -top-2 left-3 sm:left-4 z-10">
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-green-600 dark:bg-green-700 text-white text-sm font-bold flex items-center justify-center border-2 border-white dark:border-neutral-900">
-                            {step.step}
-                          </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
+                    {/* Step 1 */}
+                    <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
+                      <div className="flex flex-col items-center text-center h-full">
+                        <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                          <FileText className="w-7 h-7 text-green-600 dark:text-green-400" />
                         </div>
-                        <div className="pt-5 sm:pt-6 p-3 sm:p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-2 sm:mb-3">
-                            <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
-                          </div>
-                          <h3 className="font-bold text-sm sm:text-base text-neutral-900 dark:text-white mb-1">{step.title}</h3>
-                          <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">{step.description}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Contact Info - Mobile only */}
-              <div className="lg:hidden bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                    <Mail className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">Contact</h3>
-                </div>
-
-                <div className="space-y-2">
-                  {lender.contact_email && (
-                    <a 
-                      href={`mailto:${lender.contact_email}`}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700 transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                        <Mail className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Email</p>
-                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 truncate">{lender.contact_email}</p>
-                      </div>
-                    </a>
-                  )}
-                  
-                  {lender.contact_phone && (
-                    <a 
-                      href={`tel:${lender.contact_phone}`}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700 transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                        <Phone className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Phone</p>
-                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">{lender.contact_phone}</p>
-                      </div>
-                    </a>
-                  )}
-                  
-                  {lender.website_url && (
-                    <a 
-                      href={lender.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3 rounded-lg bg-neutral-50 dark:bg-neutral-800 active:bg-neutral-100 dark:active:bg-neutral-700 transition-colors"
-                    >
-                      <div className="w-9 h-9 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
-                        <Globe className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Website</p>
-                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 truncate">
-                          {lender.website_url.replace(/^https?:\/\//, '')}
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold mb-3">
+                          1
+                        </span>
+                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">Submit Request</h3>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-auto">
+                          Fill out the loan request form with your desired amount and terms.
                         </p>
                       </div>
-                      <ExternalLink className="w-4 h-4 text-neutral-400 dark:text-neutral-500 flex-shrink-0" />
-                    </a>
-                  )}
+                    </div>
+
+                    {/* Step 2 */}
+                    <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
+                      <div className="flex flex-col items-center text-center h-full">
+                        <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                          <Clock className="w-7 h-7 text-green-600 dark:text-green-400" />
+                        </div>
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold mb-3">
+                          2
+                        </span>
+                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">Quick Review</h3>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-auto">
+                          {businessName} reviews your request, typically within 24 hours.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Step 3 */}
+                    <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
+                      <div className="flex flex-col items-center text-center h-full">
+                        <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
+                          <CreditCard className="w-7 h-7 text-green-600 dark:text-green-400" />
+                        </div>
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-green-600 text-white text-xs font-bold mb-3">
+                          3
+                        </span>
+                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">Receive Funds</h3>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-auto">
+                          Once approved, funds are sent directly to your account.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Why Choose */}
+                <div className="bg-gradient-to-br from-green-50 to-teal-50 dark:from-green-900/20 dark:to-teal-900/20 rounded-2xl p-6 border border-green-200 dark:border-green-800">
+                  <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4">
+                    Why Choose {businessName}?
+                  </h2>
+
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-neutral-900 dark:text-white">Verified Lender</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Identity and business verified</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <Zap className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-neutral-900 dark:text-white">Fast Decisions</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Quick approval process</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <Shield className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-neutral-900 dark:text-white">Transparent Terms</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">No hidden fees or surprises</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <TrendingUp className="w-4 h-4 text-white" />
+                      </div>
+                      <div>
+                        <p className="font-medium text-neutral-900 dark:text-white">Build Credit</p>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Improve your borrowing tier</p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Trust Signals - Mobile only */}
-              <div className="lg:hidden bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-4 sm:p-6">
-                <div className="text-center">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 mx-auto mb-3 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-green-600 dark:text-green-400" />
+              {/* Right Column (sticky whole column) */}
+              <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-6 self-start">
+                {/* Apply Now Card */}
+                <Card className="p-6">
+                  <div className="text-center pb-4 border-b border-neutral-200 dark:border-neutral-700">
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">Borrow up to</p>
+                    <p className="text-3xl font-bold text-green-600 dark:text-green-400">
+                      {formatCurrency(maxAmount)}
+                    </p>
+                    {interestRate === 0 ? (
+                      <Badge className="mt-2 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 border-0">
+                        Interest Free!
+                      </Badge>
+                    ) : (
+                      <p className="text-sm text-neutral-500 mt-1">at {interestRate}% APR</p>
+                    )}
                   </div>
-                  <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Trust & Safety</h4>
-                  <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                    Verified and monitored by Feyza
-                  </p>
-                  
-                  <div className="grid grid-cols-4 gap-2">
-                    <div className="p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-[10px] sm:text-xs font-medium text-neutral-700 dark:text-neutral-300">Verified</p>
-                    </div>
-                    <div className="p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Shield className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-[10px] sm:text-xs font-medium text-neutral-700 dark:text-neutral-300">Secure</p>
-                    </div>
-                    <div className="p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Clock className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-[10px] sm:text-xs font-medium text-neutral-700 dark:text-neutral-300">Fast</p>
-                    </div>
-                    <div className="p-2 sm:p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Star className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-[10px] sm:text-xs font-medium text-neutral-700 dark:text-neutral-300">4.8★</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Right Column - Sidebar (Desktop only) */}
-            <div className="hidden lg:block lg:w-1/3 space-y-6">
-              {/* Quick Action Card */}
-              <div className="bg-green-600 dark:bg-green-700 rounded-xl border border-green-600 dark:border-green-700 p-6">
-                <div className="text-center">
-                  <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-white/20 dark:bg-white/30 flex items-center justify-center">
-                    <Target className="w-6 h-6 text-white" />
+                  <div className="py-4 space-y-3">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-500 dark:text-neutral-400">Min. amount</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(minAmount)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-neutral-500 dark:text-neutral-400">Interest type</span>
+                      <span className="font-medium text-neutral-900 dark:text-white capitalize">{lenderPrefs?.interest_type || 'simple'}</span>
+                    </div>
+                    {lenderPrefs?.first_time_borrower_limit && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-neutral-500 dark:text-neutral-400">First-time limit</span>
+                        <span className="font-medium text-neutral-900 dark:text-white">
+                          {formatCurrency(lenderPrefs.first_time_borrower_limit)}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-2">Ready to apply?</h3>
-                  <p className="text-green-100 dark:text-green-200 mb-4">
-                    Get a decision in minutes. No obligation.
-                  </p>
-                  <Button 
-                    className="w-full bg-white dark:bg-white text-green-700 dark:text-green-800 hover:bg-neutral-100 dark:hover:bg-neutral-200"
+
+                  <Button
+                    size="lg"
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
                     onClick={handleRequestLoan}
                   >
-                    <Heart className="w-5 h-5 mr-2" />
                     Apply Now
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-                  <p className="text-green-200 dark:text-green-300 text-sm mt-4">
-                    ✓ No credit check required<br />
-                    ✓ Funds in 24 hours<br />
-                    ✓ Flexible repayment
+
+                  <p className="text-xs text-center text-neutral-400 mt-3">
+                    No impact on your credit score
                   </p>
-                </div>
-              </div>
+                </Card>
 
-              {/* Contact Info */}
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Mail className="w-5 h-5 text-green-600 dark:text-green-400" />
+                {/* Contact Info */}
+                {((lender as any).contact_email || (lender as any).contact_phone || (lender as any).website_url) && (
+                  <Card className="p-6">
+                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-4">Contact</h3>
+
+                    <div className="space-y-3">
+                      {(lender as any).contact_email && (
+                        <a
+                          href={`mailto:${(lender as any).contact_email}`}
+                          className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                        >
+                          <Mail className="w-4 h-4" />
+                          {(lender as any).contact_email}
+                        </a>
+                      )}
+
+                      {(lender as any).contact_phone && (
+                        <a
+                          href={`tel:${(lender as any).contact_phone}`}
+                          className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                        >
+                          <Phone className="w-4 h-4" />
+                          {(lender as any).contact_phone}
+                        </a>
+                      )}
+
+                      {(lender as any).website_url && (
+                        <a
+                          href={(lender as any).website_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-3 text-sm text-neutral-600 dark:text-neutral-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+                        >
+                          <Globe className="w-4 h-4" />
+                          Visit Website
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  </Card>
+                )}
+
+                {/* Trust Badge */}
+                <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                  <div className="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                    <Award className="w-5 h-5 text-white" />
                   </div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">Contact Information</h3>
-                </div>
-
-                <div className="space-y-3">
-                  {lender.contact_email && (
-                    <a 
-                      href={`mailto:${lender.contact_email}`}
-                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                        <Mail className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Email</p>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{lender.contact_email}</p>
-                      </div>
-                    </a>
-                  )}
-                  
-                  {lender.contact_phone && (
-                    <a 
-                      href={`tel:${lender.contact_phone}`}
-                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                        <Phone className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Phone</p>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">{lender.contact_phone}</p>
-                      </div>
-                    </a>
-                  )}
-                  
-                  {lender.website_url && (
-                    <a 
-                      href={lender.website_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                        <Globe className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-neutral-900 dark:text-white">Website</p>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{lender.website_url.replace(/^https?:\/\//, '')}</p>
-                      </div>
-                      <ExternalLink className="w-4 h-4 text-neutral-400 dark:text-neutral-500" />
-                    </a>
-                  )}
-                </div>
-              </div>
-
-              {/* Trust Signals */}
-              <div className="bg-white dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800 p-6">
-                <div className="text-center">
-                  <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                    <Shield className="w-6 h-6 text-green-600 dark:text-green-400" />
-                  </div>
-                  <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Trust & Safety</h4>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                    This lender is verified and monitored by Feyza
-                  </p>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">Verified</p>
-                    </div>
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Shield className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">Secure</p>
-                    </div>
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Clock className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">Fast</p>
-                    </div>
-                    <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <Star className="w-4 h-4 text-green-600 dark:text-green-400 mx-auto mb-1" />
-                      <p className="text-xs font-medium text-neutral-700 dark:text-neutral-300">4.8★</p>
-                    </div>
+                  <div>
+                    <p className="font-medium text-green-800 dark:text-green-300 text-sm">Verified by Feyza</p>
+                    <p className="text-xs text-green-600 dark:text-green-400">Licensed & trusted lender</p>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </main>
 
-        {/* Fixed Bottom CTA - Mobile only */}
-        <div className="z-100 lg:hidden fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 safe-area-inset-bottom">
-          <Button 
-            className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white py-3"
-            onClick={handleRequestLoan}
-          >
-            <Sparkles className="w-5 h-5 mr-2" />
-            Request a Loan from {lender.business_name}
-          </Button>
-        </div>
-
-        {/* Spacer for fixed bottom CTA on mobile */}
-        <div className="lg:hidden h-20" />
-      </main>
-
-      <Footer />
-    </div>
+        <Footer />
+      </div>
+    </>
   );
 }

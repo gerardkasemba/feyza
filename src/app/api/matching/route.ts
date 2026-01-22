@@ -154,59 +154,170 @@ export async function POST(request: NextRequest) {
         
         await sendEmail({
           to: loan.borrower.email,
-          subject: '📋 Loan Request Update - No Matching Lenders Found',
+          subject: 'Loan Request Update - No Matching Lenders Found',
           html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: linear-gradient(135deg, #f97316 0%, #ea580c 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                  <h1 style="color: white; margin: 0;">📋 Loan Request Update</h1>
+          <!DOCTYPE html>
+          <html>
+            <body style="
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #f9fafb;
+            ">
+
+              <!-- CARD -->
+              <div style="
+                background: white;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+              ">
+
+                <!-- HEADER -->
+                <div style="
+                  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                  padding: 30px;
+                  text-align: center;
+                ">
+                  <!-- LOGO (email-safe centered) -->
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td align="center" style="padding-bottom: 15px;">
+                        <img
+                          src="https://feyza.app/feyza.png"
+                          alt="Feyza Logo"
+                          height="40"
+                          style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                        />
+                      </td>
+                    </tr>
+                  </table>
+
+                  <h1 style="color: white; margin: 0; font-size: 22px; font-weight: 700;">
+                    Loan Request Update
+                  </h1>
                 </div>
-                
-                <div style="background: #fff7ed; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #fed7aa;">
-                  <p style="font-size: 18px;">Hi ${loan.borrower.full_name || 'there'}! 👋</p>
-                  
-                  <p>We couldn't find a matching business lender for your loan request at this time.</p>
-                  
-                  <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; border: 1px solid #fed7aa;">
-                    <p style="margin: 0;"><strong>Requested Amount:</strong> ${loan.currency} ${loan.amount.toLocaleString()}</p>
-                    ${loan.purpose ? `<p style="margin: 10px 0 0 0;"><strong>Purpose:</strong> ${loan.purpose}</p>` : ''}
+
+                <!-- CONTENT -->
+                <div style="
+                  background: #f0fdf4;
+                  padding: 30px;
+                  border: 1px solid #bbf7d0;
+                  border-top: none;
+                ">
+                  <p style="font-size: 16px; margin-top: 0;">
+                    Hi ${loan.borrower.full_name || 'there'},
+                  </p>
+
+                  <p style="color:#374151;">
+                    We couldn’t find a matching business lender for your loan request at this time.
+                  </p>
+
+                  <!-- LOAN DETAILS -->
+                  <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin: 20px 0;
+                    border: 1px solid #bbf7d0;
+                  ">
+                    <p style="margin: 0;">
+                      <strong>Requested Amount:</strong>
+                      ${loan.currency} ${loan.amount.toLocaleString()}
+                    </p>
+                    ${loan.purpose ? `
+                      <p style="margin: 10px 0 0 0;">
+                        <strong>Purpose:</strong> ${loan.purpose}
+                      </p>
+                    ` : ''}
                   </div>
-                  
+
+                  <!-- FIRST TIME TIP -->
                   ${isFirstTime ? `
-                  <div style="background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                    <p style="margin: 0; color: #1e40af; font-size: 14px;">
-                      <strong>💡 First-time borrower tip:</strong> As a new user, some lenders have limits on how much they'll lend to first-timers. 
-                      Try requesting a smaller amount (e.g., $100-$300) to build your borrowing history first.
+                  <div style="
+                    background: #ecfeff;
+                    border: 1px solid #67e8f9;
+                    border-radius: 8px;
+                    padding: 16px;
+                    margin: 20px 0;
+                  ">
+                    <p style="margin: 0; color: #155e75; font-size: 14px;">
+                      <strong>First-time borrower tip:</strong>
+                      Some lenders limit how much they lend to new users.
+                      Consider requesting a smaller amount (e.g. $100–$300) to build your borrowing history.
                     </p>
                   </div>
                   ` : ''}
-                  
-                  <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                    <p style="margin: 0; color: #166534; font-size: 14px;">
-                      <strong>What you can do:</strong>
+
+                  <!-- WHAT YOU CAN DO -->
+                  <div style="
+                    background: #ecfdf5;
+                    border: 1px solid #bbf7d0;
+                    border-radius: 8px;
+                    padding: 16px;
+                    margin: 20px 0;
+                  ">
+                    <p style="margin: 0; color: #065f46; font-size: 14px; font-weight: 600;">
+                      What you can do next:
                     </p>
-                    <ul style="margin: 10px 0 0 0; padding-left: 20px; color: #166534; font-size: 14px;">
+                    <ul style="
+                      margin: 10px 0 0 0;
+                      padding-left: 20px;
+                      color: #065f46;
+                      font-size: 14px;
+                    ">
                       <li>Try a smaller loan amount</li>
-                      <li>Request from a friend or family member instead</li>
-                      <li>Check back later as new lenders join regularly</li>
+                      <li>Request from a friend or family member</li>
+                      <li>Check back later as new lenders join</li>
                     </ul>
                   </div>
-                  
-                  <a href="${APP_URL}/loans/new" style="display: block; background: #10b981; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
+
+                  <!-- CTA -->
+                  <a
+                    href="${APP_URL}/loans/new"
+                    style="
+                      display: block;
+                      background: linear-gradient(to right, #059669, #047857);
+                      color: white;
+                      text-decoration: none;
+                      padding: 16px 32px;
+                      border-radius: 8px;
+                      font-weight: 600;
+                      text-align: center;
+                      margin: 24px 0;
+                    "
+                  >
                     Try a Different Amount →
                   </a>
-                  
-                  <a href="${APP_URL}/loans/${loan.id}" style="display: block; color: #6b7280; text-decoration: none; text-align: center; font-size: 14px;">
+
+                  <a
+                    href="${APP_URL}/loans/${loan.id}"
+                    style="
+                      display: block;
+                      color: #6b7280;
+                      text-decoration: none;
+                      text-align: center;
+                      font-size: 14px;
+                    "
+                  >
                     View your loan request
                   </a>
                 </div>
-                
-                <p style="color: #9ca3af; font-size: 12px; text-align: center; margin-top: 20px;">
-                  Sent via Feyza • Simple loan tracking for everyone
-                </p>
-              </body>
-            </html>
+              </div>
+
+              <!-- FOOTER -->
+              <p style="
+                color: #9ca3af;
+                font-size: 12px;
+                text-align: center;
+                margin-top: 20px;
+              ">
+                Sent via Feyza • Simple loan tracking for everyone
+              </p>
+
+            </body>
+          </html>
           `,
         });
         
@@ -215,10 +326,12 @@ export async function POST(request: NextRequest) {
           user_id: loan.borrower_id,
           loan_id: loan.id,
           type: 'no_match_found',
-          title: '📋 No Matching Lenders',
-          message: isFirstTime 
-            ? `No lenders found for your ${loan.currency} ${loan.amount} request. As a first-time borrower, try a smaller amount to build history.`
-            : `No lenders currently available for your ${loan.currency} ${loan.amount} request. Try a smaller amount or ask a friend.`,
+          title: 'No Lenders Available',
+          message: isFirstTime
+            ? `We couldn’t find a lender for your ${loan.currency} ${loan.amount.toLocaleString()} request yet. 
+        As a first-time borrower, consider requesting a smaller amount to build trust and increase your chances of approval.`
+            : `There are no lenders available for your ${loan.currency} ${loan.amount.toLocaleString()} request at the moment.
+        You may try a smaller amount or invite someone you trust to lend through Feyza.`,
         });
       }
       
@@ -507,155 +620,142 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
 
     await sendEmail({
       to: lenderEmail,
-      subject: `🎯 New Loan Match: ${loan.currency} ${loan.amount}`,
+      subject: `New Loan Match: ${loan.currency} ${loan.amount}`,
       html: `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          </head>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <!-- Header with logo -->
-            <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-              <!-- Logo -->
-              <div style="margin-bottom: 20px;">
-                <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                    alt="Feyza Logo" 
-                    style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-              </div>
-              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">🎯 You've Been Matched!</h1>
-              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">New Loan Opportunity</p>
-            </div>
-            
-            <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-              <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${lenderName}! 👋</p>
-              
-              <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-                A borrower matches your lending preferences. Here are the details:
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      </head>
+
+      <body style="margin:0; padding:0; background:#ffffff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#333;">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+          <tr>
+            <td align="center" style="padding:20px;">
+              <!-- CARD -->
+              <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="border-radius:16px; overflow:hidden; border:1px solid #bbf7d0;">
+
+                <!-- HEADER -->
+                <tr>
+                  <td style="background:linear-gradient(135deg,#059669,#047857); padding:30px;">
+                    <table width="100%" role="presentation">
+                      <tr>
+                        <td align="center" style="padding-bottom:20px;">
+                          <img
+                            src="https://feyza.app/feyza.png"
+                            alt="Feyza"
+                            height="40"
+                            style="display:block; border:0; outline:none; text-decoration:none;"
+                          />
+                        </td>
+                      </tr>
+                      <tr>
+                        <td align="center">
+                          <h1 style="margin:0; color:#ffffff; font-size:26px; font-weight:600;">
+                            🎯 You've Been Matched!
+                          </h1>
+                          <p style="margin:10px 0 0; color:rgba(255,255,255,0.9); font-size:16px;">
+                            New Loan Opportunity
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- BODY -->
+                <tr>
+                  <td style="background:#f0fdf4; padding:30px;">
+                    <p style="font-size:18px; color:#065f46; margin:0 0 20px;">
+                      Hi ${lenderName}! 👋
+                    </p>
+
+                    <p style="color:#065f46; margin:0 0 20px;">
+                      A borrower matches your lending preferences. Here are the details:
+                    </p>
+
+                    <!-- LOAN CARD -->
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff; border:1px solid #bbf7d0; border-radius:12px; margin:20px 0;">
+                      <tr>
+                        <td align="center" style="padding:25px; border-bottom:1px solid #e5e7eb;">
+                          <p style="margin:0; font-size:14px; color:#047857;">Loan Amount</p>
+                          <p style="margin:10px 0 0; font-size:34px; font-weight:bold; color:#059669;">
+                            ${loan.currency} ${loan.amount.toLocaleString()}
+                          </p>
+                        </td>
+                      </tr>
+
+                      <tr>
+                        <td style="padding:20px;">
+                          <p style="margin:0 0 8px; color:#047857; font-size:14px;">Borrower</p>
+                          <p style="margin:0 0 15px; color:#065f46; font-size:16px; font-weight:600;">
+                            ${loan.borrower?.full_name || 'Anonymous'}
+                          </p>
+
+                          <p style="margin:0 0 8px; color:#047857; font-size:14px;">Rating</p>
+                          <span style="display:inline-block; background:#d1fae5; color:#065f46; padding:6px 14px; border-radius:20px; font-size:14px; font-weight:600;">
+                            ${loan.borrower?.borrower_rating || 'Neutral'}
+                          </span>
+
+                          ${loan.recipient_country ? `
+                            <p style="margin:20px 0 5px; color:#047857; font-size:14px;">Recipient Country</p>
+                            <p style="margin:0; color:#065f46;">${loan.recipient_country}</p>
+                          ` : ''}
+
+                          ${loan.purpose ? `
+                            <p style="margin:20px 0 5px; color:#047857; font-size:14px;">Purpose</p>
+                            <p style="margin:0; color:#065f46;">${loan.purpose}</p>
+                          ` : ''}
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- ALERT -->
+                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; margin:25px 0;">
+                      <tr>
+                        <td style="padding:16px;">
+                          <p style="margin:0; font-size:14px; color:#854d0e;">
+                            <strong style="color:#059669;">⏰ Time Sensitive:</strong>
+                            You have 24 hours to accept or decline this loan.
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- CTA -->
+                    <table width="100%" role="presentation" style="margin:30px 0;">
+                      <tr>
+                        <td align="center">
+                          <a
+                            href="${reviewUrl}"
+                            style="display:inline-block; background:#059669; color:#ffffff; text-decoration:none; padding:16px 40px; border-radius:8px; font-weight:600; font-size:16px;"
+                          >
+                            Review & Accept Loan →
+                          </a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- FOOTER LINKS -->
+                    <p style="font-size:14px; color:#047857;">
+                      <a href="${APP_URL}/help/lender-matches" style="color:#059669; text-decoration:none; font-weight:500;">Help Center</a>
+                      &nbsp;•&nbsp;
+                      <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none; font-weight:500;">Contact Support</a>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- SIGNATURE -->
+              <p style="margin-top:20px; font-size:12px; color:#6b7280;">
+                Feyza • Smart Loan Matching System
               </p>
-              
-              <!-- Loan Details Card -->
-              <div style="background: white; padding: 25px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 4px 12px rgba(5, 150, 105, 0.08);">
-                <!-- Loan Amount Highlight -->
-                <div style="text-align: center; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #e5e7eb;">
-                  <p style="color: #047857; margin: 0; font-size: 14px; font-weight: 500;">Loan Amount</p>
-                  <p style="font-size: 36px; font-weight: bold; color: #059669; margin: 10px 0;">
-                    ${loan.currency} ${loan.amount.toLocaleString()}
-                  </p>
-                </div>
-                
-                <!-- Borrower Details Grid -->
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px;">
-                  <div>
-                    <p style="color: #047857; margin: 0 0 5px 0; font-size: 14px; font-weight: 500;">Borrower</p>
-                    <p style="color: #065f46; margin: 0; font-size: 16px; font-weight: 600;">
-                      ${loan.borrower?.full_name || 'Anonymous'}
-                    </p>
-                  </div>
-                  
-                  <div>
-                    <p style="color: #047857; margin: 0 0 5px 0; font-size: 14px; font-weight: 500;">Rating</p>
-                    <div style="display: inline-block; background: #d1fae5; color: #065f46; padding: 4px 12px; border-radius: 20px; font-size: 14px; font-weight: 600;">
-                      ${loan.borrower?.borrower_rating || 'Neutral'}
-                    </div>
-                  </div>
-                  
-                  ${loan.recipient_country ? `
-                  <div>
-                    <p style="color: #047857; margin: 0 0 5px 0; font-size: 14px; font-weight: 500;">Recipient Country</p>
-                    <p style="color: #065f46; margin: 0; font-size: 16px; font-weight: 500;">
-                      ${loan.recipient_country}
-                    </p>
-                  </div>
-                  ` : ''}
-                  
-                  ${loan.purpose ? `
-                  <div>
-                    <p style="color: #047857; margin: 0 0 5px 0; font-size: 14px; font-weight: 500;">Purpose</p>
-                    <p style="color: #065f46; margin: 0; font-size: 16px; font-weight: 500;">
-                      ${loan.purpose}
-                    </p>
-                  </div>
-                  ` : ''}
-                </div>
-              </div>
-              
-              <!-- Time Sensitive Alert -->
-              <div style="background: linear-gradient(to right, #fef9c3, #fef3c7); border: 1px solid #fde047; border-radius: 8px; padding: 18px; margin: 25px 0; position: relative;">
-                <div style="position: absolute; left: 15px; top: 50%; transform: translateY(-50%);">
-                  <span style="background: #059669; color: white; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px;">⏰</span>
-                </div>
-                <div style="margin-left: 35px;">
-                  <p style="margin: 0; color: #854d0e; font-size: 14px; line-height: 1.5;">
-                    <strong style="color: #059669;">Time Sensitive:</strong> You have 24 hours to accept or decline this loan. 
-                    If you don't respond, it will be offered to the next matching lender.
-                  </p>
-                </div>
-              </div>
-              
-              <!-- CTA Button -->
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${reviewUrl}" 
-                  style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
-                          color: white; text-decoration: none; padding: 16px 40px; border-radius: 8px; 
-                          font-weight: 600; text-align: center; font-size: 16px;
-                          box-shadow: 0 4px 15px rgba(5, 150, 105, 0.25); transition: all 0.2s ease;"
-                  onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(5, 150, 105, 0.35)';"
-                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 15px rgba(5, 150, 105, 0.25)';">
-                  Review & Accept Loan →
-                </a>
-                
-                <p style="color: #047857; font-size: 14px; margin-top: 15px; text-align: center;">
-                  <a href="${APP_URL}/lender/preferences" style="color: #059669; text-decoration: none; font-weight: 500;">
-                    💡 Enable auto-accept in your preferences
-                  </a>
-                </p>
-              </div>
-              
-              <!-- Quick Actions -->
-              <div style="background: white; padding: 20px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 25px 0;">
-                <h3 style="color: #065f46; margin: 0 0 15px 0; font-size: 16px; font-weight: 600;">Quick Actions</h3>
-                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                  <a href="${APP_URL}/lender/loans" 
-                    style="display: inline-block; background: #f0fdf4; color: #059669; text-decoration: none; 
-                            padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; 
-                            border: 1px solid #059669; transition: all 0.2s ease;"
-                    onmouseover="this.style.background='#dcfce7';"
-                    onmouseout="this.style.background='#f0fdf4';">
-                    View All Matches
-                  </a>
-                  <a href="${APP_URL}/lender/preferences" 
-                    style="display: inline-block; background: #f0fdf4; color: #059669; text-decoration: none; 
-                            padding: 10px 20px; border-radius: 6px; font-size: 14px; font-weight: 500; 
-                            border: 1px solid #059669; transition: all 0.2s ease;"
-                    onmouseover="this.style.background='#dcfce7';"
-                    onmouseout="this.style.background='#f0fdf4';">
-                    Update Preferences
-                  </a>
-                </div>
-              </div>
-              
-              <!-- Footer -->
-              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-                <p style="margin: 0 0 10px 0;">Questions about this match?</p>
-                <p style="margin: 0;">
-                  <a href="${APP_URL}/help/lender-matches" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                    Help Center
-                  </a>
-                  <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
-                    Contact Support
-                  </a>
-                </p>
-              </div>
-            </div>
-            
-            <!-- Signature -->
-            <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-              <p style="margin: 0;">Feyza • Smart Loan Matching System</p>
-            </div>
-          </body>
-        </html>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
       `,
     });
   }
@@ -701,145 +801,166 @@ async function sendMatchNotifications(supabase: any, loan: any, match: MatchResu
   if (lenderEmail) {
     await sendEmail({
       to: lenderEmail,
-      subject: isAutoAccept ? '✅ Loan Auto-Accepted!' : '✅ You Accepted a Loan!',
+      subject: isAutoAccept ? 'Loan Auto-Accepted!' : 'You Accepted a Loan!',
       html: `
-        <!DOCTYPE html>
-        <html>
-          <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <!-- Header with gradient background and logo -->
-            <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
-              <!-- Logo -->
-              <div style="margin-bottom: 20px;">
-                <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                    alt="Feyza Logo" 
-                    style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-              </div>
-              <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">${isAutoAccept ? '✅ Loan Auto-Accepted!' : '✅ Loan Accepted!'}</h1>
-              <p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">${isAutoAccept ? 'Automated matching complete' : 'Successfully matched with borrower'}</p>
-            </div>
-            
-            <!-- Content area -->
-            <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-              <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${lenderName}! 👋</p>
-              
-              <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-                ${isAutoAccept 
-                  ? 'Your auto-accept setting has successfully matched you with a new loan!' 
-                  : 'You have successfully accepted a loan request from a verified borrower.'}
-              </p>
-              
-              <!-- Loan details card -->
-              <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
-                <h3 style="margin: 0 0 20px 0; color: #065f46; font-size: 20px; font-weight: 600; text-align: center;">Loan Details</h3>
+      <!DOCTYPE html>
+      <html lang="en">
+        <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
+          
+          <!-- Wrapper -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding:20px;">
                 
-                <!-- Amount highlight -->
-                <div style="background: #dcfce7; padding: 20px; border-radius: 8px; margin-bottom: 20px; text-align: center;">
-                  <p style="color: #166534; margin: 0 0 8px 0; font-size: 14px; font-weight: 500;">Loan Amount</p>
-                  <p style="font-size: 36px; font-weight: bold; color: #059669; margin: 0 0 8px 0; letter-spacing: -0.5px;">
-                    ${loan.currency} ${loan.amount.toLocaleString()}
-                  </p>
-                  <p style="color: #047857; margin: 0; font-size: 16px; font-weight: 500;">
-                    Interest Rate: <strong>${match.interest_rate}%</strong> p.a.
-                  </p>
-                </div>
-                
-                <!-- Borrower info -->
-                <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
-                  <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
-                    <div>
-                      <p style="color: #6b7280; margin: 0 0 5px 0; font-size: 14px;">Borrower</p>
-                      <p style="color: #166534; margin: 0; font-weight: 500; font-size: 16px;">
-                        ${loan.borrower?.full_name || 'Anonymous Borrower'}
+                <!-- Card -->
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
+
+                  <!-- HEADER -->
+                  <tr>
+                    <td style="background:#059669;padding:30px;text-align:center;">
+                      
+                      <!-- Logo -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td align="center" style="padding-bottom:20px;">
+                            <img
+                              src="https://feyza.app/feyza.png"
+                              alt="Feyza Logo"
+                              height="40"
+                              style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;"
+                            />
+                          </td>
+                        </tr>
+                      </table>
+
+                      <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:600;">
+                        ${isAutoAccept ? 'Loan Auto-Accepted!' : 'Loan Accepted!'}
+                      </h1>
+                      <p style="margin:8px 0 0;color:#d1fae5;font-size:15px;">
+                        ${isAutoAccept ? 'Automated matching complete' : 'Successfully matched with borrower'}
                       </p>
-                    </div>
-                    <div>
-                      <p style="color: #6b7280; margin: 0 0 5px 0; font-size: 14px;">Loan Purpose</p>
-                      <p style="color: #166534; margin: 0; font-weight: 500; font-size: 16px;">
-                        ${loan.purpose || 'Not specified'}
+                    </td>
+                  </tr>
+
+                  <!-- CONTENT -->
+                  <tr>
+                    <td style="background:#f0fdf4;padding:30px;border:1px solid #bbf7d0;border-top:none;">
+                      
+                      <p style="font-size:18px;color:#065f46;margin:0 0 20px;">
+                        Hi ${lenderName} 👋
                       </p>
-                    </div>
-                  </div>
-                  
-                  ${loan.repayment_term ? `
-                  <div style="margin-top: 20px;">
-                    <p style="color: #6b7280; margin: 0 0 5px 0; font-size: 14px;">Repayment Term</p>
-                    <p style="color: #166534; margin: 0; font-weight: 500; font-size: 16px;">
-                      ${loan.repayment_term} ${loan.repayment_term_unit || 'months'}
-                    </p>
-                  </div>
-                  ` : ''}
-                </div>
-              </div>
-              
-              <!-- Action required notice -->
-              <div style="background: linear-gradient(to right, #fef3c7, #fde68a); border: 1px solid #fbbf24; border-radius: 8px; padding: 20px; margin: 20px 0; position: relative;">
-                <div style="position: absolute; top: -10px; left: 20px; background: #f59e0b; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600;">
-                  Action Required
-                </div>
-                <div style="margin-top: 10px;">
-                  <p style="margin: 0 0 10px 0; color: #92400e; font-size: 16px; font-weight: 600;">
-                    💰 Send Payment to Borrower
-                  </p>
-                  <p style="margin: 0; color: #92400e; font-size: 15px;">
-                    Please send <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong> 
-                    to the borrower via PayPal within the next 24 hours.
-                  </p>
-                </div>
-              </div>
-              
-              <!-- CTA Buttons -->
-              <div style="display: flex; gap: 15px; margin: 24px 0; flex-wrap: wrap;">
-                <a href="${APP_URL}/loans/${loan.id}" 
-                  style="display: inline-block; background: linear-gradient(to right, #059669, #047857); 
-                          color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                          font-weight: 600; text-align: center; font-size: 16px; flex: 1; min-width: 200px;
-                          box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
-                  onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
-                  View Loan & Send Payment →
-                </a>
-                
-                <a href="${APP_URL}/dashboard" 
-                  style="display: inline-block; background: white; 
-                          color: #059669; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                          font-weight: 600; text-align: center; font-size: 16px; border: 2px solid #059669;
-                          box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1); transition: all 0.2s ease; flex: 1; min-width: 200px;"
-                  onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';this.style.background='#f0fdf4';"
-                  onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 2px 8px rgba(5, 150, 105, 0.1)';this.style.background='white';">
-                  Go to Dashboard
-                </a>
-              </div>
-              
-              <!-- Auto-accept info (if applicable) -->
-              ${isAutoAccept ? `
-              <div style="background: #dcfce7; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #86efac;">
-                <p style="margin: 0; color: #065f46; font-size: 14px;">
-                  ℹ️ <strong>Auto-accept enabled:</strong> This loan was automatically accepted based on your matching preferences. 
-                  You can adjust these settings in your <a href="${APP_URL}/lender/preferences" style="color: #059669; font-weight: 500; text-decoration: none;">Lender Preferences</a>.
+
+                      <p style="color:#065f46;line-height:1.6;margin:0 0 20px;">
+                        ${isAutoAccept
+                          ? 'Your auto-accept settings successfully matched you with a new loan.'
+                          : 'You have successfully accepted a loan request from a verified borrower.'}
+                      </p>
+
+                      <!-- LOAN DETAILS -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                        style="background:#ffffff;border-radius:12px;border:1px solid #bbf7d0;margin:20px 0;">
+                        <tr>
+                          <td style="padding:24px;text-align:center;">
+                            <h3 style="margin:0 0 16px;color:#065f46;font-size:20px;">Loan Details</h3>
+
+                            <div style="background:#dcfce7;padding:18px;border-radius:8px;margin-bottom:20px;">
+                              <p style="margin:0;color:#065f46;font-size:14px;">Loan Amount</p>
+                              <p style="margin:6px 0;font-size:34px;font-weight:bold;color:#059669;">
+                                ${loan.currency} ${loan.amount.toLocaleString()}
+                              </p>
+                              <p style="margin:0;color:#047857;font-size:15px;">
+                                Interest Rate: <strong>${match.interest_rate}%</strong> p.a.
+                              </p>
+                            </div>
+
+                            <!-- DETAILS -->
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                              <tr>
+                                <td style="padding:10px 0;text-align:left;">
+                                  <p style="margin:0;color:#6b7280;font-size:13px;">Borrower</p>
+                                  <p style="margin:0;color:#065f46;font-weight:500;">
+                                    ${loan.borrower?.full_name || 'Anonymous Borrower'}
+                                  </p>
+                                </td>
+                                <td style="padding:10px 0;text-align:left;">
+                                  <p style="margin:0;color:#6b7280;font-size:13px;">Purpose</p>
+                                  <p style="margin:0;color:#065f46;font-weight:500;">
+                                    ${loan.purpose || 'Not specified'}
+                                  </p>
+                                </td>
+                              </tr>
+                            </table>
+
+                            ${loan.repayment_term ? `
+                            <p style="margin-top:15px;color:#065f46;">
+                              Repayment Term: <strong>${loan.repayment_term} ${loan.repayment_term_unit || 'months'}</strong>
+                            </p>
+                            ` : ''}
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- ACTION REQUIRED -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
+                        style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;margin:20px 0;">
+                        <tr>
+                          <td style="padding:18px;">
+                            <p style="margin:0 0 8px;color:#92400e;font-weight:600;">
+                              💰 Action Required: Send Payment
+                            </p>
+                            <p style="margin:0;color:#92400e;">
+                              Please send <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong>
+                              to the borrower via PayPal within 24 hours.
+                            </p>
+                          </td>
+                        </tr>
+                      </table>
+
+                      <!-- CTA BUTTON -->
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                        <tr>
+                          <td align="center" style="padding:20px 0;">
+                            <a href="${APP_URL}/loans/${loan.id}"
+                              style="background:#059669;color:#ffffff;text-decoration:none;
+                                    padding:14px 32px;border-radius:8px;
+                                    font-weight:600;font-size:16px;display:inline-block;">
+                              View Loan & Send Payment →
+                            </a>
+                          </td>
+                        </tr>
+                      </table>
+
+                      ${isAutoAccept ? `
+                      <p style="background:#dcfce7;padding:14px;border-radius:8px;border:1px solid #86efac;
+                                color:#065f46;font-size:14px;">
+                        ℹ️ This loan was auto-accepted based on your preferences.
+                        Manage settings in <a href="${APP_URL}/lender/preferences" style="color:#059669;">Lender Preferences</a>.
+                      </p>
+                      ` : ''}
+
+                      <!-- FOOTER -->
+                      <div style="margin-top:30px;padding-top:20px;border-top:1px solid #bbf7d0;color:#047857;font-size:14px;">
+                        <p style="margin:0 0 8px;">Need help?</p>
+                        <a href="${APP_URL}/help/payment-process" style="color:#059669;text-decoration:none;font-weight:500;">Payment Guide</a>
+                        &nbsp;•&nbsp;
+                        <a href="mailto:support@feyza.com" style="color:#059669;text-decoration:none;font-weight:500;">Support</a>
+                      </div>
+
+                    </td>
+                  </tr>
+
+                </table>
+
+                <p style="margin-top:20px;color:#6b7280;font-size:12px;text-align:center;">
+                  Feyza • Automated Loan Matching System
                 </p>
-              </div>
-              ` : ''}
-              
-              <!-- Footer -->
-              <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-                <p style="margin: 0 0 10px 0;">Need help with the payment process?</p>
-                <p style="margin: 0;">
-                  <a href="${APP_URL}/help/payment-process" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                    Payment Guide
-                  </a>
-                  <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500;">
-                    Contact Support
-                  </a>
-                </p>
-              </div>
-            </div>
-            
-            <!-- Signature -->
-            <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-              <p style="margin: 0;">Feyza • Automated Loan Matching System</p>
-            </div>
-          </body>
-        </html>
+
+              </td>
+            </tr>
+          </table>
+
+        </body>
+      </html>
       `,
     });
   }
@@ -848,146 +969,188 @@ async function sendMatchNotifications(supabase: any, loan: any, match: MatchResu
   if (loan.borrower?.email) {
   await sendEmail({
     to: loan.borrower.email,
-    subject: isAutoAccept ? '⚡ Loan Instantly Matched!' : '🎉 Your Loan Has Been Accepted!',
+    subject: isAutoAccept ? 'Loan Instantly Matched!' : 'Your Loan Has Been Accepted!',
     html: `
-      <!DOCTYPE html>
-      <html>
-        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <!-- Header with logo -->
-          <div style="background: linear-gradient(135deg, #059669 0%, #047857 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center; position: relative;">
-            <!-- Logo -->
-            <div style="margin-bottom: 20px;">
-              <img src="https://raw.githubusercontent.com/gerardkasemba/feyza/442387cc7eaefdd8a38e999b7dc42a0d526137e6/public/feyza.svg" 
-                  alt="Feyza Logo" 
-                  style="height: 40px; width: auto; filter: brightness(0) invert(1);">
-            </div>
-            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
-              ${isAutoAccept ? '⚡ Instant Match!' : '🎉 Loan Accepted!'}
-            </h1>
-            ${isAutoAccept ? '<p style="color: rgba(255, 255, 255, 0.9); margin: 10px 0 0 0; font-size: 16px;">Automatically approved by our system</p>' : ''}
-          </div>
-          
-          <!-- Content area -->
-          <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0; border-top: none;">
-            <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">Hi ${loan.borrower.full_name || 'there'}! 👋</p>
-            
-            <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-              Great news! Your loan has been ${isAutoAccept ? 'instantly matched and approved' : 'accepted'} by 
-              <strong style="color: #059669;">${lenderName}</strong>.
-            </p>
-            
-            <!-- Loan details card -->
-            <div style="background: white; padding: 24px; border-radius: 12px; margin: 20px 0; border: 1px solid #bbf7d0; box-shadow: 0 2px 8px rgba(5, 150, 105, 0.1);">
-              <h3 style="margin: 0 0 20px 0; color: #065f46; font-size: 20px; font-weight: 600; text-align: center;">Loan Details</h3>
-              
-              <div style="text-align: center; margin-bottom: 20px;">
-                <p style="color: #6b7280; margin: 0; font-size: 14px;">Loan Amount</p>
-                <p style="font-size: 40px; font-weight: bold; color: #059669; margin: 10px 0; letter-spacing: -0.5px;">
-                  ${loan.currency} ${loan.amount.toLocaleString()}
-                </p>
-              </div>
-              
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 25px;">
-                <div style="text-align: center; padding: 15px; background: #f0fdf4; border-radius: 8px;">
-                  <p style="color: #065f46; margin: 0; font-size: 13px; font-weight: 600;">Interest Rate</p>
-                  <p style="color: #059669; margin: 8px 0 0 0; font-size: 22px; font-weight: bold;">${match.interest_rate}%</p>
-                  <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 12px;">per annum</p>
-                </div>
-                
-                <div style="text-align: center; padding: 15px; background: #f0fdf4; border-radius: 8px;">
-                  <p style="color: #065f46; margin: 0; font-size: 13px; font-weight: 600;">Lender</p>
-                  <p style="color: #059669; margin: 8px 0 0 0; font-size: 18px; font-weight: bold;">${lenderName}</p>
-                  <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 12px;">Verified Partner</p>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Next steps -->
-            <div style="background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); border: 1px solid #86efac; border-radius: 12px; padding: 20px; margin: 25px 0;">
-              <div style="display: flex; align-items: flex-start; gap: 15px;">
-                <div style="background: #059669; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                  <span style="font-size: 18px;">💰</span>
-                </div>
-                <div>
-                  <h4 style="margin: 0 0 8px 0; color: #065f46; font-weight: 600;">Next Steps</h4>
-                  <p style="margin: 0; color: #166534; line-height: 1.6;">
-                    The lender will send <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong> to your PayPal account. 
-                    You'll receive another notification when the payment is sent!
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <!-- Timeline -->
-            <div style="background: white; padding: 20px; border-radius: 12px; margin: 25px 0; border: 1px solid #bbf7d0;">
-              <h4 style="color: #065f46; margin: 0 0 15px 0; font-weight: 600;">📋 What Happens Next:</h4>
-              <div style="display: flex; flex-direction: column; gap: 15px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                  <div style="background: #059669; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0;">
-                    1
-                  </div>
-                  <div>
-                    <p style="color: #166534; margin: 0; font-weight: 500;">Lender prepares payment</p>
-                    <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 14px;">Typically within 24 hours</p>
-                  </div>
-                </div>
-                
-                <div style="display: flex; align-items: center; gap: 15px;">
-                  <div style="background: #86efac; color: #065f46; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0;">
-                    2
-                  </div>
-                  <div>
-                    <p style="color: #166534; margin: 0; font-weight: 500;">Payment sent to PayPal</p>
-                    <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 14px;">You'll receive payment notification</p>
-                  </div>
-                </div>
-                
-                <div style="display: flex; align-items: center; gap: 15px;">
-                  <div style="background: #bbf7d0; color: #065f46; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0;">
-                    3
-                  </div>
-                  <div>
-                    <p style="color: #166534; margin: 0; font-weight: 500;">Funds available</p>
-                    <p style="color: #6b7280; margin: 5px 0 0 0; font-size: 14px;">Start repaying according to schedule</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- CTA Button -->
-            <a href="${APP_URL}/loans/${loan.id}" 
-              style="display: block; background: linear-gradient(to right, #059669, #047857); 
-                      color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; 
-                      font-weight: 600; text-align: center; margin: 24px 0; font-size: 16px;
-                      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.2); transition: all 0.2s ease;"
-              onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 16px rgba(5, 150, 105, 0.3)';"
-              onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 12px rgba(5, 150, 105, 0.2)';">
-              View Your Loan Details →
-            </a>
-            
-            <!-- Footer -->
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #bbf7d0; color: #047857; font-size: 14px;">
-              <p style="margin: 0 0 10px 0;">Questions about your loan?</p>
-              <p style="margin: 0;">
-                <a href="${APP_URL}/help/loan-acceptance" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                  Help Center
-                </a>
-                <a href="mailto:support@feyza.com" style="color: #059669; text-decoration: none; font-weight: 500; margin-right: 15px;">
-                  Contact Support
-                </a>
-                <a href="${APP_URL}/contact/${lenderName}" style="color: #059669; text-decoration: none; font-weight: 500;">
-                  Contact Lender
-                </a>
+    <!DOCTYPE html>
+    <html>
+      <body style="
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #f9fafb;
+      ">
+
+        <!-- ===== HEADER ===== -->
+        <div style="
+          background: linear-gradient(135deg, #059669 0%, #047857 100%);
+          padding: 30px;
+          border-radius: 16px 16px 0 0;
+          text-align: center;
+        ">
+
+          <!-- Logo (email-safe centered) -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" style="padding-bottom: 20px;">
+                <img
+                  src="https://feyza.app/feyza.png"
+                  alt="Feyza Logo"
+                  height="40"
+                  style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                />
+              </td>
+            </tr>
+          </table>
+
+          <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
+            ${isAutoAccept ? '⚡ Instant Match!' : '🎉 Loan Accepted!'}
+          </h1>
+
+          ${
+            isAutoAccept
+              ? `<p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">
+                  Automatically approved by our system
+                </p>`
+              : ''
+          }
+        </div>
+
+        <!-- ===== CONTENT ===== -->
+        <div style="
+          background: #f0fdf4;
+          padding: 30px;
+          border-radius: 0 0 16px 16px;
+          border: 1px solid #bbf7d0;
+          border-top: none;
+        ">
+
+          <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">
+            Hi ${loan.borrower.full_name || 'there'}! 👋
+          </p>
+
+          <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
+            Great news! Your loan has been
+            ${isAutoAccept ? 'instantly matched and approved' : 'accepted'}
+            by <strong style="color:#059669;">${lenderName}</strong>.
+          </p>
+
+          <!-- ===== LOAN DETAILS ===== -->
+          <div style="
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin: 20px 0;
+            border: 1px solid #bbf7d0;
+            box-shadow: 0 2px 8px rgba(5,150,105,0.1);
+          ">
+
+            <h3 style="
+              margin: 0 0 20px;
+              color: #065f46;
+              font-size: 20px;
+              font-weight: 600;
+              text-align: center;
+            ">
+              Loan Details
+            </h3>
+
+            <div style="text-align: center; margin-bottom: 20px;">
+              <p style="color: #6b7280; margin: 0; font-size: 14px;">Loan Amount</p>
+              <p style="
+                font-size: 40px;
+                font-weight: bold;
+                color: #059669;
+                margin: 10px 0;
+                letter-spacing: -0.5px;
+              ">
+                ${loan.currency} ${loan.amount.toLocaleString()}
               </p>
             </div>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding: 8px; text-align: center;">
+                  <div style="background:#f0fdf4; padding:15px; border-radius:8px;">
+                    <p style="color:#065f46; margin:0; font-size:13px; font-weight:600;">Interest Rate</p>
+                    <p style="color:#059669; margin:8px 0 0; font-size:22px; font-weight:bold;">
+                      ${match.interest_rate}%
+                    </p>
+                    <p style="color:#6b7280; margin:5px 0 0; font-size:12px;">per annum</p>
+                  </div>
+                </td>
+
+                <td style="padding: 8px; text-align: center;">
+                  <div style="background:#f0fdf4; padding:15px; border-radius:8px;">
+                    <p style="color:#065f46; margin:0; font-size:13px; font-weight:600;">Lender</p>
+                    <p style="color:#059669; margin:8px 0 0; font-size:18px; font-weight:bold;">
+                      ${lenderName}
+                    </p>
+                    <p style="color:#6b7280; margin:5px 0 0; font-size:12px;">Verified Partner</p>
+                  </div>
+                </td>
+              </tr>
+            </table>
           </div>
-          
-          <!-- Signature -->
-          <div style="text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px;">
-            <p style="margin: 0;">Feyza • Secure Loan Matching</p>
+
+          <!-- ===== NEXT STEPS ===== -->
+          <div style="
+            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+            border: 1px solid #86efac;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 25px 0;
+          ">
+            <h4 style="margin:0 0 8px; color:#065f46; font-weight:600;">Next Steps</h4>
+            <p style="margin:0; color:#166534; line-height:1.6;">
+              The lender will send
+              <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong>
+              to your PayPal account. You’ll receive another notification when the payment is sent.
+            </p>
           </div>
-        </body>
-      </html>
+
+          <!-- ===== CTA ===== -->
+          <a href="${APP_URL}/loans/${loan.id}"
+            style="
+              display:block;
+              background: linear-gradient(to right, #059669, #047857);
+              color:white;
+              text-decoration:none;
+              padding:16px 32px;
+              border-radius:8px;
+              font-weight:600;
+              text-align:center;
+              margin:24px 0;
+              font-size:16px;
+              box-shadow:0 4px 12px rgba(5,150,105,0.2);
+            ">
+            View Your Loan Details →
+          </a>
+
+          <!-- ===== FOOTER ===== -->
+          <div style="
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #bbf7d0;
+            color: #047857;
+            font-size: 14px;
+            text-align:center;
+          ">
+            <p style="margin:0 0 10px;">Questions about your loan?</p>
+            <p style="margin:0;">
+              <a href="${APP_URL}/help/loan-acceptance" style="color:#059669; text-decoration:none; font-weight:500;">Help Center</a> •
+              <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none; font-weight:500;">Contact Support</a>
+            </p>
+          </div>
+        </div>
+
+        <!-- ===== SIGNATURE ===== -->
+        <div style="text-align:center; margin-top:20px; color:#6b7280; font-size:12px;">
+          Feyza • Secure Loan Matching
+        </div>
+
+      </body>
+    </html>
     `,
   });
   }

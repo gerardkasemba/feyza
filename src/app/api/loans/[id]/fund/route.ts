@@ -186,45 +186,159 @@ export async function POST(
     if (borrowerEmail) {
       await sendEmail({
         to: borrowerEmail,
-        subject: `💵 ${lenderName} has sent you $${loan.amount.toLocaleString()}!`,
+        subject: `${lenderName} has sent you $${loan.amount.toLocaleString()}!`,
         html: `
-          <!DOCTYPE html>
-          <html>
-            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-              <div style="background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                <h1 style="color: white; margin: 0;">💵 Funds on the Way!</h1>
+        <!DOCTYPE html>
+        <html lang="en">
+          <body style="
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9fafb;
+          ">
+
+            <!-- ===== CARD ===== -->
+            <div style="
+              background: white;
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            ">
+
+              <!-- ===== HEADER ===== -->
+              <div style="
+                background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                padding: 30px;
+                text-align: center;
+              ">
+
+                <!-- Logo (email-safe centered) -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="padding-bottom: 15px;">
+                      <img
+                        src="https://feyza.app/feyza.png"
+                        alt="Feyza Logo"
+                        height="40"
+                        style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                      />
+                    </td>
+                  </tr>
+                </table>
+
+                <h1 style="
+                  color: white;
+                  margin: 0;
+                  font-size: 26px;
+                  font-weight: 700;
+                ">
+                  💵 Funds on the Way!
+                </h1>
               </div>
-              <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0;">
-                <p style="font-size: 18px;">Hi ${borrowerName}! 👋</p>
-                
-                <p><strong>${lenderName}</strong> has initiated a bank transfer for your loan!</p>
-                
-                <div style="background: white; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center; border: 1px solid #bbf7d0;">
-                  <p style="color: #6b7280; margin: 0;">Amount Being Transferred</p>
-                  <p style="font-size: 32px; font-weight: bold; color: #22c55e; margin: 5px 0;">$${loan.amount.toLocaleString()}</p>
-                  <p style="color: #6b7280; margin: 5px 0;">via ACH Bank Transfer</p>
+
+              <!-- ===== CONTENT ===== -->
+              <div style="
+                background: #f0fdf4;
+                padding: 30px;
+                border: 1px solid #bbf7d0;
+              ">
+
+                <p style="font-size: 18px; margin-top: 0;">
+                  Hi ${borrowerName}! 👋
+                </p>
+
+                <p>
+                  <strong>${lenderName}</strong> has initiated a bank transfer for your loan.
+                </p>
+
+                <!-- Amount Card -->
+                <div style="
+                  background: white;
+                  padding: 20px;
+                  border-radius: 12px;
+                  margin: 24px 0;
+                  text-align: center;
+                  border: 1px solid #bbf7d0;
+                ">
+                  <p style="color: #6b7280; margin: 0; font-size: 14px;">
+                    Amount Being Transferred
+                  </p>
+                  <p style="
+                    font-size: 32px;
+                    font-weight: bold;
+                    color: #059669;
+                    margin: 6px 0;
+                  ">
+                    $${loan.amount.toLocaleString()}
+                  </p>
+                  <p style="color: #6b7280; margin: 0; font-size: 14px;">
+                    via ACH Bank Transfer
+                  </p>
                 </div>
-                
-                <div style="background: #dbeafe; border: 1px solid #93c5fd; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                  <p style="margin: 0; color: #1e40af; font-size: 14px;">
+
+                <!-- Timing Info -->
+                <div style="
+                  background: #ecfdf5;
+                  border: 1px solid #bbf7d0;
+                  border-radius: 8px;
+                  padding: 16px;
+                  margin: 20px 0;
+                ">
+                  <p style="margin: 0; color: #065f46; font-size: 14px;">
                     <strong>⏱️ When will I receive it?</strong><br/>
-                    The funds will arrive in your bank account within 1-3 business days.
+                    Funds typically arrive in your bank account within <strong>1–3 business days</strong>.
                   </p>
                 </div>
-                
-                <div style="background: #fef3c7; border: 1px solid #fcd34d; border-radius: 8px; padding: 16px; margin: 20px 0;">
+
+                <!-- Repayment Reminder -->
+                <div style="
+                  background: #fef3c7;
+                  border: 1px solid #fcd34d;
+                  border-radius: 8px;
+                  padding: 16px;
+                  margin: 20px 0;
+                ">
                   <p style="margin: 0; color: #92400e; font-size: 14px;">
-                    <strong>📅 Repayment Reminder:</strong><br/>
-                    Your first payment of $${(loan.repayment_amount || 0).toLocaleString()} is due on ${new Date(loan.start_date).toLocaleDateString()}.
+                    <strong>📅 Repayment Reminder</strong><br/>
+                    Your first payment of <strong>$${(loan.repayment_amount || 0).toLocaleString()}</strong>
+                    is due on <strong>${new Date(loan.start_date).toLocaleDateString()}</strong>.
                   </p>
                 </div>
-                
-                <a href="${APP_URL}/loans/${loanId}" style="display: block; background: #22c55e; color: white; text-decoration: none; padding: 16px 32px; border-radius: 8px; font-weight: bold; text-align: center; margin: 24px 0;">
+
+                <!-- CTA -->
+                <a
+                  href="${APP_URL}/loans/${loanId}"
+                  style="
+                    display: block;
+                    background: linear-gradient(to right, #059669, #047857);
+                    color: white;
+                    text-decoration: none;
+                    padding: 16px 32px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    text-align: center;
+                    margin: 28px 0 10px;
+                  "
+                >
                   View Loan Details →
                 </a>
+
+                <!-- Footer -->
+                <p style="
+                  text-align: center;
+                  color: #6b7280;
+                  font-size: 12px;
+                  margin-top: 30px;
+                ">
+                  This is an automated message from Feyza.
+                </p>
+
               </div>
-            </body>
-          </html>
+            </div>
+
+          </body>
+        </html>
         `,
       });
     }

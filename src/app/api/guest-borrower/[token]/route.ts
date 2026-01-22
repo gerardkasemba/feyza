@@ -297,30 +297,142 @@ export async function POST(
       if (lenderEmail) {
         await sendEmail({
           to: lenderEmail,
-          subject: '💰 Payment Received - Confirmation Needed',
+          subject: 'Payment Received – Confirmation Needed',
           html: `
-            <!DOCTYPE html>
-            <html>
-              <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <div style="background: #10b981; padding: 30px; border-radius: 16px 16px 0 0; text-align: center;">
-                  <h1 style="color: white; margin: 0;">💰 Payment Received</h1>
+        <!DOCTYPE html>
+        <html>
+          <body style="
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9fafb;
+          ">
+
+            <!-- Main Card -->
+            <div style="
+              background: white;
+              border-radius: 16px;
+              overflow: hidden;
+              box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+              border: 1px solid #e5e7eb;
+            ">
+
+              <!-- Header -->
+              <div style="
+                background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                padding: 30px;
+                text-align: center;
+              ">
+
+                <!-- Centered Logo (email-safe) -->
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center" style="padding-bottom: 15px;">
+                      <img
+                        src="https://feyza.app/feyza.png"
+                        alt="Feyza Logo"
+                        height="40"
+                        style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
+                      />
+                    </td>
+                  </tr>
+                </table>
+
+                <h1 style="
+                  color: white;
+                  margin: 0;
+                  font-size: 24px;
+                  font-weight: 700;
+                ">
+                  Payment Received
+                </h1>
+              </div>
+
+              <!-- Content -->
+              <div style="
+                background: #f0fdf4;
+                padding: 30px;
+                border-top: 1px solid #bbf7d0;
+              ">
+
+                <p style="font-size: 16px; margin: 0 0 15px 0;">
+                  Hi <strong>${lenderName}</strong>,
+                </p>
+
+                <p style="margin: 0 0 15px 0; font-size: 15px;">
+                  Your borrower has recorded a payment of
+                  <strong>${loan.currency} ${scheduleItem.amount}</strong>.
+                </p>
+
+                ${
+                  note
+                    ? `
+                <div style="
+                  background: white;
+                  padding: 14px;
+                  border-radius: 8px;
+                  border-left: 4px solid #059669;
+                  margin: 20px 0;
+                  font-style: italic;
+                  color: #374151;
+                ">
+                  "${note}"
                 </div>
-                
-                <div style="background: #f0fdf4; padding: 30px; border-radius: 0 0 16px 16px; border: 1px solid #bbf7d0;">
-                  <p style="font-size: 16px;">Hi ${lenderName},</p>
-                  
-                  <p>Your borrower has recorded a payment of <strong>${loan.currency} ${scheduleItem.amount}</strong>.</p>
-                  
-                  ${note ? `<p style="background: white; padding: 12px; border-radius: 8px; border-left: 4px solid #10b981;"><em>"${note}"</em></p>` : ''}
-                  
-                  <p>Please confirm this payment in your Feyza dashboard.</p>
-                  
-                  <a href="${APP_URL}/loans/${loan.id}" style="display: inline-block; background: #10b981; color: white; text-decoration: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; margin: 20px 0;">
-                    View Loan & Confirm →
-                  </a>
-                </div>
-              </body>
-            </html>
+                `
+                    : ''
+                }
+
+                <p style="margin: 0 0 20px 0; font-size: 15px;">
+                  Please confirm this payment in your Feyza dashboard.
+                </p>
+
+                <!-- CTA -->
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td align="center">
+                      <a
+                        href="${APP_URL}/loans/${loan.id}"
+                        style="
+                          display: inline-block;
+                          background: linear-gradient(to right, #059669, #047857);
+                          color: white;
+                          text-decoration: none;
+                          padding: 14px 28px;
+                          border-radius: 10px;
+                          font-weight: 600;
+                          font-size: 15px;
+                          box-shadow: 0 4px 15px rgba(5,150,105,0.3);
+                        "
+                      >
+                        View Loan & Confirm
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+              </div>
+
+              <!-- Footer -->
+              <div style="
+                background: #f9fafb;
+                padding: 20px;
+                border-top: 1px solid #e5e7eb;
+                text-align: center;
+                font-size: 12px;
+                color: #6b7280;
+              ">
+                <p style="margin: 0 0 5px 0;">
+                  This is an automated notification from Feyza.
+                </p>
+                <p style="margin: 0;">
+                  Please do not reply to this email.
+                </p>
+              </div>
+
+            </div>
+          </body>
+        </html>
           `,
         });
       }

@@ -19,9 +19,9 @@ export function StatsCard({ title, value, subtitle, icon: Icon, trend, highlight
   return (
     <div
       className={cn(
-        'bg-white dark:bg-neutral-800 rounded-2xl border p-6 transition-all hover:shadow-lg dark:hover:shadow-neutral-900/50',
+        'bg-white dark:bg-neutral-800 rounded-2xl border p-6 transition-all hover:shadow-lg',
         highlight 
-          ? 'border-amber-300 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20' 
+          ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20' 
           : 'border-neutral-200 dark:border-neutral-700',
         className
       )}
@@ -58,27 +58,19 @@ export function StatsCard({ title, value, subtitle, icon: Icon, trend, highlight
         highlight 
           ? 'text-amber-700 dark:text-amber-300' 
           : 'text-neutral-500 dark:text-neutral-400'
-      )}>
-        {title}
-      </p>
+      )}>{title}</p>
       <p className={cn(
         'text-2xl font-bold', 
         highlight 
-          ? 'text-amber-900 dark:text-amber-200' 
+          ? 'text-amber-900 dark:text-amber-100' 
           : 'text-neutral-900 dark:text-white'
-      )}>
-        {value}
-      </p>
-      {subtitle && (
-        <p className={cn(
-          'text-xs mt-1', 
-          highlight 
-            ? 'text-amber-600 dark:text-amber-400' 
-            : 'text-neutral-400 dark:text-neutral-500'
-        )}>
-          {subtitle}
-        </p>
-      )}
+      )}>{value}</p>
+      {subtitle && <p className={cn(
+        'text-xs mt-1', 
+        highlight 
+          ? 'text-amber-600 dark:text-amber-400' 
+          : 'text-neutral-400 dark:text-neutral-500'
+      )}>{subtitle}</p>}
     </div>
   );
 }

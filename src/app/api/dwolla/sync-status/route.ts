@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
         // Map Dwolla status to our status
         if (dwollaStatus === 'processed') {
-          ourStatus = 'processed';
+          ourStatus = 'completed';  // Dwolla uses 'processed', we use 'completed'
         } else if (dwollaStatus === 'pending') {
           ourStatus = 'pending';
         } else if (dwollaStatus === 'failed') {
@@ -74,7 +74,10 @@ export async function POST(request: NextRequest) {
 
           // Update loan if disbursement
           if (transfer.type === 'disbursement' && transfer.loan) {
-            if (ourStatus === 'processed') {
+            if (ourStatus === 'completed') {
+              // Check if disbursement_status is already completed to avoid duplicate stats
+              const wasAlreadyCompleted = transfer.loan.disbursement_status === 'completed';
+              
               await supabase
                 .from('loans')
                 .update({
@@ -83,8 +86,8 @@ export async function POST(request: NextRequest) {
                 })
                 .eq('id', transfer.loan.id);
 
-              // Update borrower stats - add to total_amount_borrowed and current_outstanding
-              if (transfer.loan.borrower_id) {
+              // Only update borrower stats if not already completed (avoid duplicates)
+              if (!wasAlreadyCompleted && transfer.loan.borrower_id) {
                 const { data: borrower } = await supabase
                   .from('users')
                   .select('total_amount_borrowed, current_outstanding_amount')
@@ -103,6 +106,8 @@ export async function POST(request: NextRequest) {
                   
                   console.log(`[Sync Status] Updated borrower ${transfer.loan.borrower_id} - borrowed: +$${loanAmount}`);
                 }
+              } else if (wasAlreadyCompleted) {
+                console.log(`[Sync Status] Skipping stats update - disbursement already completed for loan ${transfer.loan.id}`);
               }
             } else if (ourStatus === 'failed') {
               await supabase
@@ -165,10 +170,17 @@ export async function GET(request: NextRequest) {
 
     const supabase = await createServiceRoleClient();
 
+    // Get loan info first to check current disbursement status
+    const { data: loanBefore } = await supabase
+      .from('loans')
+      .select('id, disbursement_status, funds_sent, disbursement_transfer_id, borrower_id, amount, total_amount')
+      .eq('id', loanId)
+      .single();
+
     // Get all transfers for this loan
     const { data: transfers } = await supabase
       .from('transfers')
-      .select('id, dwolla_transfer_id, type, status, amount, created_at, updated_at, loan_id')
+      .select('id, dwolla_transfer_id, type, status, amount, created_at, updated_at, loan_id, platform_fee, net_amount, gross_amount, fee_type')
       .eq('loan_id', loanId)
       .order('created_at', { ascending: false });
 
@@ -185,7 +197,7 @@ export async function GET(request: NextRequest) {
           let newStatus = transfer.status;
           
           if (dwollaStatus === 'processed') {
-            newStatus = 'processed';
+            newStatus = 'completed';
           } else if (dwollaStatus === 'failed') {
             newStatus = 'failed';
           } else if (dwollaStatus === 'cancelled') {
@@ -203,13 +215,9 @@ export async function GET(request: NextRequest) {
               .eq('id', transfer.id);
             
             // Update loan if disbursement completed
-            if (transfer.type === 'disbursement' && newStatus === 'processed') {
-              // Get loan details first
-              const { data: loanDetails } = await supabase
-                .from('loans')
-                .select('borrower_id, amount, total_amount')
-                .eq('id', loanId)
-                .single();
+            if (transfer.type === 'disbursement' && newStatus === 'completed') {
+              // Check if disbursement was already completed to avoid duplicate stats
+              const wasAlreadyCompleted = loanBefore?.disbursement_status === 'completed';
 
               await supabase
                 .from('loans')
@@ -219,26 +227,28 @@ export async function GET(request: NextRequest) {
                 })
                 .eq('id', loanId);
 
-              // Update borrower stats
-              if (loanDetails?.borrower_id) {
+              // Only update borrower stats if not already completed (avoid duplicates)
+              if (!wasAlreadyCompleted && loanBefore?.borrower_id) {
                 const { data: borrower } = await supabase
                   .from('users')
                   .select('total_amount_borrowed, current_outstanding_amount')
-                  .eq('id', loanDetails.borrower_id)
+                  .eq('id', loanBefore.borrower_id)
                   .single();
 
                 if (borrower) {
-                  const loanAmount = loanDetails.total_amount || loanDetails.amount || transfer.amount;
+                  const loanAmount = loanBefore.total_amount || loanBefore.amount || transfer.amount;
                   await supabase
                     .from('users')
                     .update({
                       total_amount_borrowed: (borrower.total_amount_borrowed || 0) + loanAmount,
                       current_outstanding_amount: (borrower.current_outstanding_amount || 0) + loanAmount,
                     })
-                    .eq('id', loanDetails.borrower_id);
+                    .eq('id', loanBefore.borrower_id);
                   
-                  console.log(`[Sync Status GET] Updated borrower ${loanDetails.borrower_id} - borrowed: +$${loanAmount}`);
+                  console.log(`[Sync Status GET] Updated borrower ${loanBefore.borrower_id} - borrowed: +$${loanAmount}`);
                 }
+              } else if (wasAlreadyCompleted) {
+                console.log(`[Sync Status GET] Skipping stats update - disbursement already completed for loan ${loanId}`);
               }
             }
             

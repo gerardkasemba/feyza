@@ -4,8 +4,12 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { LoanCard } from '@/components/loans';
+import { LoansPageClient } from '@/components/realtime';
 import { Plus, FileText } from 'lucide-react';
 import { HiOutlineDocumentText } from 'react-icons/hi';
+
+// Use ISR for better performance
+export const revalidate = 30;
 
 export default async function LoansPage() {
   const supabase = await createServerSupabaseClient();
@@ -18,67 +22,37 @@ export default async function LoansPage() {
     redirect('/auth/signin');
   }
 
-  // Fetch user profile
-  let profile = null;
-  try {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    profile = data;
-  } catch (error) {
-    console.log('Users table may not exist yet');
-  }
-
-  // Fetch all loans
-  let borrowedLoans: any[] = [];
-  let lentLoans: any[] = [];
-
-  try {
-    const { data } = await supabase
+  // Fetch all data in parallel for better performance
+  const [profileResult, borrowedLoansResult, lentLoansResult, businessProfileResult] = await Promise.all([
+    supabase.from('users').select('*').eq('id', user.id).single(),
+    supabase
       .from('loans')
       .select('*, lender:users!lender_id(full_name), business_lender:business_profiles!business_lender_id(business_name), invite_accepted, invite_email')
       .eq('borrower_id', user.id)
-      .order('created_at', { ascending: false });
-    borrowedLoans = data || [];
-  } catch (error) {
-    console.log('Loans table may not exist yet');
-  }
-
-  // Fetch loans where user is the individual lender
-  try {
-    const { data } = await supabase
+      .order('created_at', { ascending: false }),
+    supabase
       .from('loans')
       .select('*, borrower:users!borrower_id(full_name), invite_accepted, borrower_invite_email')
       .eq('lender_id', user.id)
-      .order('created_at', { ascending: false });
-    lentLoans = data || [];
-  } catch (error) {
-    console.log('Loans table may not exist yet');
-  }
+      .order('created_at', { ascending: false }),
+    supabase.from('business_profiles').select('id').eq('user_id', user.id).single(),
+  ]);
 
-  // Also check if user has a business and fetch those loans
-  try {
-    const { data: businessProfile } = await supabase
-      .from('business_profiles')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
+  const profile = profileResult.data;
+  let borrowedLoans = borrowedLoansResult.data || [];
+  let lentLoans = lentLoansResult.data || [];
+
+  // Fetch business loans if user has a business
+  if (businessProfileResult.data) {
+    const { data: businessLoans } = await supabase
+      .from('loans')
+      .select('*, borrower:users!borrower_id(full_name), invite_accepted, borrower_invite_email')
+      .eq('business_lender_id', businessProfileResult.data.id)
+      .order('created_at', { ascending: false });
     
-    if (businessProfile) {
-      const { data: businessLoans } = await supabase
-        .from('loans')
-        .select('*, borrower:users!borrower_id(full_name), invite_accepted, borrower_invite_email')
-        .eq('business_lender_id', businessProfile.id)
-        .order('created_at', { ascending: false });
-      
-      if (businessLoans && businessLoans.length > 0) {
-        lentLoans = [...lentLoans, ...businessLoans];
-      }
+    if (businessLoans && businessLoans.length > 0) {
+      lentLoans = [...lentLoans, ...businessLoans];
     }
-  } catch (error) {
-    console.log('Business loans check failed');
   }
 
   const userProfile = profile || {
@@ -90,13 +64,9 @@ export default async function LoansPage() {
 
   // Combine and deduplicate loans by ID
   const loanMap = new Map();
-  
-  // Add borrowed loans first
   borrowedLoans.forEach(loan => {
     loanMap.set(loan.id, { ...loan, _role: 'borrower' });
   });
-  
-  // Add lent loans (won't overwrite since borrower can't be lender of same loan)
   lentLoans.forEach(loan => {
     if (!loanMap.has(loan.id)) {
       loanMap.set(loan.id, { ...loan, _role: 'lender' });
@@ -107,7 +77,7 @@ export default async function LoansPage() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
   
-  // Also deduplicate lentLoans in case user has both personal and business lender
+  // Deduplicate lentLoans
   const lentLoanMap = new Map();
   lentLoans.forEach(loan => {
     if (!lentLoanMap.has(loan.id)) {
@@ -117,8 +87,9 @@ export default async function LoansPage() {
   const uniqueLentLoans = Array.from(lentLoanMap.values());
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
-      <Navbar user={userProfile} />
+    <LoansPageClient userId={user.id}>
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+        <Navbar user={userProfile} />
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -189,6 +160,7 @@ export default async function LoansPage() {
 
       <Footer />
     </div>
+  </LoansPageClient>
   );
 }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
-import { sendEmail, getPaymentConfirmationEmail } from '@/lib/email';
+import { sendEmail, getPaymentConfirmationEmail, getEarlyPaymentLenderEmail } from '@/lib/email';
+import { format } from 'date-fns';
 
 export async function POST(request: NextRequest) {
   try {
@@ -150,15 +151,44 @@ export async function POST(request: NextRequest) {
 
     // Send email to lender
     if (lenderEmail) {
-      const { subject, html } = getPaymentConfirmationEmail({
-        recipientName: lenderName,
-        amount: amount,
-        currency: loan.currency,
-        loanId: loan.id,
-        role: 'lender',
-      });
+      // If it's an early payment, send special early payment notification
+      if (paymentTiming === 'early' && scheduleId) {
+        const { data: scheduleItem } = await supabase
+          .from('payment_schedule')
+          .select('due_date')
+          .eq('id', scheduleId)
+          .single();
 
-      await sendEmail({ to: lenderEmail, subject, html });
+        const { data: borrower } = await supabase
+          .from('users')
+          .select('full_name')
+          .eq('id', user.id)
+          .single();
+
+        const earlyEmail = getEarlyPaymentLenderEmail({
+          lenderName: lenderName,
+          borrowerName: borrower?.full_name || 'Borrower',
+          amount: amount,
+          currency: loan.currency,
+          originalDueDate: scheduleItem ? format(new Date(scheduleItem.due_date), 'MMMM d, yyyy') : 'N/A',
+          remainingBalance: newAmountRemaining,
+          loanId: loan.id,
+          isCompleted: newStatus === 'completed',
+        });
+
+        await sendEmail({ to: lenderEmail, subject: earlyEmail.subject, html: earlyEmail.html });
+      } else {
+        // Standard payment confirmation email
+        const { subject, html } = getPaymentConfirmationEmail({
+          recipientName: lenderName,
+          amount: amount,
+          currency: loan.currency,
+          loanId: loan.id,
+          role: 'lender',
+        });
+
+        await sendEmail({ to: lenderEmail, subject, html });
+      }
     }
 
     return NextResponse.json({ 

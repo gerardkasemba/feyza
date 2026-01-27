@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Badge } from '@/components/ui';
+import { NotificationsPageClient } from '@/components/notifications';
 import { formatRelativeDate } from '@/lib/utils';
 import { 
   Bell, 
@@ -23,6 +24,9 @@ import {
 } from 'react-icons/md';
 import { TbAlertCircle } from 'react-icons/tb';
 
+// Use ISR for better performance with real-time updates
+export const revalidate = 10;
+
 export default async function NotificationsPage() {
   const supabase = await createServerSupabaseClient();
 
@@ -34,32 +38,19 @@ export default async function NotificationsPage() {
     redirect('/auth/signin');
   }
 
-  // Fetch user profile
-  let profile = null;
-  try {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    profile = data;
-  } catch (error) {
-    console.log('Users table may not exist yet');
-  }
-
-  // Fetch notifications
-  let notifications: any[] = [];
-  try {
-    const { data } = await supabase
+  // Fetch user profile and notifications in parallel
+  const [profileResult, notificationsResult] = await Promise.all([
+    supabase.from('users').select('*').eq('id', user.id).single(),
+    supabase
       .from('notifications')
       .select('*')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(50);
-    notifications = data || [];
-  } catch (error) {
-    console.log('Notifications table may not exist yet');
-  }
+      .limit(50),
+  ]);
+
+  const profile = profileResult.data;
+  const notifications = notificationsResult.data || [];
 
   const userProfile = profile || {
     id: user.id,
@@ -118,8 +109,9 @@ export default async function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
-      <Navbar user={userProfile} />
+    <NotificationsPageClient userId={user.id}>
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+        <Navbar user={userProfile} />
 
       <main className="flex-1">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -201,5 +193,6 @@ export default async function NotificationsPage() {
 
       <Footer />
     </div>
+  </NotificationsPageClient>
   );
 }

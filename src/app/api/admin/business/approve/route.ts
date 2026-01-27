@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getBusinessApprovedEmail, getBusinessRejectedEmail } from '@/lib/email';
 
 // Create admin client with service role key
 function getAdminClient() {

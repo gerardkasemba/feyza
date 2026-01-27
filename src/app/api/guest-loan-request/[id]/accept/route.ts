@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getGuestLenderAcceptedEmail, getLoanAcceptedBorrowerEmail } from '@/lib/email';
 import { randomBytes } from 'crypto';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';

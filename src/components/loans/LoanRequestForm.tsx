@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
-import { Button, Input, Select, Card } from '@/components/ui';
+import { Button, Input, Select, Card, Calendar as CalendarPicker, Alert } from '@/components/ui';
 import { BusinessProfile, DisbursementMethod } from '@/types';
 import { formatCurrency, formatPercentage, calculateTotalInterest, calculateLoanTermMonths } from '@/lib/utils';
 import { 
@@ -17,7 +17,7 @@ import { DisbursementMethodForm } from './DisbursementMethodForm';
 import { 
   Building2, Users, ChevronRight, ChevronLeft, MapPin, Percent, Info, 
   AlertCircle, FileText, CreditCard, Check, AlertTriangle, Shield,
-  TrendingUp, Lock, Star, Zap, Calendar, Clock, Edit3, Search, AtSign, Loader2,
+  TrendingUp, Lock, Star, Zap, Calendar as CalendarIcon, Clock, Edit3, Search, AtSign, Loader2,
   Wallet, Sparkles
 } from 'lucide-react';
 
@@ -194,6 +194,22 @@ export function LoanRequestForm({
   const inviteUsername = watch('inviteUsername');
   const startDate = watch('startDate');
 
+  // Calendar date state for proper control
+  const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(() => {
+    if (startDate) {
+      return new Date(startDate);
+    }
+    return null;
+  });
+
+  // Sync selectedStartDate with form
+  useEffect(() => {
+    if (selectedStartDate) {
+      const formatted = selectedStartDate.toISOString().split('T')[0];
+      setValue('startDate', formatted);
+    }
+  }, [selectedStartDate, setValue]);
+
   // Username search state
   const [usernameSearch, setUsernameSearch] = useState('');
   const [usernameSearching, setUsernameSearching] = useState(false);
@@ -212,61 +228,98 @@ export function LoanRequestForm({
   }, [amount]);
 
   // Income-based smart schedule suggestions (if user has financial profile)
-  const incomeBasedSchedule = useMemo(() => {
-    if (!financialProfile || !amount || amount <= 0) return null;
-    
-    const disposable = financialProfile.disposableIncome;
-    
-    // If disposable income is <= 0, return object with that info so warning can show
-    if (disposable <= 0) {
-      return {
-        hasProfile: true,
-        monthlyIncome: financialProfile.monthlyIncome,
-        monthlyExpenses: financialProfile.monthlyExpenses,
-        disposableIncome: disposable,
-        payFrequency: financialProfile.payFrequency,
-        suggestions: null, // Can't calculate suggestions with no disposable income
-        recommended: null,
-      };
-    }
-    
-    // Calculate suggestions based on disposable income
-    const percentages = { comfortable: 0.15, balanced: 0.22, aggressive: 0.30 };
-    
-    const calculateForLevel = (level: ComfortLevel) => {
-      const monthlyPayment = disposable * percentages[level];
-      const multiplier = { weekly: 4.33, biweekly: 2.17, semimonthly: 2, monthly: 1 }[financialProfile.payFrequency];
-      let paymentAmount = Math.round(monthlyPayment / multiplier);
-      paymentAmount = Math.max(paymentAmount, Math.ceil(amount / 12)); // Min payment
-      const numberOfPayments = Math.ceil(amount / paymentAmount);
-      const weeksPerPayment = financialProfile.payFrequency === 'weekly' ? 1 : 
-                              financialProfile.payFrequency === 'biweekly' ? 2 : 4;
-      return {
-        amount: paymentAmount,
-        frequency: financialProfile.payFrequency,
-        percentOfDisposable: Math.round((paymentAmount * multiplier / disposable) * 100),
-        numberOfPayments,
-        weeksToPayoff: numberOfPayments * weeksPerPayment,
-        totalRepayment: paymentAmount * numberOfPayments,
-        description: level === 'comfortable' ? 'Easy on your budget' : 
-                     level === 'balanced' ? 'Recommended' : 'Fastest payoff',
-      };
-    };
-    
+// Replace lines 553-590 with:
+
+// Income-based smart schedule suggestions (if user has financial profile)
+const incomeBasedSchedule = useMemo(() => {
+  if (!financialProfile || !amount || amount <= 0) return null;
+  
+  const disposable = financialProfile.disposableIncome;
+  
+  // If disposable income is <= 0, return object with that info so warning can show
+  if (disposable <= 0) {
     return {
       hasProfile: true,
       monthlyIncome: financialProfile.monthlyIncome,
       monthlyExpenses: financialProfile.monthlyExpenses,
       disposableIncome: disposable,
       payFrequency: financialProfile.payFrequency,
-      suggestions: {
-        comfortable: calculateForLevel('comfortable'),
-        balanced: calculateForLevel('balanced'),
-        aggressive: calculateForLevel('aggressive'),
-      },
-      recommended: calculateForLevel(selectedComfortLevel),
+      suggestions: null, // Can't calculate suggestions with no disposable income
+      recommended: null,
     };
-  }, [financialProfile, amount, interestRate, selectedComfortLevel]);
+  }
+  
+  // For small to medium loans, use FIXED installment counts to ensure variety
+  // This guarantees different payment amounts for each comfort level
+  const getInstallmentCount = (level: ComfortLevel): number => {
+    if (amount <= 100) {
+      // $100 or less: 4, 2, 1 payments
+      return level === 'comfortable' ? 4 : level === 'balanced' ? 2 : 1;
+    } else if (amount <= 300) {
+      // $101-300: 6, 4, 2 payments
+      return level === 'comfortable' ? 6 : level === 'balanced' ? 4 : 2;
+    } else if (amount <= 500) {
+      // $301-500: 8, 4, 2 payments
+      return level === 'comfortable' ? 8 : level === 'balanced' ? 4 : 2;
+    } else if (amount <= 1000) {
+      // $501-1000: 10, 6, 3 payments
+      return level === 'comfortable' ? 10 : level === 'balanced' ? 6 : 3;
+    } else if (amount <= 2000) {
+      // $1001-2000: 12, 8, 4 payments
+      return level === 'comfortable' ? 12 : level === 'balanced' ? 8 : 4;
+    } else {
+      // $2000+: Calculate based on income, with min/max bounds
+      const percentages = { comfortable: 0.15, balanced: 0.22, aggressive: 0.30 };
+      const monthlyPayment = disposable * percentages[level];
+      const multiplier = { weekly: 4.33, biweekly: 2.17, semimonthly: 2, monthly: 1 }[financialProfile.payFrequency];
+      const paymentAmount = Math.max(Math.round(monthlyPayment / multiplier), 50);
+      let count = Math.ceil(amount / paymentAmount);
+      // Clamp to reasonable range
+      if (level === 'comfortable') count = Math.min(Math.max(count, 8), 24);
+      else if (level === 'balanced') count = Math.min(Math.max(count, 4), 12);
+      else count = Math.min(Math.max(count, 2), 6);
+      return count;
+    }
+  };
+  
+  const calculateForLevel = (level: ComfortLevel) => {
+    const numberOfPayments = getInstallmentCount(level);
+    const paymentAmount = Math.ceil(amount / numberOfPayments);
+    
+    const multiplier = { weekly: 4.33, biweekly: 2.17, semimonthly: 2, monthly: 1 }[financialProfile.payFrequency];
+    const weeksPerPayment = financialProfile.payFrequency === 'weekly' ? 1 : 
+                            financialProfile.payFrequency === 'biweekly' ? 2 : 4;
+    
+    // Calculate what percentage of disposable income this represents
+    const monthlyEquivalent = paymentAmount * multiplier;
+    const percentOfDisposable = Math.round((monthlyEquivalent / disposable) * 100);
+    
+    return {
+      amount: paymentAmount,
+      frequency: financialProfile.payFrequency,
+      percentOfDisposable: Math.min(percentOfDisposable, 100), // Cap at 100%
+      numberOfPayments,
+      weeksToPayoff: numberOfPayments * weeksPerPayment,
+      totalRepayment: paymentAmount * numberOfPayments,
+      description: level === 'comfortable' ? 'Easy on your budget' : 
+                   level === 'balanced' ? 'Recommended' : 'Fastest payoff',
+    };
+  };
+  
+  return {
+    hasProfile: true,
+    monthlyIncome: financialProfile.monthlyIncome,
+    monthlyExpenses: financialProfile.monthlyExpenses,
+    disposableIncome: disposable,
+    payFrequency: financialProfile.payFrequency,
+    suggestions: {
+      comfortable: calculateForLevel('comfortable'),
+      balanced: calculateForLevel('balanced'),
+      aggressive: calculateForLevel('aggressive'),
+    },
+    recommended: calculateForLevel(selectedComfortLevel),
+  };
+}, [financialProfile, amount, selectedComfortLevel]);
 
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
 
@@ -1567,7 +1620,7 @@ export function LoanRequestForm({
                                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
                                     selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-900' : 'bg-neutral-100 dark:bg-neutral-800'
                                   }`}>
-                                    <Calendar className={`w-5 h-5 ${
+                                    <CalendarIcon className={`w-5 h-5 ${
                                       selectedPresetIndex === index ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'
                                     }`} />
                                   </div>
@@ -1651,11 +1704,17 @@ export function LoanRequestForm({
             </div>
           )}
 
-          <Input
-            label="Start Date *"
-            type="date"
-            {...register('startDate')}
-          />
+          <div>
+            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              Start Date *
+            </label>
+            <CalendarPicker
+              selectedDate={selectedStartDate}
+              onDateSelect={setSelectedStartDate}
+              minDate={new Date()}
+              placeholder="Select start date"
+            />
+          </div>
 
           {amount > 0 && totalInstallments > 0 && (
             <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl space-y-2">
@@ -1792,23 +1851,88 @@ export function LoanRequestForm({
 
             {showFullTerms && (
               <div className="text-sm text-neutral-600 dark:text-neutral-400 space-y-3 max-h-64 overflow-y-auto mb-4 p-4 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
-                <p><strong>1. Loan Agreement</strong></p>
+                <p className="font-semibold text-neutral-900 dark:text-white">Loan Agreement Terms</p>
+
+                <p><strong>1. Parties & Loan Details</strong></p>
                 <p>
-                  I agree to borrow {formatCurrency(amount)} and repay a total of {formatCurrency(totalAmount)} 
-                  according to the payment schedule.
+                  This Loan Agreement ("Agreement") is between the borrower ("Borrower") and the lender ("Lender").
+                  By accepting these terms, Borrower agrees to receive a principal loan amount of {formatCurrency(amount)}.
+                  The total repayment amount and interest rate are provisional until a lender is matched.
                 </p>
-                <p><strong>2. Repayment Terms</strong></p>
+
+                <p><strong>2. Provisional Terms & Lender Matching</strong></p>
                 <p>
-                  I will make {totalInstallments} payments of {formatCurrency(repaymentAmount)} each.
+                  The repayment terms shown are based on your initial request. <strong>The interest rate and total repayment amount may change once you are matched with a lender or when a lender agrees to fund your loan.</strong> 
+                  Final loan terms, including the exact interest rate and total repayment amount, will be presented for your acceptance before any funds are disbursed.
                 </p>
-                <p><strong>3. Late Payments</strong></p>
+
+                <p><strong>3. Repayment Schedule</strong></p>
                 <p>
-                  I understand that late payments may affect my relationship with the lender 
-                  and I will communicate any payment difficulties promptly.
+                  Borrower agrees to repay this loan in {totalInstallments} installment(s) of {formatCurrency(repaymentAmount)} each,
+                  due on the dates shown in the repayment schedule. The payment amount shown is based on current provisional terms and may be adjusted based on the final interest rate set by the matched lender.
+                  Payments may be made through supported payment methods (e.g., bank transfer or other options offered in Feyza).
                 </p>
-                <p><strong>4. Digital Signatures</strong></p>
+
+                <p><strong>4. Interest, Fees, and Total Cost</strong></p>
                 <p>
-                  I acknowledge that my digital signature on this platform is legally binding.
+                  The total repayment amount shown above includes estimated interest based on provisional terms. 
+                  <strong>The final interest rate will be determined by the matched lender</strong> and will be clearly displayed before you accept the final loan agreement.
+                  Feyza displays these amounts before Borrower accepts the final Agreement. Once accepted, loan pricing cannot be changed unless both parties explicitly agree to an update within the platform.
+                </p>
+
+                <p><strong>5. Prepayment</strong></p>
+                <p>
+                  Borrower may repay the loan early, in whole or in part, unless the Lender's terms explicitly state otherwise.
+                  Any early repayment will be applied to the outstanding balance and may reduce future scheduled payments.
+                  Early repayment may affect the total interest paid, depending on the lender's terms.
+                </p>
+
+                <p><strong>6. Late Payments & Communication</strong></p>
+                <p>
+                  A payment is considered late if not received by the due date shown in the schedule. Borrower agrees to notify
+                  Lender as soon as possible if a payment cannot be made on time. Late payments may result in reminders and may
+                  impact Borrower's ability to receive future offers from participating lenders.
+                </p>
+
+                <p><strong>7. Payment Confirmation & Records</strong></p>
+                <p>
+                  Feyza keeps a record of the repayment schedule, payment history, and confirmations submitted by either party.
+                  Borrower authorizes Feyza to display these records to Borrower and Lender for transparency. Feyza may also send
+                  automated reminders and status updates by email or other notification methods enabled by the user.
+                </p>
+
+                <p><strong>8. Disputes</strong></p>
+                <p>
+                  If Borrower and Lender disagree about a payment or balance, both parties agree to first attempt to resolve the
+                  issue directly. Feyza may provide supporting records (e.g., timestamps, confirmations, receipts uploaded by users),
+                  but Feyza is not a party to this Agreement and does not guarantee resolution outcomes.
+                </p>
+
+                <p><strong>9. No Legal, Tax, or Credit Advice</strong></p>
+                <p>
+                  Feyza provides tools to document and manage loans but does not provide legal, tax, or credit advice.
+                  Borrower and Lender are responsible for understanding and complying with any applicable laws, regulations, and
+                  reporting obligations related to this loan.
+                </p>
+
+                <p><strong>10. Platform Role & Limitations</strong></p>
+                <p>
+                  Feyza is a software platform that helps facilitate loan matching, documentation, reminders, and repayment tracking.
+                  Unless explicitly stated, Feyza is not the lender, does not guarantee funding, does not guarantee repayment,
+                  and does not assume responsibility for the actions of Borrower or Lender.
+                </p>
+
+                <p><strong>11. Electronic Consent & Signature</strong></p>
+                <p>
+                  By clicking "Accept," Borrower consents to using electronic records and signatures and acknowledges that this
+                  electronic acceptance has the same legal effect as a handwritten signature to the extent permitted by law.
+                  Note: This initial acceptance indicates your interest in receiving loan offers; you will need to accept final loan terms when matched with a lender.
+                </p>
+
+                <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2 border-t border-neutral-200 dark:border-neutral-700">
+                  <strong>Important:</strong> The interest rate and total repayment amount shown are provisional. Final terms will be set by the matched lender and presented for your acceptance before any funds are disbursed. 
+                  This is a general template for use within Feyza and may not cover all legal requirements in every jurisdiction.
+                  Consider consulting legal counsel to ensure compliance for your specific use case.
                 </p>
               </div>
             )}

@@ -38,26 +38,27 @@ export default function ForgotPasswordPage() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 flex items-center justify-center p-4">
-        <div className="w-full max-w-md">
-          <Card className="text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
-            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-500" />
-            </div>
-            <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-2">
-              Check your email
-            </h1>
-            <p className="text-neutral-500 dark:text-neutral-400 mb-6">
-              We've sent a password reset link to <strong className="text-neutral-900 dark:text-white">{email}</strong>
-            </p>
-            <Link href="/auth/signin">
-              <Button variant="outline" className="w-full border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800">
-                Back to Sign In
-              </Button>
-            </Link>
-          </Card>
+      
+        <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 flex items-center justify-center p-4">
+          <div className="w-full max-w-md">
+            <Card className="text-center bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-6">
+                <CheckCircle className="w-8 h-8 text-green-600 dark:text-green-500" />
+              </div>
+              <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-2">
+                Check your email
+              </h1>
+              <p className="text-neutral-500 dark:text-neutral-400 mb-6">
+                We've sent a password reset link to <strong className="text-neutral-900 dark:text-white">{email}</strong>
+              </p>
+              <Link href="/auth/signin">
+                <Button variant="outline" className="w-full border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                  Back to Sign In
+                </Button>
+              </Link>
+            </Card>
+          </div>
         </div>
-      </div>
     );
   }
 

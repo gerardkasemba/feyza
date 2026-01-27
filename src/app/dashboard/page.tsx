@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
-import { StatsCard, BorrowerTrustCard, IncomeProfileCard } from '@/components/dashboard';
+import { StatsCard, BorrowerTrustCard, IncomeProfileCard, DashboardClient } from '@/components/dashboard';
 import { DashboardBorrowingLimit } from '@/components/dashboard/DashboardBorrowingLimit';
 import { LoanCard } from '@/components/loans';
 import { formatCurrency } from '@/lib/utils';
@@ -21,8 +21,8 @@ import {
   Building,
 } from 'lucide-react';
 
-// Force dynamic rendering to always get fresh data
-export const dynamic = 'force-dynamic';
+// Use ISR with revalidation for better performance
+export const revalidate = 30; // Revalidate every 30 seconds
 
 export default async function DashboardPage() {
   const supabase = await createServerSupabaseClient();
@@ -35,25 +35,15 @@ export default async function DashboardPage() {
     redirect('/auth/signin');
   }
 
-  // Try to fetch user profile, handle case where table doesn't exist
-  let profile = null;
-  try {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    profile = data;
-  } catch (error) {
-    console.log('Users table may not exist yet');
-  }
-
-  // Try to fetch loans, handle case where table doesn't exist
-  let borrowedLoans: any[] = [];
-  let lentLoans: any[] = [];
-  
-  try {
-    const { data } = await supabase
+  // Fetch all data in parallel for better performance
+  const [
+    profileResult,
+    borrowedLoansResult,
+    lentLoansResult,
+    businessProfileResult,
+  ] = await Promise.all([
+    supabase.from('users').select('*').eq('id', user.id).single(),
+    supabase
       .from('loans')
       .select(`
         *,
@@ -61,54 +51,45 @@ export default async function DashboardPage() {
         business_lender:business_profiles!business_lender_id(id, business_name)
       `)
       .eq('borrower_id', user.id)
-      .order('created_at', { ascending: false });
-    borrowedLoans = data || [];
-  } catch (error) {
-    console.log('Loans table may not exist yet');
-  }
-
-  // Get loans where user is lender (individual)
-  try {
-    const { data } = await supabase
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
       .from('loans')
       .select(`
         *,
         borrower:users!borrower_id(id, full_name, email, username)
       `)
       .eq('lender_id', user.id)
-      .order('created_at', { ascending: false });
-    lentLoans = data || [];
-  } catch (error) {
-    console.log('Loans table may not exist yet');
-  }
-
-  // Also get loans from user's business profile
-  let businessProfile: any = null;
-  try {
-    const { data: bp } = await supabase
+      .order('created_at', { ascending: false })
+      .limit(50),
+    supabase
       .from('business_profiles')
       .select('id, business_name, profile_completed, is_verified, verification_status, slug, public_profile_enabled')
       .eq('user_id', user.id)
-      .single();
-    businessProfile = bp;
+      .single(),
+  ]);
+
+  const profile = profileResult.data;
+  let borrowedLoans = borrowedLoansResult.data || [];
+  let lentLoans = lentLoansResult.data || [];
+  const businessProfile = businessProfileResult.data;
+
+  // Fetch business loans if user has a business profile
+  if (businessProfile) {
+    const { data: businessLoans } = await supabase
+      .from('loans')
+      .select(`
+        *,
+        borrower:users!borrower_id(id, full_name, email, username)
+      `)
+      .eq('business_lender_id', businessProfile.id)
+      .order('created_at', { ascending: false })
+      .limit(50);
     
-    if (businessProfile) {
-      const { data: businessLoans } = await supabase
-        .from('loans')
-        .select(`
-          *,
-          borrower:users!borrower_id(id, full_name, email, username)
-        `)
-        .eq('business_lender_id', businessProfile.id)
-        .order('created_at', { ascending: false });
-      
-      // Merge and deduplicate loans (a loan might have both lender_id and business_lender_id)
-      const existingIds = new Set(lentLoans.map(l => l.id));
-      const uniqueBusinessLoans = (businessLoans || []).filter(l => !existingIds.has(l.id));
-      lentLoans = [...lentLoans, ...uniqueBusinessLoans];
-    }
-  } catch (error) {
-    // No business profile
+    // Merge and deduplicate loans
+    const existingIds = new Set(lentLoans.map(l => l.id));
+    const uniqueBusinessLoans = (businessLoans || []).filter(l => !existingIds.has(l.id));
+    lentLoans = [...lentLoans, ...uniqueBusinessLoans];
   }
 
   const activeLoansAsBorrower = borrowedLoans.filter((l) => l.status === 'active');
@@ -124,7 +105,7 @@ export default async function DashboardPage() {
   const getMonday = (date: Date) => {
     const d = new Date(date);
     const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is Sunday
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   };
 
@@ -136,80 +117,47 @@ export default async function DashboardPage() {
     return saturday;
   };
 
-  // Calculate due this week (payments user needs to make as borrower)
-  // Week is Monday to Saturday
-  let dueThisWeekCount = 0;
-  let dueThisWeekAmount = 0;
-  let dueThisWeekPayments: { amount: number; due_date: string }[] = [];
-  try {
-    const today = new Date();
-    const monday = getMonday(today);
-    monday.setHours(0, 0, 0, 0);
-    const saturday = getSaturday(today);
-    saturday.setHours(23, 59, 59, 999);
-    
-    // Format dates as YYYY-MM-DD for database query
-    const mondayStr = monday.toISOString().split('T')[0];
-    const saturdayStr = saturday.toISOString().split('T')[0];
-    
-    // Get unpaid payments due this week for borrowed loans
-    const borrowerLoanIds = activeLoansAsBorrower.map(l => l.id);
-    if (borrowerLoanIds.length > 0) {
-      const { data: schedules, error } = await supabase
-        .from('payment_schedule')
-        .select('id, amount, due_date')
-        .in('loan_id', borrowerLoanIds)
-        .eq('is_paid', false)
-        .gte('due_date', mondayStr)
-        .lte('due_date', saturdayStr + 'T23:59:59');
-      
-      if (error) {
-        console.log('Error fetching borrower schedules:', error);
-      }
-      
-      dueThisWeekPayments = schedules || [];
-      dueThisWeekCount = schedules?.length || 0;
-      dueThisWeekAmount = schedules?.reduce((sum, s) => sum + (s.amount || 0), 0) || 0;
-    }
-  } catch (error) {
-    console.log('Error calculating due this week:', error);
-  }
+  // Calculate payments due this week in parallel
+  const today = new Date();
+  const monday = getMonday(today);
+  monday.setHours(0, 0, 0, 0);
+  const saturday = getSaturday(today);
+  saturday.setHours(23, 59, 59, 999);
+  const mondayStr = monday.toISOString().split('T')[0];
+  const saturdayStr = saturday.toISOString().split('T')[0];
 
-  // Calculate expected this week (payments lender expects to receive)
-  let expectedThisWeekCount = 0;
-  let expectedThisWeekAmount = 0;
-  let expectedThisWeekPayments: { amount: number; due_date: string }[] = [];
-  try {
-    const today = new Date();
-    const monday = getMonday(today);
-    monday.setHours(0, 0, 0, 0);
-    const saturday = getSaturday(today);
-    saturday.setHours(23, 59, 59, 999);
-    
-    const mondayStr = monday.toISOString().split('T')[0];
-    const saturdayStr = saturday.toISOString().split('T')[0];
-    
-    const lenderLoanIds = activeLoansAsLender.map(l => l.id);
-    if (lenderLoanIds.length > 0) {
-      const { data: schedules, error } = await supabase
-        .from('payment_schedule')
-        .select('id, amount, due_date')
-        .in('loan_id', lenderLoanIds)
-        .eq('is_paid', false)
-        .gte('due_date', mondayStr)
-        .lte('due_date', saturdayStr + 'T23:59:59');
-      
-      if (error) {
-        console.log('Error fetching lender schedules:', error);
-      }
-      
-      expectedThisWeekPayments = schedules || [];
-      expectedThisWeekCount = schedules?.length || 0;
-      expectedThisWeekAmount = schedules?.reduce((sum, s) => sum + (s.amount || 0), 0) || 0;
-    }
-  } catch (error) {
-    console.log('Error calculating expected this week:', error);
-  }
+  const borrowerLoanIds = activeLoansAsBorrower.map(l => l.id);
+  const lenderLoanIds = activeLoansAsLender.map(l => l.id);
+
+  // Fetch payment schedules in parallel
+  const [dueSchedulesResult, expectedSchedulesResult] = await Promise.all([
+    borrowerLoanIds.length > 0
+      ? supabase
+          .from('payment_schedule')
+          .select('id, amount, due_date')
+          .in('loan_id', borrowerLoanIds)
+          .eq('is_paid', false)
+          .gte('due_date', mondayStr)
+          .lte('due_date', saturdayStr + 'T23:59:59')
+      : Promise.resolve({ data: [] }),
+    lenderLoanIds.length > 0
+      ? supabase
+          .from('payment_schedule')
+          .select('id, amount, due_date')
+          .in('loan_id', lenderLoanIds)
+          .eq('is_paid', false)
+          .gte('due_date', mondayStr)
+          .lte('due_date', saturdayStr + 'T23:59:59')
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const dueThisWeekPayments = dueSchedulesResult.data || [];
+  const dueThisWeekCount = dueThisWeekPayments.length;
+  const dueThisWeekAmount = dueThisWeekPayments.reduce((sum, s) => sum + (s.amount || 0), 0);
+
+  const expectedThisWeekPayments = expectedSchedulesResult.data || [];
+  const expectedThisWeekCount = expectedThisWeekPayments.length;
+  const expectedThisWeekAmount = expectedThisWeekPayments.reduce((sum, s) => sum + (s.amount || 0), 0);
 
   const userProfile = profile || {
     id: user.id,
@@ -219,35 +167,36 @@ export default async function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <Navbar user={userProfile} />
+    <DashboardClient userId={user.id}>
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
+        <Navbar user={userProfile} />
 
-      <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Header */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
-                Welcome back, {userProfile.full_name?.split(' ')[0]} 👋
-              </h1>
-              <p className="text-neutral-500 dark:text-neutral-400 mt-1">Here&apos;s your loan overview</p>
+        <main className="flex-1">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+              <div>
+                <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
+                  Welcome back, {userProfile.full_name?.split(' ')[0]} 👋
+                </h1>
+                <p className="text-neutral-500 dark:text-neutral-400 mt-1">Here&apos;s your loan overview</p>
+              </div>
+              <Link href="/loans/new">
+                <Button>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Request Loan
+                </Button>
+              </Link>
             </div>
-            <Link href="/loans/new">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Request Loan
-              </Button>
-            </Link>
-          </div>
 
-          {/* Verification Banner for Individual Users */}
-          {userProfile.user_type === 'individual' && profile?.verification_status !== 'verified' && (
-            <div className={`mb-6 p-4 rounded-xl border ${
-              profile?.verification_status === 'submitted' 
-                ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
-                : profile?.verification_status === 'rejected'
-                ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-                : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+            {/* Verification Banner for Individual Users */}
+            {userProfile.user_type === 'individual' && profile?.verification_status !== 'verified' && (
+              <div className={`mb-6 p-4 rounded-xl border ${
+                profile?.verification_status === 'submitted' 
+                  ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                  : profile?.verification_status === 'rejected'
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                  : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
             }`}>
               <div className="flex items-start gap-4">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -634,6 +583,7 @@ export default async function DashboardPage() {
 
       <Footer />
     </div>
+  </DashboardClient>
   );
 }
 

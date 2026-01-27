@@ -111,7 +111,7 @@ export function LoanCard({ loan, role }: LoanCardProps) {
           <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
             <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
               <AlertCircle className="w-4 h-4" />
-              <span className="font-medium">Action needed: Send PayPal payment</span>
+              <span className="font-medium">Action needed: Send Payment</span>
             </div>
           </div>
         )}

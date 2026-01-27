@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { ToastProvider } from '@/components/ui';
+
 import './globals.css';
 
 // Base URL for your site - update this with your actual domain

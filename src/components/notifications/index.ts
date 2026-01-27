@@ -1,0 +1,1 @@
+export { NotificationsPageClient } from './NotificationsPageClient';

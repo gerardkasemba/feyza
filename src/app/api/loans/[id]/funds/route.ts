@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
 
 const PAYMENT_METHOD_NAMES: Record<string, string> = {
   paypal: 'PayPal',

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
 
 // Helper to get current agent
 async function getCurrentAgent() {

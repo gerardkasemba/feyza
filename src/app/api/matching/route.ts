@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getNoMatchFoundEmail, getNewMatchForLenderEmail, getLoanAcceptedBorrowerEmail, getLoanAcceptedLenderEmail } from '@/lib/email';
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 interface MatchResult {
   lender_user_id: string | null;
@@ -9,6 +11,7 @@ interface MatchResult {
   auto_accept: boolean;
   interest_rate: number;
   lender_name: string;
+  lender_email?: string;
 }
 
 // POST: Find and assign best matching lender for a loan
@@ -82,7 +85,8 @@ export async function POST(request: NextRequest) {
         .from('lender_preferences')
         .select(`
           *,
-          business:business_profiles!business_id(id, business_name, contact_email)
+          business:business_profiles!business_id(id, business_name, contact_email),
+          user:users!user_id(id, full_name, email)
         `)
         .eq('is_active', true)
         .gte('capital_pool', loan.amount)
@@ -97,6 +101,25 @@ export async function POST(request: NextRequest) {
           .eq('id', loan_id);
         return NextResponse.json({ error: 'Matching failed: ' + prefsError.message }, { status: 500 });
       }
+
+      console.log(`[Matching] Found ${lenderPrefs?.length || 0} potential lenders before filtering`);
+      
+      // Log each lender preference found
+      lenderPrefs?.forEach((lp: any, idx: number) => {
+        console.log(`[Matching] Lender ${idx + 1}:`, {
+          user_id: lp.user_id,
+          business_id: lp.business_id,
+          business_name: lp.business?.business_name,
+          business_email: lp.business?.contact_email,
+          user_name: lp.user?.full_name,
+          user_email: lp.user?.email,
+          is_active: lp.is_active,
+          auto_accept: lp.auto_accept,
+          capital_pool: lp.capital_pool,
+          capital_reserved: lp.capital_reserved,
+          available: (lp.capital_pool || 0) - (lp.capital_reserved || 0),
+        });
+      });
 
       // Filter and score lenders
       if (lenderPrefs && lenderPrefs.length > 0) {
@@ -129,7 +152,8 @@ export async function POST(request: NextRequest) {
             match_score: 80, // Default score for fallback
             auto_accept: lp.auto_accept || false,
             interest_rate: lp.interest_rate || 10,
-            lender_name: lp.business?.business_name || 'Lender',
+            lender_name: lp.business?.business_name || lp.user?.full_name || 'Lender',
+            lender_email: lp.business?.contact_email || lp.user?.email,
             first_time_borrower_limit: lp.first_time_borrower_limit,
           }))
           .slice(0, 5);
@@ -149,8 +173,7 @@ export async function POST(request: NextRequest) {
       
       // Send email notification to borrower about no match
       if (loan.borrower?.email) {
-        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-        const isFirstTime = isFirstTimeBorrower;
+                const isFirstTime = isFirstTimeBorrower;
         
         await sendEmail({
           to: loan.borrower.email,
@@ -458,10 +481,11 @@ async function assignLoanToLender(
     repaymentAmount 
   });
 
-  // Simple flow: Loan is active immediately, lender will send PayPal payment
-  // funds_sent tracks whether lender has paid the borrower
+  // For auto-accept: The loan is matched but lender hasn't explicitly signed yet.
+  // They'll sign when they fund the loan.
+  // lender_signed should only be true after lender explicitly reviews and funds.
   const updateData: any = {
-    status: 'active',
+    status: isAutoAccept ? 'pending' : 'active', // Auto-accept stays pending until lender funds
     match_status: 'matched',
     matched_at: new Date().toISOString(),
     interest_rate: lenderInterestRate,
@@ -470,9 +494,12 @@ async function assignLoanToLender(
     repayment_amount: repaymentAmount,
     amount_remaining: totalAmount,
     invite_accepted: true,
-    lender_signed: true,
-    lender_signed_at: new Date().toISOString(),
+    // For auto-accept: Don't mark as signed yet - lender will sign when they fund
+    // For manual accept: Lender explicitly accepted, so they've effectively signed
+    lender_signed: !isAutoAccept,
+    lender_signed_at: !isAutoAccept ? new Date().toISOString() : null,
     funds_sent: false, // Lender hasn't paid borrower yet
+    auto_matched: isAutoAccept, // Track that this was auto-matched
   };
 
   if (match.lender_user_id) {
@@ -592,36 +619,57 @@ async function reserveLenderCapital(supabase: any, match: MatchResult, amount: n
 
 // Helper: Notify lender of a match
 async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult, matchId: string | undefined) {
-  // Get lender email
-  let lenderEmail: string | null = null;
+  console.log(`[Matching] ========== NOTIFY LENDER START ==========`);
+  console.log(`[Matching] Loan ID: ${loan.id}, Amount: ${loan.currency} ${loan.amount}`);
+  console.log(`[Matching] Match ID: ${matchId}`);
+  console.log(`[Matching] Match data:`, JSON.stringify({
+    lender_user_id: match.lender_user_id, 
+    lender_business_id: match.lender_business_id,
+    lender_name: match.lender_name,
+    lender_email: match.lender_email,
+    auto_accept: match.auto_accept,
+  }, null, 2));
+
+  // Get lender email - use match.lender_email as fallback
+  let lenderEmail: string | null = match.lender_email || null;
   let lenderName = match.lender_name;
 
   if (match.lender_user_id) {
-    const { data: user } = await supabase
+    const { data: user, error: userError } = await supabase
       .from('users')
       .select('email, full_name')
       .eq('id', match.lender_user_id)
       .single();
-    lenderEmail = user?.email;
-    lenderName = user?.full_name || lenderName;
+    if (userError) {
+      console.error(`[Matching] Failed to fetch user ${match.lender_user_id}:`, userError);
+    } else if (user) {
+      lenderEmail = user.email || lenderEmail;
+      lenderName = user.full_name || lenderName;
+    }
   } else if (match.lender_business_id) {
-    const { data: business } = await supabase
+    const { data: business, error: bizError } = await supabase
       .from('business_profiles')
       .select('contact_email, business_name')
       .eq('id', match.lender_business_id)
       .single();
-    lenderEmail = business?.contact_email;
-    lenderName = business?.business_name || lenderName;
+    if (bizError) {
+      console.error(`[Matching] Failed to fetch business ${match.lender_business_id}:`, bizError);
+    } else if (business) {
+      lenderEmail = business.contact_email || lenderEmail;
+      lenderName = business.business_name || lenderName;
+    }
   }
 
+  console.log(`[Matching] Will send email to: ${lenderEmail}, name: ${lenderName}`);
+
   if (lenderEmail) {
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const reviewUrl = `${APP_URL}/lender/matches/${matchId}`;
 
-    await sendEmail({
-      to: lenderEmail,
-      subject: `New Loan Match: ${loan.currency} ${loan.amount}`,
-      html: `
+    try {
+      await sendEmail({
+        to: lenderEmail,
+        subject: `🎯 New Loan Match: ${loan.currency} ${loan.amount.toLocaleString()}`,
+        html: `
       <!DOCTYPE html>
       <html>
       <head>
@@ -757,26 +805,64 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
       </body>
       </html>
       `,
-    });
+      });
+      console.log(`[Matching] ✅ Sent match notification email to ${lenderEmail}`);
+    } catch (emailError) {
+      console.error(`[Matching] ❌ Failed to send email to ${lenderEmail}:`, emailError);
+    }
+  } else {
+    console.log(`[Matching] ⚠️ No email address found for lender, skipping email notification`);
   }
 
-  // Create in-app notification
+  // Create in-app notification for lender
   if (match.lender_user_id) {
-    await supabase.from('notifications').insert({
+    // Individual lender notification
+    const { error: notifError } = await supabase.from('notifications').insert({
       user_id: match.lender_user_id,
       loan_id: loan.id,
       type: 'loan_match_offer',
       title: '🎯 New Loan Match!',
-      message: `A ${loan.currency} ${loan.amount} loan matches your preferences. You have 24h to respond.`,
+      message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your preferences. You have 24h to respond.`,
     });
+    if (notifError) {
+      console.error(`[Matching] Failed to create notification for lender ${match.lender_user_id}:`, notifError);
+    } else {
+      console.log(`[Matching] ✅ Created in-app notification for lender user ${match.lender_user_id}`);
+    }
+  } else if (match.lender_business_id) {
+    // Business lender notification - find the business owner
+    const { data: business, error: bizError } = await supabase
+      .from('business_profiles')
+      .select('user_id, business_name')
+      .eq('id', match.lender_business_id)
+      .single();
+    
+    if (bizError) {
+      console.error(`[Matching] Failed to get business profile ${match.lender_business_id}:`, bizError);
+    } else if (business?.user_id) {
+      const { error: notifError } = await supabase.from('notifications').insert({
+        user_id: business.user_id,
+        loan_id: loan.id,
+        type: 'loan_match_offer',
+        title: '🎯 New Loan Match!',
+        message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your ${business.business_name} lending preferences. Review and accept within 24h.`,
+      });
+      if (notifError) {
+        console.error(`[Matching] Failed to create notification for business owner ${business.user_id}:`, notifError);
+      } else {
+        console.log(`[Matching] ✅ Created in-app notification for business owner ${business.user_id}`);
+      }
+    } else {
+      console.log(`[Matching] Business ${match.lender_business_id} has no user_id, skipping notification`);
+    }
+  } else {
+    console.log(`[Matching] No lender_user_id or lender_business_id, skipping notification`);
   }
 }
 
 // Helper: Send match confirmation emails
 async function sendMatchNotifications(supabase: any, loan: any, match: MatchResult, isAutoAccept: boolean) {
-  const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-  // 1. Email to LENDER (confirmation of auto-accept or acceptance)
+    // 1. Email to LENDER (confirmation of auto-accept or acceptance)
   let lenderEmail: string | null = null;
   let lenderName = match.lender_name;
 

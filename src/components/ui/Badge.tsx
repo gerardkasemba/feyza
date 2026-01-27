@@ -1,9 +1,15 @@
 import React from 'react';
 import { cn } from '@/lib/utils';
 
+// Union type for all possible variant values
+export type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'error' | 'info' | 'primary' | 'accent';
+
+// Normalized variant type (without 'error')
+type NormalizedBadgeVariant = Exclude<BadgeVariant, 'error'>;
+
 interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'default' | 'success' | 'warning' | 'danger' | 'info' | 'primary' | 'accent';
+  variant?: BadgeVariant;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
   rounded?: 'full' | 'lg';
@@ -18,7 +24,10 @@ export function Badge({
   rounded = 'full',
   withDot = false 
 }: BadgeProps) {
-  const variants = {
+  // Normalize 'error' to 'danger' for consistent styling
+  const normalizedVariant: NormalizedBadgeVariant = variant === 'error' ? 'danger' : variant;
+  
+  const variants: Record<NormalizedBadgeVariant, string> = {
     default: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300',
     success: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
     warning: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400',
@@ -39,7 +48,7 @@ export function Badge({
     lg: 'rounded-lg',
   };
 
-  const dotColors = {
+  const dotColors: Record<NormalizedBadgeVariant, string> = {
     default: 'bg-neutral-400 dark:bg-neutral-500',
     success: 'bg-green-500 dark:bg-green-400',
     warning: 'bg-yellow-500 dark:bg-yellow-400',
@@ -53,7 +62,7 @@ export function Badge({
     <span
       className={cn(
         'inline-flex items-center font-medium',
-        variants[variant],
+        variants[normalizedVariant],
         sizes[size],
         roundedClasses[rounded],
         className
@@ -63,7 +72,7 @@ export function Badge({
         <span 
           className={cn(
             'w-1.5 h-1.5 rounded-full mr-2 animate-pulse',
-            dotColors[variant]
+            dotColors[normalizedVariant]
           )} 
         />
       )}

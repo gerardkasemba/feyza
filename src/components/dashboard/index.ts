@@ -3,3 +3,4 @@ export { RecentActivity } from './RecentActivity';
 export { DashboardBorrowingLimit } from './DashboardBorrowingLimit';
 export { BorrowerTrustCard } from './BorrowerTrustCard';
 export { IncomeProfileCard } from './IncomeProfileCard';
+export { DashboardClient, useDashboardData } from './DashboardClient';

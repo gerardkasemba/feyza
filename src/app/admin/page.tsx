@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency } from '@/lib/utils';
@@ -16,6 +16,8 @@ import {
   CheckCircle,
   ArrowRight,
   Activity,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 
 interface Stats {
@@ -35,65 +37,116 @@ interface Stats {
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isConnected, setIsConnected] = useState(false);
+  const lastRefreshRef = useRef<number>(Date.now());
+  const supabase = createClient();
 
+  const fetchStats = useCallback(async () => {
+    // Fetch all stats in parallel
+    const [
+      usersResult,
+      loansResult,
+      businessesResult,
+      activeLoansResult,
+      pendingLoansResult,
+      completedLoansResult,
+      recentUsersResult,
+      recentLoansResult,
+      overdueResult,
+    ] = await Promise.all([
+      supabase.from('users').select('id', { count: 'exact' }),
+      supabase.from('loans').select('id, amount, amount_paid', { count: 'exact' }),
+      supabase.from('business_profiles').select('id', { count: 'exact' }),
+      supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'active'),
+      supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'pending'),
+      supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'completed'),
+      supabase.from('users').select('*').order('created_at', { ascending: false }).limit(5),
+      supabase.from('loans').select(`
+        *,
+        borrower:users!borrower_id(full_name, email),
+        lender:users!lender_id(full_name),
+        business_lender:business_profiles!business_lender_id(business_name)
+      `).order('created_at', { ascending: false }).limit(5),
+      supabase.from('payment_schedule')
+        .select('id', { count: 'exact' })
+        .eq('is_paid', false)
+        .lt('due_date', new Date().toISOString().split('T')[0]),
+    ]);
+
+    const loans = loansResult.data || [];
+    const totalLoanAmount = loans.reduce((sum, l) => sum + (l.amount || 0), 0);
+    const totalRepaid = loans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
+
+    setStats({
+      totalUsers: usersResult.count || 0,
+      totalLoans: loansResult.count || 0,
+      totalBusinesses: businessesResult.count || 0,
+      activeLoans: activeLoansResult.count || 0,
+      pendingLoans: pendingLoansResult.count || 0,
+      completedLoans: completedLoansResult.count || 0,
+      totalLoanAmount,
+      totalRepaid,
+      recentUsers: recentUsersResult.data || [],
+      recentLoans: recentLoansResult.data || [],
+      overduePayments: overdueResult.count || 0,
+    });
+    setLoading(false);
+  }, [supabase]);
+
+  // Debounced refresh
+  const refreshData = useCallback(() => {
+    const now = Date.now();
+    if (now - lastRefreshRef.current > 2000) {
+      lastRefreshRef.current = now;
+      fetchStats();
+    }
+  }, [fetchStats]);
+
+  // Initial fetch
   useEffect(() => {
-    const fetchStats = async () => {
-      const supabase = createClient();
-
-      // Fetch all stats in parallel
-      const [
-        usersResult,
-        loansResult,
-        businessesResult,
-        activeLoansResult,
-        pendingLoansResult,
-        completedLoansResult,
-        recentUsersResult,
-        recentLoansResult,
-        overdueResult,
-      ] = await Promise.all([
-        supabase.from('users').select('id', { count: 'exact' }),
-        supabase.from('loans').select('id, amount, amount_paid', { count: 'exact' }),
-        supabase.from('business_profiles').select('id', { count: 'exact' }),
-        supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'active'),
-        supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'pending'),
-        supabase.from('loans').select('id', { count: 'exact' }).eq('status', 'completed'),
-        supabase.from('users').select('*').order('created_at', { ascending: false }).limit(5),
-        supabase.from('loans').select(`
-          *,
-          borrower:users!borrower_id(full_name, email),
-          lender:users!lender_id(full_name),
-          business_lender:business_profiles!business_lender_id(business_name)
-        `).order('created_at', { ascending: false }).limit(5),
-        supabase.from('payment_schedule')
-          .select('id', { count: 'exact' })
-          .eq('is_paid', false)
-          .lt('due_date', new Date().toISOString().split('T')[0]),
-      ]);
-
-      const loans = loansResult.data || [];
-      const totalLoanAmount = loans.reduce((sum, l) => sum + (l.amount || 0), 0);
-      const totalRepaid = loans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
-
-      setStats({
-        totalUsers: usersResult.count || 0,
-        totalLoans: loansResult.count || 0,
-        totalBusinesses: businessesResult.count || 0,
-        activeLoans: activeLoansResult.count || 0,
-        pendingLoans: pendingLoansResult.count || 0,
-        completedLoans: completedLoansResult.count || 0,
-        totalLoanAmount,
-        totalRepaid,
-        recentUsers: recentUsersResult.data || [],
-        recentLoans: recentLoansResult.data || [],
-        overduePayments: overdueResult.count || 0,
-      });
-
-      setLoading(false);
-    };
-
     fetchStats();
-  }, []);
+  }, [fetchStats]);
+
+  // Real-time subscriptions
+  useEffect(() => {
+    const channels: any[] = [];
+
+    // Loans channel
+    const loansChannel = supabase
+      .channel('admin-loans')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'loans' }, () => {
+        console.log('[Admin] Loan change');
+        refreshData();
+      })
+      .subscribe((status) => {
+        setIsConnected(status === 'SUBSCRIBED');
+      });
+    channels.push(loansChannel);
+
+    // Users channel
+    const usersChannel = supabase
+      .channel('admin-users')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'users' }, () => {
+        console.log('[Admin] New user');
+        refreshData();
+      })
+      .subscribe();
+    channels.push(usersChannel);
+
+    // Business profiles channel
+    const businessChannel = supabase
+      .channel('admin-business')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'business_profiles' }, () => {
+        console.log('[Admin] Business change');
+        refreshData();
+      })
+      .subscribe();
+    channels.push(businessChannel);
+
+    return () => {
+      channels.forEach(channel => supabase.removeChannel(channel));
+    };
+  }, [supabase, refreshData]);
 
   if (loading) {
     return (
@@ -113,9 +166,24 @@ export default function AdminDashboard() {
   return (
     <div className="p-8">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-neutral-900">Admin Dashboard</h1>
-        <p className="text-neutral-500">Overview of your platform</p>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-neutral-900">Admin Dashboard</h1>
+          <p className="text-neutral-500">Overview of your platform</p>
+        </div>
+        <div className="flex items-center gap-2 text-sm">
+          {isConnected ? (
+            <>
+              <Wifi className="w-4 h-4 text-green-500" />
+              <span className="text-green-600">Live updates active</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 text-neutral-400" />
+              <span className="text-neutral-500">Connecting...</span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Stats Grid */}

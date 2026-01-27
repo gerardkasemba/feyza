@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getLoanAcceptedLenderEmail, getLoanAcceptedBorrowerEmail, getNoMatchFoundEmail, getNewMatchForLenderEmail } from '@/lib/email';
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 // POST: Accept or decline a match
 export async function POST(
@@ -223,9 +225,7 @@ export async function POST(
           .eq(prefField, prefValue);
       }
 
-      const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-
-      // Email to LENDER (confirmation)
+            // Email to LENDER (confirmation)
       if (lenderEmail) {
         await sendEmail({
           to: lenderEmail,
@@ -738,8 +738,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
   }
 
   if (lenderEmail) {
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    await sendEmail({
+        await sendEmail({
       to: lenderEmail,
       subject: `New Loan Match: ${loan.currency} ${loan.amount.toLocaleString()}`,
       html: `

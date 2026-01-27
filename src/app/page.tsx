@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { Navbar, Footer } from '@/components/layout';
 import GuestLoanRequestForm from '@/components/GuestLoanRequestForm';
+import TypingAnimation from '@/components/TypingAnimation';
 import {
   ArrowRight,
   Shield,
@@ -29,125 +30,89 @@ export default function HomePage() {
       <Navbar user={null} />
 
       {/* HERO */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary-50 via-white to-accent-50 dark:from-neutral-900 dark:via-neutral-950 dark:to-neutral-900 min-h-screen">
-        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-5" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 lg:py-16 relative">
-          <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-start">
+      <section className="relative bg-gradient-to-b from-primary-50 to-white dark:from-neutral-900 dark:to-neutral-950">
+        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-[0.02] dark:opacity-[0.05]" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-16 lg:py-20 relative">
+          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             {/* Left: Text Content */}
-            <div className="animate-fade-in order-2 lg:order-1">
-              <div className="flex justify-center lg:justify-start">
-                <span className="inline-flex items-center gap-2 px-4 py-2 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-400 rounded-full text-sm font-medium mb-6">
-                  <Zap className="w-4 h-4" />
-                  Request → Match → Offer → Repay
-                </span>
-              </div>
+            <div className="order-2 lg:order-1">
+            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-bold text-neutral-900 dark:text-white mb-6 text-center lg:text-left leading-[1.1] tracking-tight">
+              Borrow & lend from
+              <br />
+              <span className="text-primary-600 dark:text-primary-400">
+                <TypingAnimation 
+                  phrases={[
+                    'friends & family',
+                    'verified lenders'
+                  ]}
+                />
+              </span>
+              <br />
+              <span className="text-neutral-900 dark:text-white">with trust</span>
+            </h1>
 
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-bold text-neutral-900 dark:text-white mb-6 text-center lg:text-left leading-tight">
-                Borrow from{' '}
-                <span className="text-primary-600 dark:text-primary-400">people you trust</span>
-                {' '}or get{' '}
-                <span className="text-accent-500 dark:text-amber-400">matched to local lenders</span>
-              </h1>
-
-              <p className="text-lg sm:text-xl text-neutral-600 dark:text-neutral-400 mb-8 max-w-xl text-center lg:text-left mx-auto lg:mx-0">
-                Request a loan in minutes. Feyza automatically matches your request with trusted local business lenders
-                (or you can invite friends & family). Track everything with email reminders and autopay.
+              <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8 max-w-lg text-center lg:text-left mx-auto lg:mx-0 leading-relaxed">
+                Get matched with verified local lenders or borrow from friends & family. 
+                Track payments, automate repayments, and stay on top of every loan.
               </p>
 
-              {/* Trust strip - Stack on mobile, grid on desktop */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                {[
-                  {
-                    icon: BadgeCheck,
-                    title: 'Verified businesses',
-                    desc: 'Registered local lenders with clear terms.',
-                  },
-                  {
-                    icon: RefreshCw,
-                    title: 'autopay',
-                    desc: 'Enable bank-to-bank scheduled repayment.',
-                  },
-                  {
-                    icon: Bell,
-                    title: 'Email reminders',
-                    desc: 'Both parties get payment nudges.',
-                  },
-                ].map((t) => (
-                  <div
-                    key={t.title}
-                    className="rounded-2xl border border-neutral-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-800/70 backdrop-blur p-4"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 flex items-center justify-center shrink-0">
-                        <t.icon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-neutral-900 dark:text-white">{t.title}</p>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">{t.desc}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              {/* Trust indicators - simple horizontal list */}
+              <div className="flex flex-wrap justify-center lg:justify-start gap-x-6 gap-y-3 mb-10 text-sm text-neutral-500 dark:text-neutral-400">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  <span>Verified lenders</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  <span>Autopay enabled</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  <span>Email reminders</span>
+                </div>
               </div>
 
-              {/* Already have a loan? - Improved mobile layout */}
-              <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
-                <p className="font-medium text-neutral-900 dark:text-white mb-3 text-center lg:text-left">
-                  Already using Feyza as a guest?
+              {/* Guest access - compact */}
+              <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
+                <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
+                  Already using Feyza?
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="flex flex-wrap gap-2">
                   <Link href="/loan-status">
-                    <Button variant="outline" size="sm" className="w-full text-left justify-start h-auto py-3">
-                      <div className="flex items-center gap-3">
-                        <Search className="w-4 h-4 text-neutral-600 dark:text-neutral-300 shrink-0" />
-                        <span>
-                          <span className="block font-medium">Check status</span>
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400">See updates</span>
-                        </span>
-                      </div>
+                    <Button variant="outline" size="sm" className="text-sm">
+                      <Search className="w-3.5 h-3.5 mr-1.5" />
+                      Check status
                     </Button>
                   </Link>
                   <Link href="/borrower/access">
-                    <Button variant="outline" size="sm" className="w-full text-left justify-start h-auto py-3">
-                      <div className="flex items-center gap-3">
-                        <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                        <span>
-                          <span className="block font-medium">I borrowed</span>
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400">View & pay</span>
-                        </span>
-                      </div>
+                    <Button variant="outline" size="sm" className="text-sm">
+                      <CreditCard className="w-3.5 h-3.5 mr-1.5" />
+                      I borrowed
                     </Button>
                   </Link>
                   <Link href="/lender/access">
-                    <Button variant="outline" size="sm" className="w-full text-left justify-start h-auto py-3">
-                      <div className="flex items-center gap-3">
-                        <Users className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" />
-                        <span>
-                          <span className="block font-medium">I lent</span>
-                          <span className="text-xs text-neutral-500 dark:text-neutral-400">Track repayment</span>
-                        </span>
-                      </div>
+                    <Button variant="outline" size="sm" className="text-sm">
+                      <Users className="w-3.5 h-3.5 mr-1.5" />
+                      I lent
                     </Button>
                   </Link>
                 </div>
               </div>
             </div>
 
-            {/* Right: Loan Request Form - Now on top for mobile */}
-            <div className="lg:sticky lg:top-24 order-1 lg:order-2 mb-8 lg:mb-0">
-              <div className="rounded-2xl lg:rounded-3xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-sm dark:shadow-neutral-900/50 p-4 sm:p-6">
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    <Zap className="w-4 h-4 text-accent-600 dark:text-amber-400 shrink-0" />
-                    Start with a request (no account needed)
+            {/* Right: Loan Request Form */}
+            <div className="lg:sticky lg:top-24 order-1 lg:order-2">
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 shadow-lg shadow-neutral-200/50 dark:shadow-neutral-900/50 p-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <div className="w-8 h-8 rounded-lg bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                    <Zap className="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-neutral-900 dark:text-white text-sm">Request a loan</p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">No account needed to start</p>
                   </div>
                 </div>
                 <GuestLoanRequestForm />
-                <div className="mt-4">
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Feyza matches your request automatically with the right lenders. You'll review and accept an offer.
-                  </p>
-                </div>
               </div>
             </div>
           </div>
@@ -312,12 +277,12 @@ export default function HomePage() {
                 {[
                   {
                     title: 'Payday-aligned payments',
-                    desc: 'We place payments right after paydays so you’re not stretched.',
+                    desc: 'We place payments right after paydays so you\'re not stretched.',
                     icon: RefreshCw,
                   },
                   {
                     title: 'Respects rent & important bills',
-                    desc: 'Your schedule avoids the weeks you’re most likely to need cash.',
+                    desc: 'Your schedule avoids the weeks you\'re most likely to need cash.',
                     icon: Wallet,
                   },
                   {
@@ -516,7 +481,7 @@ export default function HomePage() {
               </div>
               <h3 className="text-xl font-bold text-white mb-2">Check Loan Status</h3>
               <p className="text-white/80 dark:text-white/90 text-sm mb-4">
-                Submitted a request? See if you’ve received an offer yet.
+                Submitted a request? See if you've received an offer yet.
               </p>
               <Link href="/loan-status">
                 <Button variant="outline" className="w-full border-white text-white hover:bg-white/10 dark:hover:bg-white/20">
@@ -548,9 +513,9 @@ export default function HomePage() {
               <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mb-4">
                 <Users className="w-6 h-6 text-white" />
               </div>
-              <h3 className="text-xl font-bold text-white mb-2">Track What You’re Owed</h3>
+              <h3 className="text-xl font-bold text-white mb-2">Track What You're Owed</h3>
               <p className="text-white/80 dark:text-white/90 text-sm mb-4">
-                Manage loans you’ve given to others.
+                Manage loans you've given to others.
               </p>
               <Link href="/lender/access">
                 <Button variant="outline" className="w-full border-white text-white hover:bg-white/10 dark:hover:bg-white/20">
@@ -626,11 +591,11 @@ export default function HomePage() {
               </div>
 
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-3">
-                We’re currently onboarding early lenders and borrowers in select communities.
+                We're currently onboarding early lenders and borrowers in select communities.
               </p>
             </div>
 
-            {/* Right: “Proof” without metrics */}
+            {/* Right: "Proof" without metrics */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {[
                 {
@@ -692,7 +657,7 @@ export default function HomePage() {
                 );
               })}
 
-              {/* Optional: “Pilot” banner card */}
+              {/* Optional: "Pilot" banner card */}
               <div className="sm:col-span-2 bg-white dark:bg-neutral-800 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-700">
                 <div className="flex items-start gap-3">
                   <div className="">
@@ -701,7 +666,7 @@ export default function HomePage() {
                   <div>
                     <p className="font-semibold text-neutral-900 dark:text-white">Early access program</p>
                     <p className="text-sm text-neutral-600 dark:text-neutral-300 mt-1">
-                      We’re onboarding a small group of lenders and borrowers to refine the experience. If you want in, request
+                      We're onboarding a small group of lenders and borrowers to refine the experience. If you want in, request
                       a loan or register as a lender.
                     </p>
                   </div>

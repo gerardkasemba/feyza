@@ -7,6 +7,8 @@ import { StatsCard } from '@/components/dashboard';
 import { LoanCard } from '@/components/loans';
 import { PendingLoanCard } from '@/components/business/PendingLoanCard';
 import { LendingTermsCard } from '@/components/business/LendingTermsCard';
+import { BusinessLoanTypesCard } from '@/components/business/BusinessLoanTypesCard'; // Add this import
+import { BusinessDashboardClient } from '@/components/realtime';
 import { formatCurrency } from '@/lib/utils';
 import { 
   Building2, 
@@ -25,6 +27,9 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+// Use ISR for better performance
+export const revalidate = 30;
+
 export default async function BusinessPage() {
   const supabase = await createServerSupabaseClient();
 
@@ -36,77 +41,48 @@ export default async function BusinessPage() {
     redirect('/auth/signin');
   }
 
-  // Fetch user profile
-  let profile = null;
-  try {
-    const { data } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-    profile = data;
-  } catch (error) {
-    console.log('Users table may not exist yet');
-  }
-
-  // Fetch business profile
-  let businessProfile: any = null;
-  try {
-    const { data } = await supabase
+  // Fetch all data in parallel for better performance
+  const [profileResult, businessProfileResult] = await Promise.all([
+    supabase.from('users').select('*').eq('id', user.id).single(),
+    supabase
       .from('business_profiles')
       .select('*, slug, public_profile_enabled, verification_status, logo_url, lending_terms, lending_terms_updated_at')
       .eq('user_id', user.id)
-      .single();
-    businessProfile = data;
-  } catch (error) {
-    console.log('Business profile not found');
-  }
+      .single(),
+  ]);
+
+  const profile = profileResult.data;
+  const businessProfile = businessProfileResult.data;
 
   // If no business profile, redirect to setup
   if (!businessProfile) {
     redirect('/business/setup');
   }
 
-  // Check if profile is incomplete - check user's bank_connected from users table
-  const isProfileIncomplete = !businessProfile.profile_completed || !profile?.bank_connected;
-
-  // Fetch loans where this business is the lender
-  let businessLoans: any[] = [];
-  try {
-    const { data } = await supabase
+  // Fetch business loans and lender preferences in parallel
+  const [loansResult, prefsResult] = await Promise.all([
+    supabase
       .from('loans')
       .select('*, borrower:users!borrower_id(*)')
       .eq('business_lender_id', businessProfile.id)
-      .order('created_at', { ascending: false });
-    businessLoans = data || [];
-  } catch (error) {
-    console.log('Error fetching business loans');
-  }
-
-  // Check if lender preferences are set up and get loan terms
-  let hasLenderPrefs = false;
-  let lenderPrefs: { 
-    min_amount: number; 
-    max_amount: number; 
-    interest_rate: number; 
-  } | null = null;
-  try {
-    const { data } = await supabase
+      .order('created_at', { ascending: false }),
+    supabase
       .from('lender_preferences')
       .select('id, is_active, capital_pool, min_amount, max_amount, interest_rate')
       .eq('business_id', businessProfile.id)
-      .single();
-    hasLenderPrefs = !!data;
-    if (data) {
-      lenderPrefs = {
-        min_amount: data.min_amount || 50,
-        max_amount: data.max_amount || 5000,
-        interest_rate: data.interest_rate || 0,
-      };
-    }
-  } catch (error) {
-    // No preferences set up yet
-  }
+      .single(),
+  ]);
+
+  const businessLoans = loansResult.data || [];
+  const hasLenderPrefs = !!prefsResult.data;
+  const lenderPrefs = prefsResult.data ? {
+    min_amount: prefsResult.data.min_amount || 50,
+    max_amount: prefsResult.data.max_amount || 5000,
+    interest_rate: prefsResult.data.interest_rate || 0,
+  } : null;
+
+  // Check if profile is incomplete
+  const isProfileIncomplete = !businessProfile.profile_completed || !profile?.bank_connected;
 
   const userProfile = profile || {
     id: user.id,
@@ -121,8 +97,9 @@ export default async function BusinessPage() {
   const totalCollected = activeLoans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
 
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <Navbar user={userProfile} />
+    <BusinessDashboardClient userId={user.id}>
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
+        <Navbar user={userProfile} />
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -265,6 +242,12 @@ export default async function BusinessPage() {
               businessId={businessProfile.id} 
               initialTerms={businessProfile.lending_terms}
             />
+            <BusinessLoanTypesCard 
+              businessId={businessProfile.id}
+              // Optional: If you have initial loan types from your database, pass them here
+              // initialLoanTypes={loanTypesFromDB}
+              // initialSelectedIds={selectedLoanTypeIdsFromDB}
+            />
           </div>
 
           {/* Pending Requests */}
@@ -307,5 +290,6 @@ export default async function BusinessPage() {
 
       <Footer />
     </div>
+  </BusinessDashboardClient>
   );
 }

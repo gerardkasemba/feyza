@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature } from '@/lib/dwolla';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getDisbursementFailedEmail, getFundsArrivedEmail } from '@/lib/email';
 import { format } from 'date-fns';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -100,10 +100,11 @@ async function handleTransferEvent(
   resourceUrl: string
 ) {
   // Map Dwolla event to our status
+  // NOTE: Database constraint allows: 'pending', 'processing', 'completed', 'failed', 'cancelled'
   let newStatus: string;
   
   if (COMPLETED_EVENTS.includes(topic)) {
-    newStatus = 'processed';
+    newStatus = 'completed';  // Changed from 'processed' to match DB constraint
   } else if (CREATED_EVENTS.includes(topic)) {
     newStatus = 'pending';
   } else if (FAILED_EVENTS.includes(topic)) {
@@ -152,7 +153,7 @@ async function handleTransferEvent(
     .update({ 
       status: newStatus,
       updated_at: new Date().toISOString(),
-      processed_at: newStatus === 'processed' ? new Date().toISOString() : null,
+      processed_at: newStatus === 'completed' ? new Date().toISOString() : null,
     })
     .eq('id', transfer.id);
 
@@ -170,7 +171,7 @@ async function handleTransferEvent(
   }
 
   // Handle status changes for disbursements
-  if (newStatus === 'processed') {
+  if (newStatus === 'completed') {
     await handleTransferCompleted(supabase, transfer, loan);
   } else if (newStatus === 'failed') {
     await handleTransferFailed(supabase, transfer, loan);
@@ -215,109 +216,18 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
     // Notify lender of failure
     if (loan.lender_email) {
       try {
+        const failedEmail = getDisbursementFailedEmail({
+          lenderName: loan.lender_name || 'Lender',
+          borrowerName: loan.borrower_name || 'Borrower',
+          amount: loan.amount,
+          currency: loan.currency,
+          loanId: loan.id,
+          errorMessage: 'The bank transfer could not be completed.',
+        });
         await sendEmail({
           to: loan.lender_email,
-          subject: 'Loan Disbursement Failed - Feyza',
-          html: `
-        <!DOCTYPE html>
-        <html lang="en">
-          <body style="margin:0;padding:0;background:#f9fafb;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-              <tr>
-                <td align="center" style="padding:30px 15px;">
-
-                  <!-- MAIN CARD -->
-                  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
-                    style="background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e5e7eb;">
-
-                    <!-- HEADER -->
-                    <tr>
-                      <td align="center"
-                        style="background:linear-gradient(135deg,#059669,#047857);padding:32px 20px;">
-
-                        <!-- LOGO -->
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                          <tr>
-                            <td align="center" style="padding-bottom:16px;">
-                              <img
-                                src="https://feyza.app/feyza.png"
-                                alt="Feyza Logo"
-                                height="42"
-                                style="display:block;height:42px;width:auto;border:0;outline:none;text-decoration:none;"
-                              />
-                            </td>
-                          </tr>
-                        </table>
-
-                        <h2 style="margin:0;color:#ffffff;font-size:24px;font-weight:700;">
-                          Disbursement Failed
-                        </h2>
-                      </td>
-                    </tr>
-
-                    <!-- CONTENT -->
-                    <tr>
-                      <td style="padding:30px 24px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#111827;">
-
-                        <p style="font-size:16px;margin:0 0 14px 0;">
-                          The transfer of
-                          <strong>$${loan.amount?.toLocaleString()}</strong>
-                          to
-                          <strong>${loan.borrower_name || 'the borrower'}</strong>
-                          could not be completed.
-                        </p>
-
-                        <p style="font-size:15px;color:#6b7280;margin:0 0 22px 0;">
-                          This usually happens due to insufficient funds or a bank account issue.
-                          Please review the loan details to resolve the problem.
-                        </p>
-
-                        <!-- CTA -->
-                        <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center">
-                          <tr>
-                            <td align="center">
-                              <a
-                                href="${APP_URL}/lender/${loan.invite_token}"
-                                style="
-                                  display:inline-block;
-                                  background:#059669;
-                                  color:#ffffff;
-                                  text-decoration:none;
-                                  padding:14px 32px;
-                                  border-radius:10px;
-                                  font-size:15px;
-                                  font-weight:600;
-                                ">
-                                View Loan
-                              </a>
-                            </td>
-                          </tr>
-                        </table>
-
-                      </td>
-                    </tr>
-
-                    <!-- FOOTER -->
-                    <tr>
-                      <td style="background:#f0fdf4;padding:20px;text-align:center;border-top:1px solid #bbf7d0;">
-                        <p style="margin:0;font-size:12px;color:#065f46;">
-                          This is an automated message from Feyza.
-                        </p>
-                        <p style="margin:4px 0 0;font-size:12px;color:#065f46;">
-                          Please do not reply to this email.
-                        </p>
-                      </td>
-                    </tr>
-
-                  </table>
-                  <!-- END CARD -->
-
-                </td>
-              </tr>
-            </table>
-          </body>
-        </html>
-          `,
+          subject: failedEmail.subject,
+          html: failedEmail.html,
         });
       } catch (e) {
         console.error('[Dwolla Webhook] Failed to send failure email:', e);
@@ -327,140 +237,26 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
 }
 
 async function sendFundsArrivedEmails(loan: any) {
+  // Extract names and emails from loan
+  const borrowerName = loan.borrower_name || loan.borrower_invite_email?.split('@')[0] || 'Borrower';
+  const borrowerEmail = loan.borrower_invite_email || loan.borrower_email;
+  const lenderName = loan.lender_name || 'Lender';
+  
   // Email to borrower
-  if (loan.borrower_invite_email) {
+  if (borrowerEmail) {
     try {
-      await sendEmail({
-        to: loan.borrower_invite_email,
-        subject: 'Loan Funds Have Arrived! – Feyza',
-        html: `
-      <!DOCTYPE html>
-      <html lang="en">
-        <body style="margin:0;padding:0;background:#f9fafb;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center" style="padding:30px 15px;">
-
-                <!-- Main Card -->
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"
-                  style="background:#ffffff;border-radius:16px;overflow:hidden;
-                        box-shadow:0 10px 25px rgba(0,0,0,0.05);
-                        font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
-
-                  <!-- Header -->
-                  <tr>
-                    <td align="center"
-                      style="background:linear-gradient(135deg,#059669 0%,#047857 100%);
-                            padding:30px 20px;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td align="center" style="padding-bottom:15px;">
-                            <img
-                              src="https://feyza.app/feyza.png"
-                              alt="Feyza Logo"
-                              height="48"
-                              style="display:block;height:48px;width:auto;border:0;outline:none;text-decoration:none;"
-                            />
-                          </td>
-                        </tr>
-                      </table>
-
-                      <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:700;">
-                        Funds Received 🎉
-                      </h1>
-                      <p style="margin:8px 0 0;color:rgba(255,255,255,0.9);font-size:15px;">
-                        Your loan has been successfully deposited
-                      </p>
-                    </td>
-                  </tr>
-
-                  <!-- Content -->
-                  <tr>
-                    <td style="padding:30px 25px;color:#374151;font-size:15px;line-height:1.6;">
-                      <p style="margin-top:0;">
-                        Hi ${loan.borrower_name || 'there'},
-                      </p>
-
-                      <p>
-                        Great news! <strong>$${loan.amount?.toLocaleString()}</strong> has been
-                        deposited into your bank account from
-                        <strong>${loan.lender_name || 'your lender'}</strong>.
-                      </p>
-
-                      <!-- Amount Card -->
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                        style="background:#ecfdf5;border-radius:12px;margin:25px 0;">
-                        <tr>
-                          <td align="center" style="padding:20px;">
-                            <div style="font-size:30px;font-weight:700;color:#065f46;">
-                              $${loan.amount?.toLocaleString()}
-                            </div>
-                            <div style="margin-top:6px;font-size:14px;color:#047857;">
-                              Successfully deposited
-                            </div>
-                          </td>
-                        </tr>
-                      </table>
-
-                      <p>
-                        Your first payment of
-                        <strong>$${loan.repayment_amount?.toFixed(2) || '0.00'}</strong>
-                        is due on
-                        <strong>
-                          ${
-                            loan.start_date
-                              ? format(new Date(loan.start_date), 'MMMM d, yyyy')
-                              : 'your scheduled date'
-                          }
-                        </strong>.
-                      </p>
-
-                      <!-- CTA -->
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-top:25px;">
-                        <tr>
-                          <td align="center">
-                            <a
-                              href="${APP_URL}/borrower/${loan.borrower_access_token}"
-                              style="display:inline-block;
-                                    background:#059669;
-                                    color:#ffffff;
-                                    padding:14px 32px;
-                                    border-radius:10px;
-                                    text-decoration:none;
-                                    font-weight:600;
-                                    font-size:16px;">
-                              View Loan Details
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-
-                    </td>
-                  </tr>
-
-                  <!-- Footer -->
-                  <tr>
-                    <td align="center"
-                      style="background:#f0fdf4;padding:18px;
-                            border-top:1px solid #bbf7d0;
-                            font-size:12px;color:#065f46;">
-                      <p style="margin:0;">
-                        This notification was sent by Feyza
-                      </p>
-                    </td>
-                  </tr>
-
-                </table>
-                <!-- End Card -->
-
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-        `,
+      const arrivedEmail = getFundsArrivedEmail({
+        borrowerName: borrowerName,
+        amount: loan.amount,
+        currency: loan.currency,
+        loanId: loan.id,
       });
-      console.log(`[Dwolla Webhook] ✅ Sent funds arrived email to borrower: ${loan.borrower_invite_email}`);
+      await sendEmail({
+        to: borrowerEmail,
+        subject: arrivedEmail.subject,
+        html: arrivedEmail.html,
+      });
+      console.log(`[Dwolla Webhook] ✅ Sent funds arrived email to borrower: ${borrowerEmail}`);
     } catch (e) {
       console.error('[Dwolla Webhook] Failed to send borrower email:', e);
     }

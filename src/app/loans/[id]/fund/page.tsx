@@ -322,25 +322,52 @@ export default function FundLoanPage() {
               </h3>
               
               <div className="text-sm text-neutral-600 dark:text-neutral-300 space-y-2 max-h-48 overflow-y-auto mb-4 p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
-                <p><strong className="text-neutral-900 dark:text-white">1. Loan Agreement</strong></p>
+                <p><strong className="text-neutral-900 dark:text-white">1. Loan Agreement & Terms</strong></p>
                 <p>
                   I agree to lend {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name || 'the borrower'} and 
                   will receive a total repayment of {formatCurrency(loan.total_amount || loan.amount, loan.currency)}.
+                  <br />
+                  <em className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Note: The borrower has been informed that interest rates may change when matched with a lender. 
+                    These are the final agreed terms.
+                  </em>
                 </p>
-                <p><strong className="text-neutral-900 dark:text-white">2. Disbursement</strong></p>
+                
+                <p><strong className="text-neutral-900 dark:text-white">2. Interest Rate & Final Terms</strong></p>
+                <p>
+                  The interest rate and total repayment amount have been finalized and accepted by the borrower.
+                  <br />
+                  <strong>Interest Rate:</strong> {loan.interest_rate ? `${loan.interest_rate}%` : 'Not specified'}
+                  <br />
+                  <strong>Total Repayment:</strong> {formatCurrency(loan.total_amount || loan.amount, loan.currency)}
+                  <br />
+                  <strong>Principal:</strong> {formatCurrency(loan.amount, loan.currency)}
+                </p>
+                
+                <p><strong className="text-neutral-900 dark:text-white">3. Disbursement Authorization</strong></p>
                 <p>
                   I authorize the transfer of {formatCurrency(loan.amount, loan.currency)} from my connected bank account
                   to the borrower's bank account via ACH. This transfer typically takes 1-3 business days.
+                  Funds will be disbursed only after the borrower accepts these final terms.
                 </p>
-                <p><strong className="text-neutral-900 dark:text-white">3. Repayment Terms</strong></p>
+                
+                <p><strong className="text-neutral-900 dark:text-white">4. Repayment Schedule</strong></p>
                 <p>
                   The borrower will make {loan.total_installments} payments of {formatCurrency(loan.repayment_amount || 0, loan.currency)} each,
                   starting on {loan.start_date ? formatDate(loan.start_date) : 'the agreed date'}.
+                  Payments will follow the schedule documented in the platform.
                 </p>
-                <p><strong className="text-neutral-900 dark:text-white">4. Auto-Pay</strong></p>
+                
+                <p><strong className="text-neutral-900 dark:text-white">5. Auto-Pay & Collection</strong></p>
                 <p>
                   Repayments will be automatically collected from the borrower's bank account on each due date
-                  and deposited to my bank account.
+                  and deposited to my bank account, subject to the borrower's authorization and account connectivity.
+                </p>
+                
+                <p><strong className="text-neutral-900 dark:text-white">6. Borrower's Initial Request</strong></p>
+                <p>
+                  The borrower's original request included provisional terms. These are the final terms that both parties have agreed to.
+                  Any changes from the borrower's initial request have been communicated and accepted.
                 </p>
               </div>
 
@@ -352,7 +379,8 @@ export default function FundLoanPage() {
                   className="w-5 h-5 mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600 dark:text-primary-500 focus:ring-primary-500 dark:focus:ring-primary-400 bg-white dark:bg-neutral-800"
                 />
                 <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                  I have read and agree to the loan agreement terms. I authorize the transfer of funds from my bank account.
+                  I have read and agree to the loan agreement terms. I understand these are the final terms that the borrower has accepted. 
+                  I authorize the transfer of funds from my bank account to the borrower.
                 </span>
               </label>
             </div>

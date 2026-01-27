@@ -90,6 +90,7 @@ export type LenderType = 'business' | 'personal';
 export interface Loan {
   id: string;
   borrower_id: string;
+  borrower_token?: string;
   lender_id?: string;
   business_lender_id?: string;
   lender_type: LenderType;
@@ -236,6 +237,10 @@ export interface PaymentScheduleItem {
   is_paid: boolean;
   payment_id?: string;
   status?: 'pending' | 'overdue' | 'paid';
+  // Fee tracking
+  platform_fee?: number;
+  paid_at?: string;
+  transfer_id?: string;
   // Reminder tracking
   reminder_sent_at?: string;
   last_manual_reminder_at?: string;

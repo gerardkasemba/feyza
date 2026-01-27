@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
 }
 
 // Generate contract HTML
+// Generate contract HTML
 function generateContractHtml(loan: any): string {
   const borrower = loan.borrower;
   const lender = loan.lender || loan.business_lender;
@@ -276,6 +277,44 @@ return `
       font-weight: bold;
       margin-right: 5px;
       color: #065f46;
+    }
+
+    /* ===== BORROWER AGREEMENT ===== */
+    .borrower-agreement,
+    .lender-agreement {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 20px;
+    }
+
+    .borrower-agreement h3,
+    .lender-agreement h3 {
+      font-size: 16px;
+      color: #1e40af;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #dbeafe;
+      padding-bottom: 8px;
+    }
+
+    .agreement-clause {
+      margin-bottom: 12px;
+      padding-left: 15px;
+    }
+
+    .agreement-clause strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #1e293b;
+    }
+
+    .agreement-clause em {
+      display: block;
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 3px;
+      font-style: italic;
     }
 
     /* ===== SIGNATURES ===== */
@@ -407,6 +446,68 @@ return `
     </table>
   </div>
 
+  <!-- ===== BORROWER AGREEMENT TERMS ===== -->
+  <div class="borrower-agreement">
+    <h3>BORROWER ACKNOWLEDGEMENT AND AGREEMENT</h3>
+    
+    <div class="agreement-clause">
+      <strong>1. Loan Agreement & Provisional Terms</strong>
+      <p>I acknowledge that I initially requested a loan with provisional terms. The interest rate shown above is the final rate agreed upon with the lender after matching. I understand that interest rates may change from initial requests when matched with a lender.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>2. Repayment Obligation</strong>
+      <p>I agree to repay this loan in ${loan.total_installments} installment(s) of ${loan.currency} ${loan.repayment_amount.toLocaleString()} each, starting on ${startDate}. Payments will be made according to the schedule documented in the Feyza platform.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>3. Authorization for Auto-Pay</strong>
+      <p>I authorize Feyza to automatically collect payments from my connected bank account on each due date shown in the repayment schedule. I understand that I must maintain sufficient funds in my account for these automatic payments.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>4. Late Payments</strong>
+      <p>I agree to notify the lender immediately if I am unable to make a payment on time. Late payments may result in reminders and may impact my ability to receive future offers from lenders.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>5. Final Terms Acknowledgement</strong>
+      <p>I confirm that these are the final loan terms that I have accepted. Any changes from my initial request have been communicated to me and I accept these terms.</p>
+      <em>Note: The borrower was informed during the loan request process that interest rates could change when matched with a lender. These are the final agreed terms.</em>
+    </div>
+  </div>
+
+  <!-- ===== LENDER AGREEMENT TERMS ===== -->
+  <div class="lender-agreement">
+    <h3>LENDER ACKNOWLEDGEMENT AND AGREEMENT</h3>
+    
+    <div class="agreement-clause">
+      <strong>1. Loan Commitment</strong>
+      <p>I agree to lend ${loan.currency} ${loan.amount.toLocaleString()} to ${borrower.full_name} and will receive a total repayment of ${loan.currency} ${loan.total_amount.toLocaleString()} as shown in the loan terms above.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>2. Interest Rate & Final Terms</strong>
+      <p>I confirm that the interest rate of ${loan.interest_rate > 0 ? `${loan.interest_rate}% APR` : '0%'} and total repayment amount have been finalized and accepted by the borrower.</p>
+      <em>The borrower was informed that interest rates may change when matched with a lender. These are the final agreed terms that the borrower has accepted.</em>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>3. Disbursement Authorization</strong>
+      <p>I authorize the transfer of ${loan.currency} ${loan.amount.toLocaleString()} from my connected bank account to the borrower's bank account via ACH. This transfer will be initiated upon mutual acceptance of this agreement.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>4. Payment Collection</strong>
+      <p>I authorize Feyza to facilitate the collection of repayments from the borrower's account and deposit them to my account according to the repayment schedule.</p>
+    </div>
+    
+    <div class="agreement-clause">
+      <strong>5. Borrower's Initial Request</strong>
+      <p>I acknowledge that the borrower's original request included provisional terms. These are the final terms that both parties have agreed to. Any changes from the borrower's initial request have been communicated and accepted.</p>
+    </div>
+  </div>
+
   <!-- ===== SIGNATURES ===== -->
   <div class="signatures">
     <div class="signature-block">
@@ -440,5 +541,4 @@ return `
 </body>
 </html>
 `;
-
 }

@@ -1,8 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer } from '@/lib/dwolla';
-import { sendEmail } from '@/lib/email';
+import { 
+  sendEmail, 
+  getMissedPaymentEmail, 
+  getPaymentReceivedLenderEmail, 
+  getPaymentProcessedBorrowerEmail,
+  getPaymentReceivedGuestLenderEmail 
+} from '@/lib/email';
 import { format } from 'date-fns';
+
+// Next.js 16 route configuration for cron jobs
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60 seconds for cron execution
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -89,6 +99,24 @@ export async function GET(request: NextRequest) {
 
         console.log(`[Auto-Pay] Processing payment ${payment.id} - $${payment.amount}`);
 
+        // IDEMPOTENCY CHECK: Check if a transfer already exists for this payment
+        const { data: existingTransfer } = await supabase
+          .from('transfers')
+          .select('id, dwolla_transfer_id, status')
+          .eq('loan_id', loan.id)
+          .eq('type', 'repayment')
+          .eq('amount', payment.amount)
+          .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()) // Within last 24 hours
+          .limit(1)
+          .maybeSingle();
+        
+        // Also check if payment_schedule already has a transfer_id
+        if (existingTransfer || payment.transfer_id) {
+          console.log(`[Auto-Pay] Payment ${payment.id} already has a transfer, skipping`);
+          results.skipped++;
+          continue;
+        }
+
         // Create Dwolla transfer: Borrower -> Master Account -> Lender (facilitated)
         // Platform fee is deducted from the payment amount
         const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
@@ -111,24 +139,28 @@ export async function GET(request: NextRequest) {
         
         console.log(`[Auto-Pay] Fee info: gross=$${feeInfo.grossAmount}, fee=$${feeInfo.platformFee}, net=$${feeInfo.netAmount}`);
 
-        // Record all transfer steps with fee info
-        for (const tid of transferIds) {
-          await supabase
-            .from('transfers')
-            .insert({
-              loan_id: loan.id,
-              dwolla_transfer_id: tid,
-              dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${tid}`,
-              type: 'repayment',
-              amount: payment.amount,
-              currency: 'USD',
-              status: 'pending',
-              platform_fee: feeInfo.platformFee,
-              fee_type: feeInfo.feeType,
-              gross_amount: feeInfo.grossAmount,
-              net_amount: feeInfo.netAmount,
-            });
-        }
+        // Record only ONE transfer in database (the final transfer ID)
+        // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
+        // but from the user's perspective, this is one single transfer
+        // Use upsert to prevent duplicates (in case of race conditions)
+        await supabase
+          .from('transfers')
+          .upsert({
+            loan_id: loan.id,
+            dwolla_transfer_id: transferId,
+            dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${transferId}`,
+            type: 'repayment',
+            amount: payment.amount,
+            currency: 'USD',
+            status: 'pending',
+            platform_fee: feeInfo.platformFee,
+            fee_type: feeInfo.feeType,
+            gross_amount: feeInfo.grossAmount,
+            net_amount: feeInfo.netAmount,
+          }, {
+            onConflict: 'dwolla_transfer_id',
+            ignoreDuplicates: true,
+          });
 
         // Update payment schedule with fee info
         const { error: scheduleUpdateError } = await supabase
@@ -392,7 +424,7 @@ async function handleMissedPayment(
   }
 }
 
-// Send payment received email to lender
+// Send payment notification emails to both lender AND borrower
 async function sendPaymentReceivedEmail(
   loan: any, 
   payment: any, 
@@ -402,173 +434,77 @@ async function sendPaymentReceivedEmail(
   const lenderEmail = loan.lender_email;
   const lenderName = loan.lender_name || 'Lender';
   const borrowerName = loan.borrower_name || 'Borrower';
+  const borrowerEmail = loan.borrower_invite_email || loan.borrower_email;
+  const currency = loan.currency || 'USD';
+  
+  // Determine if this is a guest loan (has invite_token)
+  const isGuestLoan = !!loan.invite_token;
 
-  if (!lenderEmail) return;
+  // 1. Send email to LENDER
+  if (lenderEmail) {
+    try {
+      if (isGuestLoan && loan.invite_token) {
+        // Guest lender - use guest-specific email with access token
+        const guestLenderEmail = getPaymentReceivedGuestLenderEmail({
+          lenderName: lenderName,
+          borrowerName: borrowerName,
+          amount: payment.amount,
+          currency: currency,
+          remainingBalance: amountRemaining,
+          loanId: loan.id,
+          accessToken: loan.invite_token,
+          isCompleted: isCompleted,
+        });
+        await sendEmail({
+          to: lenderEmail,
+          subject: guestLenderEmail.subject,
+          html: guestLenderEmail.html,
+        });
+      } else {
+        // Logged-in lender - use standard email
+        const receivedEmail = getPaymentReceivedLenderEmail({
+          lenderName: lenderName,
+          borrowerName: borrowerName,
+          amount: payment.amount,
+          currency: currency,
+          remainingBalance: amountRemaining,
+          loanId: loan.id,
+          isCompleted: isCompleted,
+        });
+        await sendEmail({
+          to: lenderEmail,
+          subject: receivedEmail.subject,
+          html: receivedEmail.html,
+        });
+      }
+      console.log(`[Auto-Pay] ✅ Sent payment received email to lender: ${lenderEmail}`);
+    } catch (emailErr) {
+      console.error('[Auto-Pay] Failed to send lender payment email:', emailErr);
+    }
+  }
 
-  try {
-    await sendEmail({
-      to: lenderEmail,
-      subject: isCompleted 
-        ? `Loan Paid Off! - ${borrowerName}` 
-        : `Payment Received - $${payment.amount.toFixed(2)}`,
-        html: `
-        <!DOCTYPE html>
-        <html lang="en">
-          <body style="
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 0;
-            background-color: #f8fafc;
-          ">
-            <div style="max-width: 600px; margin: 0 auto; padding: 40px 20px;">
-
-              <!-- ===== HEADER WITH LOGO ===== -->
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom: 30px;">
-                <tr>
-                  <td align="center">
-                    <img
-                      src="https://feyza.app/feyza.png"
-                      alt="Feyza Logo"
-                      height="48"
-                      style="display:block; height:48px; width:auto; border:0; outline:none; text-decoration:none;"
-                    />
-                  </td>
-                </tr>
-              </table>
-
-              <!-- ===== CARD ===== -->
-              <div style="
-                background: white;
-                padding: 30px;
-                border-radius: 16px;
-                border: 1px solid #e5e7eb;
-              ">
-
-                <!-- Icon -->
-                <div style="text-align: center; margin-bottom: 20px;">
-                  <div style="
-                    width: 64px;
-                    height: 64px;
-                    background: #d1fae5;
-                    border-radius: 50%;
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                  ">
-                    <span style="font-size: 30px;">
-                      ${isCompleted ? '🎉' : '💰'}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Title -->
-                <h2 style="
-                  color: #065f46;
-                  text-align: center;
-                  margin: 0 0 20px 0;
-                  font-size: 22px;
-                ">
-                  ${isCompleted ? 'Loan Paid in Full!' : 'Payment Received!'}
-                </h2>
-
-                <!-- Greeting -->
-                <p style="font-size: 16px; color: #374151; margin: 0 0 10px 0;">
-                  Hi ${lenderName},
-                </p>
-
-                <!-- Message -->
-                <p style="color: #374151; margin: 0 0 20px 0;">
-                  ${
-                    isCompleted
-                      ? `Great news! <strong>${borrowerName}</strong> has paid off their loan in full. 🎉`
-                      : `<strong>${borrowerName}</strong> has made a payment on their loan.`
-                  }
-                </p>
-
-                <!-- Amount -->
-                <div style="
-                  background: #ecfdf5;
-                  padding: 18px;
-                  border-radius: 10px;
-                  margin: 20px 0;
-                  text-align: center;
-                  border: 1px solid #bbf7d0;
-                ">
-                  <p style="
-                    color: #065f46;
-                    margin: 0;
-                    font-size: 26px;
-                    font-weight: bold;
-                  ">
-                    $${payment.amount.toFixed(2)}
-                  </p>
-                  <p style="
-                    color: #047857;
-                    margin: 6px 0 0 0;
-                    font-size: 14px;
-                  ">
-                    Payment received
-                  </p>
-                </div>
-
-                <!-- Remaining balance -->
-                ${!isCompleted ? `
-                  <div style="
-                    background: #f9fafb;
-                    padding: 16px;
-                    border-radius: 10px;
-                    margin: 20px 0;
-                    border: 1px solid #e5e7eb;
-                  ">
-                    <p style="color: #374151; margin: 0;">
-                      <strong>Remaining Balance:</strong> $${amountRemaining.toFixed(2)}
-                    </p>
-                  </div>
-                ` : ''}
-
-                <!-- Note -->
-                <p style="color: #6b7280; font-size: 14px; margin-top: 10px;">
-                  Funds will arrive in your bank account within 1–3 business days.
-                </p>
-
-                <!-- CTA -->
-                <a
-                  href="${APP_URL}/lender/${loan.invite_token}"
-                  style="
-                    display: block;
-                    background: linear-gradient(to right, #059669, #047857);
-                    color: white;
-                    text-decoration: none;
-                    padding: 14px 28px;
-                    border-radius: 10px;
-                    font-weight: bold;
-                    text-align: center;
-                    margin-top: 26px;
-                  "
-                >
-                  View Loan Dashboard →
-                </a>
-
-              </div>
-
-              <!-- ===== FOOTER ===== -->
-              <p style="
-                text-align: center;
-                color: #9ca3af;
-                font-size: 12px;
-                margin-top: 30px;
-              ">
-                This is an automated message from Feyza.
-              </p>
-
-            </div>
-          </body>
-        </html>
-        `,
-    });
-    console.log(`[Auto-Pay] Sent payment received email to ${lenderEmail}`);
-  } catch (emailErr) {
-    console.error('[Auto-Pay] Failed to send payment received email:', emailErr);
+  // 2. Send email to BORROWER
+  if (borrowerEmail) {
+    try {
+      const borrowerPaymentEmail = getPaymentProcessedBorrowerEmail({
+        borrowerName: borrowerName,
+        lenderName: lenderName,
+        amount: payment.amount,
+        currency: currency,
+        remainingBalance: amountRemaining,
+        loanId: loan.id,
+        accessToken: isGuestLoan ? loan.borrower_access_token : undefined,
+        isCompleted: isCompleted,
+      });
+      await sendEmail({
+        to: borrowerEmail,
+        subject: borrowerPaymentEmail.subject,
+        html: borrowerPaymentEmail.html,
+      });
+      console.log(`[Auto-Pay] ✅ Sent payment processed email to borrower: ${borrowerEmail}`);
+    } catch (emailErr) {
+      console.error('[Auto-Pay] Failed to send borrower payment email:', emailErr);
+    }
   }
 }
 
@@ -624,6 +560,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // IDEMPOTENCY CHECK: Check if a transfer already exists for this payment
+    if (payment.transfer_id) {
+      return NextResponse.json(
+        { error: 'This payment already has a transfer associated', transfer_id: payment.transfer_id },
+        { status: 400 }
+      );
+    }
+
     const loan = payment.loan;
 
     // Use loan-level Dwolla fields
@@ -662,24 +606,28 @@ export async function POST(request: NextRequest) {
     
     console.log(`[Manual Pay] Fee info: gross=$${feeInfo.grossAmount}, fee=$${feeInfo.platformFee}, net=$${feeInfo.netAmount}`);
 
-    // Record transfers with fee info
-    for (const tid of transferIds) {
-      await supabase
-        .from('transfers')
-        .insert({
-          loan_id: loan.id,
-          dwolla_transfer_id: tid,
-          dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${tid}`,
-          type: 'repayment',
-          amount: payment.amount,
-          currency: 'USD',
-          status: 'pending',
-          platform_fee: feeInfo.platformFee,
-          fee_type: feeInfo.feeType,
-          gross_amount: feeInfo.grossAmount,
-          net_amount: feeInfo.netAmount,
-        });
-    }
+    // Record only ONE transfer in database (the final transfer ID)
+    // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
+    // but from the user's perspective, this is one single transfer
+    // Use upsert to prevent duplicates (in case of race conditions)
+    await supabase
+      .from('transfers')
+      .upsert({
+        loan_id: loan.id,
+        dwolla_transfer_id: transferId,
+        dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${transferId}`,
+        type: 'repayment',
+        amount: payment.amount,
+        currency: 'USD',
+        status: 'pending',
+        platform_fee: feeInfo.platformFee,
+        fee_type: feeInfo.feeType,
+        gross_amount: feeInfo.grossAmount,
+        net_amount: feeInfo.netAmount,
+      }, {
+        onConflict: 'dwolla_transfer_id',
+        ignoreDuplicates: true,
+      });
 
     // Update payment_schedule with fee info
     const { error: updateError } = await supabase

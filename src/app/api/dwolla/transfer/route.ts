@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer, getTransfer, getMasterAccountBalance } from '@/lib/dwolla';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getFundsOnTheWayEmail, getPaymentReceivedLenderEmail } from '@/lib/email';
 
 // POST: Create a transfer (loan disbursement or repayment)
 export async function POST(request: NextRequest) {
@@ -120,6 +120,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid transfer type' }, { status: 400 });
     }
 
+    // IDEMPOTENCY CHECK: Check if a transfer of this type already exists for this loan
+    // For disbursements, only one can exist per loan
+    // For repayments, we check by payment_schedule_id if provided, or skip check
+    if (type === 'disbursement') {
+      const { data: existingTransfer } = await adminSupabase
+        .from('transfers')
+        .select('id, dwolla_transfer_id, status')
+        .eq('loan_id', loan_id)
+        .eq('type', 'disbursement')
+        .limit(1)
+        .single();
+      
+      if (existingTransfer) {
+        console.log(`[Dwolla Transfer] Disbursement already exists for loan ${loan_id}: ${existingTransfer.dwolla_transfer_id}`);
+        return NextResponse.json({
+          success: true,
+          message: 'Disbursement already processed',
+          transfer_id: existingTransfer.dwolla_transfer_id,
+          transfer_url: `https://api-sandbox.dwolla.com/transfers/${existingTransfer.dwolla_transfer_id}`,
+          status: existingTransfer.status,
+          already_existed: true,
+        });
+      }
+    }
+
     // Create the facilitated transfer in Dwolla (routes through Master Account)
     const { transferUrl, transferIds } = await createFacilitatedTransfer({
       sourceFundingSourceUrl: sourceFundingUrl,
@@ -133,20 +158,26 @@ export async function POST(request: NextRequest) {
 
     const transferId = transferIds.length > 0 ? transferIds[transferIds.length - 1] : null;
 
-    // Record all transfers in our database
-    for (const tid of transferIds) {
+    // Record only ONE transfer in our database (the main transfer ID)
+    // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
+    // but from the user's perspective, this is one single transfer
+    if (transferId) {
+      // Use upsert to prevent duplicates (in case of race conditions)
       await adminSupabase
         .from('transfers')
-        .insert({
+        .upsert({
           loan_id: loan_id,
-          dwolla_transfer_id: tid,
-          dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${tid}`,
+          dwolla_transfer_id: transferId,
+          dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${transferId}`,
           type: type,
           amount: parseFloat(amount),
           currency: 'USD',
           status: 'pending',
           source_user_id: sourceUser.id,
           destination_user_id: destinationUser.id,
+        }, {
+          onConflict: 'dwolla_transfer_id',
+          ignoreDuplicates: true,
         });
     }
 
@@ -163,124 +194,46 @@ export async function POST(request: NextRequest) {
         .eq('id', loan_id);
     }
 
+    // Get names and emails for notifications
+    const borrowerName = loan.borrower?.full_name || 'Borrower';
+    const borrowerEmail = loan.borrower?.email;
+    const lenderName = loan.business_lender?.business_name || loan.lender?.full_name || 'Lender';
+    const lenderEmail = loan.business_lender?.owner?.email || loan.lender?.email;
+
     // Send notification emails
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    
+        
     if (type === 'disbursement') {
       // Notify borrower
+      const fundsEmail = getFundsOnTheWayEmail({
+        borrowerName: borrowerName,
+        lenderName: lenderName,
+        amount: loan.amount,
+        currency: loan.currency,
+        loanId: loan.id,
+      });
       await sendEmail({
-        to: destinationUser.email,
-        subject: 'Loan Funds on the Way!',
-        html: `
-    <!DOCTYPE html>
-    <html>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f9fafb; padding:20px;">
-        <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
-
-          <!-- Header -->
-          <div style="background:linear-gradient(135deg,#059669,#047857);padding:30px;text-align:center;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td align="center" style="padding-bottom:15px;">
-                  <img
-                    src="https://feyza.app/feyza.png"
-                    alt="Feyza"
-                    height="42"
-                    style="display:block;border:0;outline:none;"
-                  />
-                </td>
-              </tr>
-            </table>
-            <h1 style="color:white;margin:0;font-size:26px;">Loan Funds on the Way</h1>
-          </div>
-
-          <!-- Content -->
-          <div style="padding:32px;text-align:center;">
-            <p style="font-size:16px;color:#374151;margin-bottom:16px;">
-              Great news! <strong>${sourceUser.full_name || 'Your lender'}</strong> has sent you
-              <strong>$${amount}</strong>.
-            </p>
-
-            <p style="font-size:15px;color:#6b7280;margin-bottom:24px;">
-              The funds should arrive in your bank account within <strong>1–3 business days</strong>.
-            </p>
-
-            <a
-              href="${APP_URL}/loans/${loan_id}"
-              style="display:inline-block;background:#059669;color:white;text-decoration:none;
-                    padding:14px 28px;border-radius:10px;font-weight:600;font-size:16px;"
-            >
-              View Loan Details
-            </a>
-          </div>
-
-          <!-- Footer -->
-          <div style="background:#f0fdf4;padding:20px;text-align:center;font-size:12px;color:#065f46;">
-            <p style="margin:0;">This notification was sent by Feyza</p>
-          </div>
-
-        </div>
-      </body>
-    </html>
-        `,
+        to: borrowerEmail,
+        subject: fundsEmail.subject,
+        html: fundsEmail.html,
       });
     }else if (type === 'repayment') {
+      // Calculate remaining balance after this payment
+      const remainingBalance = Math.max(0, (loan.amount_remaining || loan.total_due || loan.amount) - parseFloat(amount));
+      
       // Notify lender
+      const receivedEmail = getPaymentReceivedLenderEmail({
+        lenderName: lenderName,
+        borrowerName: borrowerName,
+        amount: parseFloat(amount),
+        currency: loan.currency,
+        remainingBalance: remainingBalance,
+        loanId: loan.id,
+        isCompleted: remainingBalance <= 0,
+      });
       await sendEmail({
-        to: destinationUser.email,
-        subject: 'Payment Received!',
-        html: `
-    <!DOCTYPE html>
-    <html>
-      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:#f9fafb; padding:20px;">
-        <div style="max-width:600px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 10px 25px rgba(0,0,0,0.05);">
-
-          <!-- Header -->
-          <div style="background:linear-gradient(135deg,#059669,#047857);padding:30px;text-align:center;">
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td align="center" style="padding-bottom:15px;">
-                  <img
-                    src="https://feyza.app/feyza.png"
-                    alt="Feyza"
-                    height="42"
-                    style="display:block;border:0;outline:none;"
-                  />
-                </td>
-              </tr>
-            </table>
-            <h1 style="color:white;margin:0;font-size:26px;">Payment Received</h1>
-          </div>
-
-          <!-- Content -->
-          <div style="padding:32px;text-align:center;">
-            <p style="font-size:16px;color:#374151;margin-bottom:16px;">
-              <strong>${sourceUser.full_name || 'The borrower'}</strong> has sent you
-              <strong>$${amount}</strong> as a loan repayment.
-            </p>
-
-            <p style="font-size:15px;color:#6b7280;margin-bottom:24px;">
-              The funds should arrive in your bank account within <strong>1–3 business days</strong>.
-            </p>
-
-            <a
-              href="${APP_URL}/loans/${loan_id}"
-              style="display:inline-block;background:#059669;color:white;text-decoration:none;
-                    padding:14px 28px;border-radius:10px;font-weight:600;font-size:16px;"
-            >
-              View Loan Details
-            </a>
-          </div>
-
-          <!-- Footer -->
-          <div style="background:#f0fdf4;padding:20px;text-align:center;font-size:12px;color:#065f46;">
-            <p style="margin:0;">This notification was sent by Feyza</p>
-          </div>
-
-        </div>
-      </body>
-    </html>
-        `,
+        to: lenderEmail,
+        subject: receivedEmail.subject,
+        html: receivedEmail.html,
       });
     }
 

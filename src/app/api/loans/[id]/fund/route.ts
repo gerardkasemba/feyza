@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer } from '@/lib/dwolla';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -88,6 +88,26 @@ export async function POST(
       borrowerFundingSource: borrowerDwollaFundingSource,
     });
 
+    // IDEMPOTENCY CHECK: Check if a disbursement transfer already exists for this loan
+    const { data: existingDisbursement } = await serviceSupabase
+      .from('transfers')
+      .select('id, dwolla_transfer_id, status')
+      .eq('loan_id', loanId)
+      .eq('type', 'disbursement')
+      .limit(1)
+      .single();
+    
+    if (existingDisbursement) {
+      console.log(`[Fund] Disbursement already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
+      return NextResponse.json({
+        success: true,
+        message: 'Disbursement already processed',
+        transfer_id: existingDisbursement.dwolla_transfer_id,
+        status: existingDisbursement.status,
+        already_existed: true,
+      });
+    }
+
     // Initiate the ACH transfer via Dwolla
     let transferUrl = null;
     let transferIds: string[] = [];
@@ -116,18 +136,25 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Record transfers in database
-    for (let i = 0; i < transferIds.length; i++) {
+    // Record only ONE transfer in database (the final transfer ID)
+    // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
+    // but from the user's perspective, this is one single transfer
+    const mainTransferId = transferIds[transferIds.length - 1];
+    if (mainTransferId) {
+      // Use upsert to prevent duplicates (in case of race conditions)
       await serviceSupabase
         .from('transfers')
-        .insert({
+        .upsert({
           loan_id: loanId,
-          dwolla_transfer_id: transferIds[i],
-          dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${transferIds[i]}`,
+          dwolla_transfer_id: mainTransferId,
+          dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${mainTransferId}`,
           type: 'disbursement',
           amount: loan.amount,
           currency: 'USD',
           status: 'pending',
+        }, {
+          onConflict: 'dwolla_transfer_id',
+          ignoreDuplicates: true,
         });
     }
 

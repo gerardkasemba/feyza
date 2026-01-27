@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getPaymentReminderEmail } from '@/lib/email';
 import { format, addDays } from 'date-fns';
+
+// Next.js 16 route configuration for cron jobs
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60 seconds for cron execution
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 

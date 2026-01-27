@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getNoLendersAvailableEmail, getLoanRematchedEmail, getNewMatchForLenderEmail } from '@/lib/email';
 
-// This endpoint should be called by a cron job every hour
-// It handles expired matches and cascades to next lender
+// Next.js 16 route configuration for cron jobs
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Allow up to 60 seconds for cron execution
+
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+// Vercel cron jobs use GET by default
+export async function GET(request: NextRequest) {
+  return handleMatchExpiry(request);
+}
+
+// This endpoint can also be called via POST
 export async function POST(request: NextRequest) {
+  return handleMatchExpiry(request);
+}
+
+// Shared handler for both GET and POST
+async function handleMatchExpiry(request: NextRequest) {
   try {
     // Verify cron secret
     const authHeader = request.headers.get('authorization');
@@ -125,8 +140,7 @@ export async function POST(request: NextRequest) {
 
         // Notify borrower
         if (loan.borrower?.email) {
-          const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-          await sendEmail({
+                    await sendEmail({
             to: loan.borrower.email,
             subject: 'Unable to Find a Matching Lender',
             html: `
@@ -346,8 +360,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
 
     // Notify borrower of auto-match
     if (loan.borrower?.email) {
-      const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-      await sendEmail({
+            await sendEmail({
         to: loan.borrower.email,
         subject: 'Loan Matched with New Lender!',
         html: `
@@ -476,8 +489,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
 
   // Send notification email to lender
   if (lenderEmail) {
-    const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    await sendEmail({
+        await sendEmail({
       to: lenderEmail,
       subject: `New Loan Available: ${loan.currency} ${loan.amount.toLocaleString()}`,
       html: `
@@ -594,12 +606,4 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
       message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan is now available. You have 24h to respond.`,
     });
   }
-}
-
-// GET endpoint for status check
-export async function GET(request: NextRequest) {
-  return NextResponse.json({
-    status: 'ok',
-    message: 'Match expiry cron endpoint. POST to process expired matches.',
-  });
 }

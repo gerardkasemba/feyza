@@ -11,3 +11,14 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from './Tabs';
 export { ToastProvider, useToast } from './Toast';
 export { Breadcrumbs } from './Breadcrumbs';
 export { InterestCalculatorModal } from './InterestCalculatorModal';
+export { NotificationBell } from './NotificationBell';
+export { default as Calendar, DatePickerInline } from './Calendar';
+export { 
+  Alert, 
+  Banner, 
+  ConfirmDialog, 
+  UpdateNotification,
+  ToastProvider as AlertToastProvider,
+  useToast as useAlertToast,
+} from './Alert';
+export type { AlertProps, AlertType, ToastProps } from './Alert';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail } from '@/lib/email';
+import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
 import { randomBytes } from 'crypto';
 import { addDays, addWeeks, format } from 'date-fns';
 import { validateRepaymentSchedule } from '@/lib/smartSchedule';
@@ -293,29 +293,44 @@ export async function POST(
     // Fees are only charged on repayments (borrower -> lender)
     let disbursementTransferId = null;
     try {
-      const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
-        sourceFundingSourceUrl: lender_dwolla_funding_source_url,
-        destinationFundingSourceUrl: borrowerDwollaFundingSource,
-        amount: principal,
-        currency: 'USD',
-        metadata: {
-          loan_id: loanId,
-          type: 'disbursement',
-        },
-        skipFee: true, // No fee for disbursements
-      });
+      // IDEMPOTENCY CHECK: Check if a disbursement transfer already exists for this loan
+      const { data: existingDisbursement } = await supabase
+        .from('transfers')
+        .select('id, dwolla_transfer_id')
+        .eq('loan_id', loanId)
+        .eq('type', 'disbursement')
+        .limit(1)
+        .single();
+      
+      if (existingDisbursement) {
+        console.log(`[Setup Loan] Disbursement transfer already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
+        disbursementTransferId = existingDisbursement.dwolla_transfer_id;
+      } else {
+        const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
+          sourceFundingSourceUrl: lender_dwolla_funding_source_url,
+          destinationFundingSourceUrl: borrowerDwollaFundingSource,
+          amount: principal,
+          currency: 'USD',
+          metadata: {
+            loan_id: loanId,
+            type: 'disbursement',
+          },
+          skipFee: true, // No fee for disbursements
+        });
 
-      if (transferUrl && transferIds.length > 0) {
-        disbursementTransferId = transferIds[transferIds.length - 1]; // Use the final transfer ID
-        
-        // Record all transfer steps
-        for (let i = 0; i < transferIds.length; i++) {
+        if (transferUrl && transferIds.length > 0) {
+          disbursementTransferId = transferIds[transferIds.length - 1]; // Use the final transfer ID
+          
+          // Record only ONE transfer in database (the final transfer ID)
+          // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
+          // but from the user's perspective, this is one single transfer
+          // Use upsert to prevent duplicates (in case of race conditions)
           await supabase
             .from('transfers')
-            .insert({
+            .upsert({
               loan_id: loanId,
-              dwolla_transfer_id: transferIds[i],
-              dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${transferIds[i]}`,
+              dwolla_transfer_id: disbursementTransferId,
+              dwolla_transfer_url: `https://api-sandbox.dwolla.com/transfers/${disbursementTransferId}`,
               type: 'disbursement',
               amount: principal,
               currency: 'USD',
@@ -324,20 +339,23 @@ export async function POST(
               fee_type: 'none',
               gross_amount: principal,
               net_amount: principal,
+            }, {
+              onConflict: 'dwolla_transfer_id',
+              ignoreDuplicates: true,
             });
-        }
 
-        // Update loan to mark disbursement
-        await supabase
-          .from('loans')
-          .update({
-            disbursement_status: 'processing',
-            disbursement_transfer_id: disbursementTransferId,
-            disbursed_at: new Date().toISOString(),
-          })
-          .eq('id', loanId);
-          
-        console.log('Disbursement initiated (facilitated, no fee):', disbursementTransferId);
+          // Update loan to mark disbursement
+          await supabase
+            .from('loans')
+            .update({
+              disbursement_status: 'processing',
+              disbursement_transfer_id: disbursementTransferId,
+              disbursed_at: new Date().toISOString(),
+            })
+            .eq('id', loanId);
+            
+          console.log('Disbursement initiated (facilitated, no fee):', disbursementTransferId);
+        }
       }
     } catch (disbErr: any) {
       console.error('Disbursement error (continuing anyway):', JSON.stringify(disbErr.body || disbErr, null, 2));

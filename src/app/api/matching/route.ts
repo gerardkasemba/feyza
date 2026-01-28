@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
-    console.log('Loan details:', { amount: loan.amount, currency: loan.currency, borrower: loan.borrower?.full_name });
+    console.log('Loan details:', { amount: loan.amount, currency: loan.currency, borrower: loan.borrower?.full_name, loan_type_id: loan.loan_type_id });
 
     // Don't match if already has a lender
     if (loan.lender_id || loan.business_lender_id) {
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
     // Try the database function first, fall back to direct query
     let matches: any[] = [];
-    console.log('Attempting to find matching lenders for loan:', loan_id);
+    console.log('Attempting to find matching lenders for loan:', loan_id, 'loan_type_id:', loan.loan_type_id);
     
     // Check if borrower is first-time (no completed loans) - needed for matching and emails
     const { count: completedLoans } = await supabase
@@ -104,6 +104,33 @@ export async function POST(request: NextRequest) {
 
       console.log(`[Matching] Found ${lenderPrefs?.length || 0} potential lenders before filtering`);
       
+      // If loan has a loan_type_id, fetch which businesses support that loan type
+      let businessesWithLoanType: string[] = [];
+      if (loan.loan_type_id) {
+        const { data: loanTypeData } = await supabase
+          .from('business_loan_types')
+          .select('business_id')
+          .eq('loan_type_id', loan.loan_type_id)
+          .eq('is_active', true);
+        
+        businessesWithLoanType = loanTypeData?.map((lt: any) => lt.business_id) || [];
+        console.log(`[Matching] Businesses supporting loan type ${loan.loan_type_id}:`, businessesWithLoanType);
+      }
+      
+      // Also fetch all business_loan_types to check if a business has ANY loan types configured
+      const businessIds = lenderPrefs?.filter((lp: any) => lp.business_id).map((lp: any) => lp.business_id) || [];
+      let businessesWithAnyLoanTypes: string[] = [];
+      if (businessIds.length > 0) {
+        const { data: allLoanTypes } = await supabase
+          .from('business_loan_types')
+          .select('business_id')
+          .in('business_id', businessIds)
+          .eq('is_active', true);
+        
+        businessesWithAnyLoanTypes = [...new Set(allLoanTypes?.map((lt: any) => lt.business_id) || [])];
+        console.log(`[Matching] Businesses with ANY loan types configured:`, businessesWithAnyLoanTypes);
+      }
+      
       // Log each lender preference found
       lenderPrefs?.forEach((lp: any, idx: number) => {
         console.log(`[Matching] Lender ${idx + 1}:`, {
@@ -127,35 +154,62 @@ export async function POST(request: NextRequest) {
           .filter((lp: any) => {
             // Check capital available
             const available = (lp.capital_pool || 0) - (lp.capital_reserved || 0);
-            if (available < loan.amount) return false;
+            if (available < loan.amount) {
+              console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: insufficient capital (${available} < ${loan.amount})`);
+              return false;
+            }
             
             // Check first-time borrower restrictions
             if (isFirstTimeBorrower) {
               // Skip if lender doesn't allow first-time borrowers
               if (lp.allow_first_time_borrowers === false) {
-                console.log(`Skipping lender ${lp.business?.business_name || lp.user_id}: doesn't allow first-time borrowers`);
+                console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: doesn't allow first-time borrowers`);
                 return false;
               }
               // Check first-time borrower limit
               const firstTimeLimit = lp.first_time_borrower_limit ?? lp.max_amount;
               if (loan.amount > firstTimeLimit) {
-                console.log(`Skipping lender ${lp.business?.business_name || lp.user_id}: first-time limit ${firstTimeLimit} < requested ${loan.amount}`);
+                console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: first-time limit ${firstTimeLimit} < requested ${loan.amount}`);
                 return false;
               }
             }
             
+            // Check loan type match (for business lenders only)
+            if (loan.loan_type_id && lp.business_id) {
+              // If the business has configured loan types, check if they support this one
+              const hasAnyLoanTypes = businessesWithAnyLoanTypes.includes(lp.business_id);
+              const supportsThisLoanType = businessesWithLoanType.includes(lp.business_id);
+              
+              if (hasAnyLoanTypes && !supportsThisLoanType) {
+                console.log(`[Matching] Skipping lender ${lp.business?.business_name}: doesn't support loan type ${loan.loan_type_id}`);
+                return false;
+              }
+              // If business has NO loan types configured, they accept all types (backwards compatibility)
+            }
+            
             return true;
           })
-          .map((lp: any) => ({
-            lender_user_id: lp.user_id,
-            lender_business_id: lp.business_id,
-            match_score: 80, // Default score for fallback
-            auto_accept: lp.auto_accept || false,
-            interest_rate: lp.interest_rate || 10,
-            lender_name: lp.business?.business_name || lp.user?.full_name || 'Lender',
-            lender_email: lp.business?.contact_email || lp.user?.email,
-            first_time_borrower_limit: lp.first_time_borrower_limit,
-          }))
+          .map((lp: any) => {
+            // Calculate match score - bonus for loan type match
+            let score = 80; // Default score
+            if (lp.auto_accept) score = 100;
+            if (loan.loan_type_id && lp.business_id && businessesWithLoanType.includes(lp.business_id)) {
+              score += 20; // Bonus for explicit loan type support
+            }
+            
+            return {
+              lender_user_id: lp.user_id,
+              lender_business_id: lp.business_id,
+              match_score: score,
+              auto_accept: lp.auto_accept || false,
+              interest_rate: lp.interest_rate || 10,
+              lender_name: lp.business?.business_name || lp.user?.full_name || 'Lender',
+              lender_email: lp.business?.contact_email || lp.user?.email,
+              first_time_borrower_limit: lp.first_time_borrower_limit,
+            };
+          })
+          // Sort by match score (highest first)
+          .sort((a: any, b: any) => b.match_score - a.match_score)
           .slice(0, 5);
       }
     } else {
@@ -815,6 +869,7 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
   }
 
   // Create in-app notification for lender
+  // Include match_id in data so notification can link to review page
   if (match.lender_user_id) {
     // Individual lender notification
     const { error: notifError } = await supabase.from('notifications').insert({
@@ -823,11 +878,12 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
       type: 'loan_match_offer',
       title: '🎯 New Loan Match!',
       message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your preferences. You have 24h to respond.`,
+      data: { match_id: matchId, amount: loan.amount, currency: loan.currency },
     });
     if (notifError) {
       console.error(`[Matching] Failed to create notification for lender ${match.lender_user_id}:`, notifError);
     } else {
-      console.log(`[Matching] ✅ Created in-app notification for lender user ${match.lender_user_id}`);
+      console.log(`[Matching] ✅ Created in-app notification for lender user ${match.lender_user_id}, match_id: ${matchId}`);
     }
   } else if (match.lender_business_id) {
     // Business lender notification - find the business owner
@@ -846,11 +902,12 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
         type: 'loan_match_offer',
         title: '🎯 New Loan Match!',
         message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your ${business.business_name} lending preferences. Review and accept within 24h.`,
+        data: { match_id: matchId, amount: loan.amount, currency: loan.currency, business_name: business.business_name },
       });
       if (notifError) {
         console.error(`[Matching] Failed to create notification for business owner ${business.user_id}:`, notifError);
       } else {
-        console.log(`[Matching] ✅ Created in-app notification for business owner ${business.user_id}`);
+        console.log(`[Matching] ✅ Created in-app notification for business owner ${business.user_id}, match_id: ${matchId}`);
       }
     } else {
       console.log(`[Matching] Business ${match.lender_business_id} has no user_id, skipping notification`);
@@ -858,6 +915,8 @@ async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult,
   } else {
     console.log(`[Matching] No lender_user_id or lender_business_id, skipping notification`);
   }
+
+  console.log(`[Matching] ========== NOTIFY LENDER END ==========`);
 }
 
 // Helper: Send match confirmation emails

@@ -881,27 +881,15 @@ export async function GET(
 
     const serviceSupabase = await createServiceRoleClient();
 
-    const { data: match, error } = await serviceSupabase
+    // First, fetch the match
+    const { data: match, error: matchError } = await serviceSupabase
       .from('loan_matches')
-      .select(`
-        *,
-        loan:loans(
-          *,
-          borrower:users!borrower_id(
-            id, 
-            full_name, 
-            borrower_rating, 
-            verification_status,
-            total_payments_made,
-            payments_on_time,
-            payments_early
-          )
-        )
-      `)
+      .select('*')
       .eq('id', matchId)
       .single();
 
-    if (error || !match) {
+    if (matchError || !match) {
+      console.error('[Matching GET] Match not found:', matchError);
       return NextResponse.json({ error: 'Match not found' }, { status: 404 });
     }
 
@@ -920,7 +908,47 @@ export async function GET(
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
-    return NextResponse.json({ match });
+    // Fetch the loan separately
+    const { data: loan, error: loanError } = await serviceSupabase
+      .from('loans')
+      .select('*')
+      .eq('id', match.loan_id)
+      .single();
+
+    if (loanError || !loan) {
+      console.error('[Matching GET] Loan not found:', loanError);
+      return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
+    }
+
+    // Fetch the borrower separately
+    const { data: borrower, error: borrowerError } = await serviceSupabase
+      .from('users')
+      .select('id, full_name, borrower_rating, verification_status, total_payments_made, payments_on_time, payments_early')
+      .eq('id', loan.borrower_id)
+      .single();
+
+    if (borrowerError) {
+      console.error('[Matching GET] Borrower fetch error:', borrowerError);
+    }
+
+    // Combine the data
+    const fullMatch = {
+      ...match,
+      loan: {
+        ...loan,
+        borrower: borrower || {
+          id: loan.borrower_id,
+          full_name: 'Unknown',
+          borrower_rating: 'neutral',
+          verification_status: 'unverified',
+          total_payments_made: 0,
+          payments_on_time: 0,
+          payments_early: 0,
+        }
+      }
+    };
+
+    return NextResponse.json({ match: fullMatch });
   } catch (error) {
     console.error('Error fetching match:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

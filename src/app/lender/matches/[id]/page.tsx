@@ -69,6 +69,7 @@ export default function MatchReviewPage() {
   const [user, setUser] = useState<any>(null);
   const [match, setMatch] = useState<Match | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
   const [showDeclineModal, setShowDeclineModal] = useState(false);
@@ -124,16 +125,21 @@ export default function MatchReviewPage() {
       });
 
       // Fetch match
+      console.log('[MatchReview] Fetching match:', matchId);
       const response = await fetch(`/api/matching/${matchId}`);
+      const data = await response.json();
+      
+      console.log('[MatchReview] Response:', response.status, data);
+      
       if (!response.ok) {
-        router.push('/dashboard');
+        setError(data.error || 'Failed to load match details');
         return;
       }
-      const data = await response.json();
+      
       setMatch(data.match);
-    } catch (error) {
-      console.error('Failed to fetch data:', error);
-      router.push('/dashboard');
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError('Failed to load match details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -162,7 +168,7 @@ export default function MatchReviewPage() {
         if (action === 'accept') {
           router.push(`/loans/${match?.loan_id}`);
         } else {
-          router.push('/lender/preferences');
+          router.push('/lender/matches');
         }
       } else {
         alert(data.error || 'Action failed');
@@ -232,8 +238,36 @@ export default function MatchReviewPage() {
     );
   }
 
-  if (!match) {
-    return null;
+  if (error || !match) {
+    return (
+      <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
+        <Navbar user={user} />
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <Card className="text-center py-12">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-neutral-900 dark:text-white mb-2">
+              {error || 'Match Not Found'}
+            </h2>
+            <p className="text-neutral-500 dark:text-neutral-400 mb-6">
+              This match may have been accepted, declined, or expired.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <Link href="/lender/matches">
+                <Button variant="outline">
+                  View All Matches
+                </Button>
+              </Link>
+              <Link href="/business">
+                <Button>
+                  Go to Dashboard
+                </Button>
+              </Link>
+            </div>
+          </Card>
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
   const loan = match.loan;
@@ -250,12 +284,12 @@ export default function MatchReviewPage() {
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={user} />
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-6">
-          <Link href="/dashboard" className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-300 mb-4">
+          <Link href="/lender/matches" className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-300 mb-4">
             <ArrowLeft className="w-4 h-4" />
-            Back to Dashboard
+            Back to Matches
           </Link>
 
           <div className="flex items-center justify-between">
@@ -277,7 +311,7 @@ export default function MatchReviewPage() {
           <Card className={`mb-6 ${
             match.status === 'accepted' ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' :
             match.status === 'declined' ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800' :
-            'bg-yellow-50 dark:bg-yellow-900/30 border-yellow-200 dark:border-yellow-800'
+            'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20'
           }`}>
             <div className="flex items-center gap-3">
               {match.status === 'accepted' && <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-500" />}
@@ -304,11 +338,11 @@ export default function MatchReviewPage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-primary-100 dark:text-primary-200">Match Score</p>
-              <p className="text-4xl font-bold">{match.match_score}%</p>
+              <p className="text-2xl font-bold">{match.match_score}%</p>
             </div>
             <div className="text-right">
               <p className="text-primary-100 dark:text-primary-200">Loan Amount</p>
-              <p className="text-3xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(loan.amount, loan.currency)}</p>
             </div>
           </div>
         </Card>

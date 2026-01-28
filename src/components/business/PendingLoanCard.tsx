@@ -89,7 +89,7 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
   const borrowerRating = loan.borrower?.borrower_rating || 'neutral';
 
   return (
-    <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20">
+    <Card className="">
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">

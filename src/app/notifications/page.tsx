@@ -81,6 +81,12 @@ export default async function NotificationsPage() {
           color: 'text-blue-600 dark:text-blue-400', 
           bg: 'bg-blue-100 dark:bg-blue-900/30' 
         };
+      case 'loan_match_offer':
+        return { 
+          icon: MdOutlineNotifications, 
+          color: 'text-yellow-600 dark:text-yellow-400', 
+          bg: 'bg-yellow-100 dark:bg-yellow-900/30' 
+        };
       case 'loan_accepted':
         return { 
           icon: MdOutlineThumbUp, 
@@ -114,7 +120,7 @@ export default async function NotificationsPage() {
         <Navbar user={userProfile} />
 
       <main className="flex-1">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {/* Header */}
           <div className="flex items-center justify-between mb-8">
             <div>
@@ -142,10 +148,20 @@ export default async function NotificationsPage() {
             <div className="space-y-3">
               {notifications.map((notification) => {
                 const { icon: Icon, color, bg } = getNotificationIcon(notification.type);
+                
+                // Determine the correct link based on notification type
+                let notificationHref = '#';
+                if (notification.type === 'loan_match_offer' && notification.data?.match_id) {
+                  // Link to match review page for loan match offers
+                  notificationHref = `/lender/matches/${notification.data.match_id}`;
+                } else if (notification.loan_id) {
+                  notificationHref = `/loans/${notification.loan_id}`;
+                }
+                
                 return (
                   <Link 
                     key={notification.id} 
-                    href={notification.loan_id ? `/loans/${notification.loan_id}` : '#'}
+                    href={notificationHref}
                   >
                     <Card 
                       hover 

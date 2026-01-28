@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client';
 import Image from 'next/image';
 import {
   Home,
+  Target,
   FileText,
   Building2,
   Bell,
@@ -259,7 +260,7 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
     ];
     if (user.user_type === 'business') {
       // return [...baseItems, { href: '/business', label: 'Business', icon: Building2 }, { href: '/invest', label: 'Invest', icon: DollarSign }];
-      return [...baseItems, { href: '/business', label: 'Business', icon: Building2 }];
+      return [...baseItems, { href: '/business', label: 'Business', icon: Building2 }, { href: '/lender/matches', label: 'Loan Matches', icon: Target }];
     }
     return [...baseItems, ];
     // return [...baseItems, { href: '/invest', label: 'Invest', icon: DollarSign }];
@@ -277,6 +278,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
   // Add business-specific items
   if (user.user_type === 'business') {
     baseItems.push(
+      { href: '/lender/matches', label: 'Loan Matches', icon: Target },
       { href: '/lender/preferences', label: 'Lending Preferences', icon: CreditCard },
       { href: '/business/settings', label: 'Business Settings', icon: Briefcase }
     );

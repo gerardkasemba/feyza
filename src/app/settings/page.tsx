@@ -8,8 +8,19 @@ import { createClient } from '@/lib/supabase/client';
 import { PlaidLinkButton, ConnectedBank, BankConnectionRequired } from '@/components/payments/PlaidLink';
 import { 
   User, Bell, Shield, LogOut, Building, CheckCircle, 
-  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2
+  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2, MapPin
 } from 'lucide-react';
+
+interface Country {
+  code: string;
+  name: string;
+}
+
+interface State {
+  code: string;
+  name: string;
+  country_code?: string;
+}
 
 function SettingsContent() {
   const router = useRouter();
@@ -33,6 +44,13 @@ function SettingsContent() {
   const [reminderDays, setReminderDays] = useState('3');
   const [timezone, setTimezone] = useState('America/New_York');
 
+  // Location state
+  const [country, setCountry] = useState('');
+  const [state, setState] = useState('');
+  const [availableCountries, setAvailableCountries] = useState<Country[]>([]);
+  const [availableStates, setAvailableStates] = useState<State[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
+
   // Password change state
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -55,6 +73,17 @@ function SettingsContent() {
       }
       setUser(user);
 
+      // Fetch countries
+      try {
+        const countriesRes = await fetch('/api/admin/countries');
+        if (countriesRes.ok) {
+          const countriesData = await countriesRes.json();
+          setAvailableCountries(countriesData.countries || []);
+        }
+      } catch (err) {
+        console.error('Failed to fetch countries:', err);
+      }
+
       try {
         const { data: profileData } = await supabase
           .from('users')
@@ -67,6 +96,8 @@ function SettingsContent() {
           setFullName(profileData.full_name || '');
           setPhone(profileData.phone || '');
           setUsername(profileData.username || '');
+          setCountry(profileData.country || '');
+          setState(profileData.state || '');
           setEmailNotifications(profileData.email_reminders !== false);
           setReminderDays(String(profileData.reminder_days_before || 3));
           setTimezone(profileData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -83,6 +114,37 @@ function SettingsContent() {
 
     fetchData();
   }, [router]);
+
+  // Fetch states when country changes
+  useEffect(() => {
+    const fetchStates = async () => {
+      if (!country) {
+        setAvailableStates([]);
+        return;
+      }
+
+      setLoadingStates(true);
+      try {
+        const statesRes = await fetch(`/api/states?country=${country}`);
+        if (statesRes.ok) {
+          const statesData = await statesRes.json();
+          setAvailableStates(statesData.states || []);
+          
+          // Clear state if it's not in the new list
+          if (statesData.states && statesData.states.length > 0) {
+            const validStateCodes = statesData.states.map((s: State) => s.code);
+            if (state && !validStateCodes.includes(state)) {
+              setState('');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch states:', err);
+      }
+      setLoadingStates(false);
+    };
+    fetchStates();
+  }, [country]);
 
   useEffect(() => {
     if (initialTab === 'payments') {
@@ -105,12 +167,14 @@ function SettingsContent() {
           email: user.email,
           full_name: fullName,
           phone: phone || null,
+          country: country || null,
+          state: state || null,
           updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;
       
-      setProfile({ ...profile, full_name: fullName, phone });
+      setProfile({ ...profile, full_name: fullName, phone, country, state });
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error: any) {
@@ -407,6 +471,74 @@ function SettingsContent() {
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder="+1 (555) 123-4567"
                       />
+
+                      {/* Location Section */}
+                      <div className="pt-4 border-t border-neutral-200 dark:border-neutral-700">
+                        <div className="flex items-center gap-2 mb-4">
+                          <MapPin className="w-5 h-5 text-blue-500" />
+                          <h3 className="font-medium text-neutral-900 dark:text-white">Location</h3>
+                        </div>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                          Your location helps us match you with lenders who serve your area.
+                        </p>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                              Country
+                            </label>
+                            <select
+                              value={country}
+                              onChange={(e) => {
+                                setCountry(e.target.value);
+                                setState(''); // Clear state when country changes
+                              }}
+                              className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-white"
+                            >
+                              <option value="">Select Country</option>
+                              {availableCountries.map((c) => (
+                                <option key={c.code} value={c.code}>
+                                  {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                              State / Region
+                            </label>
+                            {loadingStates ? (
+                              <div className="flex items-center gap-2 px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl bg-neutral-50 dark:bg-neutral-800">
+                                <Loader2 className="w-4 h-4 animate-spin text-neutral-400" />
+                                <span className="text-neutral-500">Loading...</span>
+                              </div>
+                            ) : availableStates.length > 0 ? (
+                              <select
+                                value={state}
+                                onChange={(e) => setState(e.target.value)}
+                                className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-white"
+                              >
+                                <option value="">Select State/Region</option>
+                                {availableStates.map((s) => (
+                                  <option key={s.code} value={s.code}>
+                                    {s.name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={state}
+                                onChange={(e) => setState(e.target.value)}
+                                placeholder={country ? "Enter state/region" : "Select country first"}
+                                disabled={!country}
+                                className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-neutral-800 dark:text-white disabled:bg-neutral-100 dark:disabled:bg-neutral-900 disabled:cursor-not-allowed"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
                       <div className="flex justify-end pt-4">
                         <Button type="submit" loading={saving}>

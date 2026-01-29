@@ -7,6 +7,7 @@ import { Card, Button, Badge, Breadcrumbs, UpdateNotification, ConfirmDialog } f
 import { Navbar, Footer } from '@/components/layout';
 import { createClient } from '@/lib/supabase/client';
 import { useGuestSession } from '@/hooks/useGuestSession';
+import { FeeBreakdown, usePlatformFee } from '@/components/FeeBreakdown';
 import {
   Calendar,
   User,
@@ -28,6 +29,7 @@ import {
   Wallet,
   Users,
   LogOut,
+  Info,
 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
@@ -143,6 +145,9 @@ export default function GuestLenderDashboard() {
   const [updateMessage, setUpdateMessage] = useState('');
   const [tab, setTab] = useState<TabKey>('overview');
   const [showNotMeDialog, setShowNotMeDialog] = useState(false);
+
+  // Platform fee hook
+  const { settings: feeSettings, loading: feeLoading, calculateFee } = usePlatformFee();
 
   const supabase = createClient();
   const lastRefreshRef = useRef<number>(Date.now());
@@ -405,6 +410,27 @@ export default function GuestLenderDashboard() {
 
   const ScheduleTab = (
     <div className="space-y-4">
+      {/* Fee Information Banner */}
+      {feeSettings?.enabled && !feeLoading && (
+        <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+          <div className="flex items-start gap-3">
+            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-medium text-blue-900 dark:text-blue-200">Platform Fee Information</h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                A platform fee of {feeSettings.type === 'fixed' 
+                  ? formatCurrency(feeSettings.fixed_amount, loan.currency)
+                  : feeSettings.type === 'combined'
+                  ? `${feeSettings.percentage}% + ${formatCurrency(feeSettings.fixed_amount, loan.currency)}`
+                  : `${feeSettings.percentage}%`} is applied to each payment.
+                {feeSettings.min_fee > 0 && ` Minimum fee: ${formatCurrency(feeSettings.min_fee, loan.currency)}.`}
+                {feeSettings.max_fee > 0 && ` Maximum fee: ${formatCurrency(feeSettings.max_fee, loan.currency)}.`}
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       <Card>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2"><PieChart className="w-5 h-5 text-primary-600 dark:text-primary-400" />Payment Schedule</h3>
@@ -413,6 +439,7 @@ export default function GuestLenderDashboard() {
         <div className="space-y-3">
           {loan.schedule?.map((p, idx) => {
             const isOverdue = !p.is_paid && new Date(p.due_date) < new Date();
+            const feeCalc = calculateFee(p.amount);
             return (
               <div key={p.id} className={`p-4 rounded-xl border ${p.is_paid ? 'bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800' : isOverdue ? 'bg-red-50 dark:bg-red-900/30 border-red-200 dark:border-red-800' : 'bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-700'}`}>
                 <div className="flex items-center justify-between">
@@ -423,6 +450,12 @@ export default function GuestLenderDashboard() {
                     <div>
                       <p className="font-medium text-neutral-900 dark:text-white">{formatCurrency(p.amount, loan.currency)}</p>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">{formatDate(p.due_date)}</p>
+                      {/* Fee breakdown */}
+                      {feeSettings?.enabled && feeCalc.platformFee > 0 && (
+                        <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                          Fee: {formatCurrency(feeCalc.platformFee, loan.currency)} → You receive: <span className="text-green-600 dark:text-green-400 font-medium">{formatCurrency(feeCalc.netAmount, loan.currency)}</span>
+                        </p>
+                      )}
                     </div>
                   </div>
                   {p.is_paid ? (
@@ -574,7 +607,7 @@ export default function GuestLenderDashboard() {
       <div className="hidden lg:flex lg:flex-col min-h-screen">
         <Navbar />
         <main className="flex-1 py-8 px-4">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <Breadcrumbs items={[{ label: 'Lender Dashboard' }, { label: `Loan to ${borrowerName}` }]} />
               <div className="flex items-center gap-4">

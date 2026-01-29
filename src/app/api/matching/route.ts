@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
-    console.log('Loan details:', { amount: loan.amount, currency: loan.currency, borrower: loan.borrower?.full_name, loan_type_id: loan.loan_type_id });
+    console.log('Loan details:', { amount: loan.amount, currency: loan.currency, country: loan.country, state: loan.state, borrower: loan.borrower?.full_name, loan_type_id: loan.loan_type_id });
 
     // Don't match if already has a lender
     if (loan.lender_id || loan.business_lender_id) {
@@ -145,6 +145,8 @@ export async function POST(request: NextRequest) {
           capital_pool: lp.capital_pool,
           capital_reserved: lp.capital_reserved,
           available: (lp.capital_pool || 0) - (lp.capital_reserved || 0),
+          countries: lp.countries || [],
+          states: lp.states || [],
         });
       });
 
@@ -157,6 +159,24 @@ export async function POST(request: NextRequest) {
             if (available < loan.amount) {
               console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: insufficient capital (${available} < ${loan.amount})`);
               return false;
+            }
+            
+            // Check country match
+            const lenderCountries = lp.countries || [];
+            if (lenderCountries.length > 0 && loan.country) {
+              if (!lenderCountries.includes(loan.country)) {
+                console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: country mismatch (loan: ${loan.country}, lender accepts: ${lenderCountries.join(', ')})`);
+                return false;
+              }
+            }
+            
+            // Check state match (only if lender has states configured AND loan has a state)
+            const lenderStates = lp.states || [];
+            if (lenderStates.length > 0 && loan.state) {
+              if (!lenderStates.includes(loan.state)) {
+                console.log(`[Matching] Skipping lender ${lp.business?.business_name || lp.user_id}: state mismatch (loan: ${loan.state}, lender accepts: ${lenderStates.join(', ')})`);
+                return false;
+              }
             }
             
             // Check first-time borrower restrictions
@@ -190,11 +210,21 @@ export async function POST(request: NextRequest) {
             return true;
           })
           .map((lp: any) => {
-            // Calculate match score - bonus for loan type match
+            // Calculate match score - bonus for loan type match and exact location match
             let score = 80; // Default score
             if (lp.auto_accept) score = 100;
             if (loan.loan_type_id && lp.business_id && businessesWithLoanType.includes(lp.business_id)) {
               score += 20; // Bonus for explicit loan type support
+            }
+            // Bonus for exact country match if lender specified countries
+            const lenderCountries = lp.countries || [];
+            if (lenderCountries.length > 0 && loan.country && lenderCountries.includes(loan.country)) {
+              score += 5;
+            }
+            // Bonus for exact state match if lender specified states
+            const lenderStates = lp.states || [];
+            if (lenderStates.length > 0 && loan.state && lenderStates.includes(loan.state)) {
+              score += 5;
             }
             
             return {
@@ -560,6 +590,14 @@ async function assignLoanToLender(
     updateData.lender_id = match.lender_user_id;
   } else if (match.lender_business_id) {
     updateData.business_lender_id = match.lender_business_id;
+  }
+
+  // Set lender name and email for notifications
+  if (match.lender_name) {
+    updateData.lender_name = match.lender_name;
+  }
+  if (match.lender_email) {
+    updateData.lender_email = match.lender_email;
   }
 
   const { error: updateError } = await supabase

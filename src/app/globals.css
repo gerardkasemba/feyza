@@ -28,6 +28,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Add to your global.css or tailwind config */
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;      /* Firefox */
+  }
+  
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
+}
+
 /* Dark mode body background */
 .dark body {
   @apply bg-neutral-950 text-neutral-100;

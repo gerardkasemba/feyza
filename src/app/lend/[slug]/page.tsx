@@ -28,6 +28,7 @@ import {
   FileText,
   TrendingUp,
   Award,
+  Tag,
 } from 'lucide-react';
 
 interface LenderPreferences {
@@ -38,6 +39,26 @@ interface LenderPreferences {
   min_term_weeks: number;
   max_term_weeks: number;
   first_time_borrower_limit?: number;
+  countries?: string[];
+  states?: string[];
+}
+
+interface LoanType {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  icon?: string;
+}
+
+interface Country {
+  code: string;
+  name: string;
+}
+
+interface State {
+  code: string;
+  name: string;
 }
 
 export default function PublicLenderPage() {
@@ -47,6 +68,9 @@ export default function PublicLenderPage() {
 
   const [lender, setLender] = useState<BusinessProfile | null>(null);
   const [lenderPrefs, setLenderPrefs] = useState<LenderPreferences | null>(null);
+  const [loanTypes, setLoanTypes] = useState<LoanType[]>([]);
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [states, setStates] = useState<State[]>([]);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -86,11 +110,47 @@ export default function PublicLenderPage() {
       // Fetch lender preferences for loan terms
       const { data: prefs } = await supabase
         .from('lender_preferences')
-        .select('min_amount, max_amount, interest_rate, interest_type, min_term_weeks, max_term_weeks, first_time_borrower_limit')
+        .select('min_amount, max_amount, interest_rate, interest_type, min_term_weeks, max_term_weeks, first_time_borrower_limit, countries, states')
         .eq('business_id', business.id)
         .single();
 
       if (prefs) setLenderPrefs(prefs);
+
+      // Fetch loan types this lender offers
+      const { data: businessLoanTypes } = await supabase
+        .from('business_loan_types')
+        .select(`
+          loan_type:loan_types(id, name, slug, description, icon)
+        `)
+        .eq('business_id', business.id)
+        .eq('is_active', true);
+
+      if (businessLoanTypes) {
+        const types = businessLoanTypes
+          .map((blt: any) => blt.loan_type)
+          .filter((lt: any) => lt !== null);
+        setLoanTypes(types);
+      }
+
+      // Fetch countries
+      const { data: countriesData } = await supabase
+        .from('countries')
+        .select('code, name')
+        .eq('is_active', true);
+      
+      if (countriesData) {
+        setCountries(countriesData);
+      }
+
+      // Fetch states
+      const { data: statesData } = await supabase
+        .from('states')
+        .select('code, name')
+        .eq('is_active', true);
+      
+      if (statesData) {
+        setStates(statesData);
+      }
 
       setLoading(false);
     };
@@ -101,6 +161,18 @@ export default function PublicLenderPage() {
   const handleRequestLoan = () => {
     sessionStorage.setItem('preferred_lender_slug', slug);
     router.push('/loans/new?lender=' + slug);
+  };
+
+  // Helper to get country name from code
+  const getCountryName = (code: string) => {
+    const country = countries.find(c => c.code === code);
+    return country?.name || code;
+  };
+
+  // Helper to get state name from code
+  const getStateName = (code: string) => {
+    const state = states.find(s => s.code === code);
+    return state?.name || code;
   };
 
   // Prepare SEO data
@@ -186,6 +258,10 @@ export default function PublicLenderPage() {
       </>
     );
   }
+
+  // Get serving locations
+  const servingCountries = lenderPrefs?.countries || [];
+  const servingStates = lenderPrefs?.states || [];
 
   return (
     <>
@@ -452,6 +528,82 @@ export default function PublicLenderPage() {
                   </div>
                 )}
 
+                {/* Loan Types Offered */}
+                {loanTypes.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Tag className="w-5 h-5 text-green-600" />
+                      Loan Types Offered
+                    </h2>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                      {loanTypes.map((lt) => (
+                        <div
+                          key={lt.id}
+                          className="p-4 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-green-300 dark:hover:border-green-700 transition-colors"
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {lt.icon && <span className="text-lg">{lt.icon}</span>}
+                            <h3 className="font-medium text-neutral-900 dark:text-white">{lt.name}</h3>
+                          </div>
+                          {lt.description && (
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
+                              {lt.description}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Service Areas - Countries & States */}
+                {(servingCountries.length > 0 || servingStates.length > 0) && (
+                  <div>
+                    <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Globe className="w-5 h-5 text-blue-600" />
+                      Service Areas
+                    </h2>
+                    <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5">
+                      {servingCountries.length > 0 && (
+                        <div className="mb-4">
+                          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                            <Globe className="w-4 h-4" />
+                            Countries
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            {servingCountries.map((code) => (
+                              <span
+                                key={code}
+                                className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-full text-sm"
+                              >
+                                {getCountryName(code)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {servingStates.length > 0 && (
+                        <div>
+                          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                            <MapPin className="w-4 h-4" />
+                            States / Regions
+                          </h3>
+                          <div className="flex flex-wrap gap-2">
+                            {servingStates.map((code) => (
+                              <span
+                                key={code}
+                                className="px-3 py-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-full text-sm"
+                              >
+                                {getStateName(code)}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* How It Works (equal height, no fragile connector line) */}
                 <div>
                   <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-6">
@@ -591,6 +743,20 @@ export default function PublicLenderPage() {
                         <span className="text-neutral-500 dark:text-neutral-400">First-time limit</span>
                         <span className="font-medium text-neutral-900 dark:text-white">
                           {formatCurrency(lenderPrefs.first_time_borrower_limit)}
+                        </span>
+                      </div>
+                    )}
+                    {loanTypes.length > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-neutral-500 dark:text-neutral-400">Loan types</span>
+                        <span className="font-medium text-neutral-900 dark:text-white">{loanTypes.length} available</span>
+                      </div>
+                    )}
+                    {servingCountries.length > 0 && (
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-neutral-500 dark:text-neutral-400">Serving</span>
+                        <span className="font-medium text-neutral-900 dark:text-white">
+                          {servingCountries.length} {servingCountries.length === 1 ? 'country' : 'countries'}
                         </span>
                       </div>
                     )}

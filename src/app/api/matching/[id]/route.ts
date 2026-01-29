@@ -10,7 +10,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: matchId } = await params;
+    const { id } = await params;
     const body = await request.json();
     const { action, decline_reason } = body;
 
@@ -27,57 +27,163 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get the match with loan details
-    const { data: match, error: matchError } = await serviceSupabase
-      .from('loan_matches')
-      .select(`
-        *,
-        loan:loans(
-          *,
-          borrower:users!borrower_id(id, email, full_name)
-        )
-      `)
-      .eq('id', matchId)
+    // Get user's business profile if exists
+    const { data: business } = await supabase
+      .from('business_profiles')
+      .select('id, business_name, contact_email')
+      .eq('user_id', user.id)
       .single();
 
-    if (matchError || !match) {
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
-    }
-
-    // Verify the user is the lender for this match
-    let isAuthorized = match.lender_user_id === user.id;
-    
-    if (!isAuthorized && match.lender_business_id) {
-      const { data: business } = await supabase
-        .from('business_profiles')
-        .select('user_id')
-        .eq('id', match.lender_business_id)
+    // Get lender preferences
+    let lenderPrefs: any = null;
+    if (business?.id) {
+      const { data } = await supabase
+        .from('lender_preferences')
+        .select('*')
+        .eq('business_id', business.id)
         .single();
-      isAuthorized = business?.user_id === user.id;
+      lenderPrefs = data;
+    } else {
+      const { data } = await supabase
+        .from('lender_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      lenderPrefs = data;
     }
 
-    if (!isAuthorized) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
-    }
+    // Try to find a match record first
+    let match: any = null;
+    let loan: any = null;
+    let matchId: string | null = null;
 
-    // Check if match is still pending
-    if (match.status !== 'pending') {
-      return NextResponse.json({ 
-        error: `Match already ${match.status}`,
-        status: match.status 
-      }, { status: 400 });
-    }
+    const { data: existingMatch, error: matchError } = await serviceSupabase
+      .from('loan_matches')
+      .select('*')
+      .eq('id', id)
+      .single();
 
-    // Check if match has expired
-    if (new Date(match.expires_at) < new Date()) {
-      await serviceSupabase
+    if (existingMatch && !matchError) {
+      match = existingMatch;
+      matchId = match.id;
+
+      // Verify the user is the lender for this match
+      let isAuthorized = match.lender_user_id === user.id;
+      if (!isAuthorized && match.lender_business_id) {
+        isAuthorized = business?.id === match.lender_business_id;
+      }
+
+      if (!isAuthorized) {
+        return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+      }
+
+      // Check if match is still pending
+      if (match.status !== 'pending') {
+        return NextResponse.json({ 
+          error: `Match already ${match.status}`,
+          status: match.status 
+        }, { status: 400 });
+      }
+
+      // Check if match has expired
+      if (new Date(match.expires_at) < new Date()) {
+        await serviceSupabase
+          .from('loan_matches')
+          .update({ status: 'expired' })
+          .eq('id', matchId);
+        return NextResponse.json({ error: 'Match has expired' }, { status: 400 });
+      }
+
+      // Get the loan
+      const { data: loanData, error: loanError } = await serviceSupabase
+        .from('loans')
+        .select('*, borrower:users!borrower_id(id, email, full_name)')
+        .eq('id', match.loan_id)
+        .single();
+
+      if (loanError || !loanData) {
+        return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
+      }
+      loan = loanData;
+
+    } else {
+      // No match record - ID might be a loan ID
+      console.log('[Matching POST] No match found, trying as loan ID:', id);
+
+      const { data: loanData, error: loanError } = await serviceSupabase
+        .from('loans')
+        .select('*, borrower:users!borrower_id(id, email, full_name)')
+        .eq('id', id)
+        .single();
+
+      if (loanError || !loanData) {
+        return NextResponse.json({ error: 'Match or loan not found' }, { status: 404 });
+      }
+      loan = loanData;
+
+      // Verify lender can accept this loan
+      if (!lenderPrefs || !lenderPrefs.is_active) {
+        return NextResponse.json({ error: 'Lender preferences not active' }, { status: 403 });
+      }
+
+      const availableCapital = (lenderPrefs.capital_pool || 0) - (lenderPrefs.capital_reserved || 0);
+      
+      if (loan.amount < lenderPrefs.min_amount || loan.amount > lenderPrefs.max_amount) {
+        return NextResponse.json({ error: 'Loan amount outside your preferences' }, { status: 403 });
+      }
+
+      if (loan.amount > availableCapital) {
+        return NextResponse.json({ error: 'Insufficient capital' }, { status: 403 });
+      }
+
+      // Check if loan already has a lender
+      if (loan.lender_id || loan.business_lender_id) {
+        return NextResponse.json({ error: 'Loan already has a lender' }, { status: 400 });
+      }
+
+      // Check if lender already declined this loan
+      const lenderId = business?.id || user.id;
+      const lenderField = business?.id ? 'lender_business_id' : 'lender_user_id';
+      
+      const { data: existingDecline } = await serviceSupabase
         .from('loan_matches')
-        .update({ status: 'expired' })
-        .eq('id', matchId);
-      return NextResponse.json({ error: 'Match has expired' }, { status: 400 });
+        .select('id')
+        .eq('loan_id', loan.id)
+        .eq(lenderField, lenderId)
+        .eq('status', 'declined')
+        .single();
+
+      if (existingDecline) {
+        return NextResponse.json({ error: 'You already declined this loan' }, { status: 400 });
+      }
+
+      // Create a match record for this action
+      const { data: newMatch, error: insertError } = await serviceSupabase
+        .from('loan_matches')
+        .insert({
+          loan_id: loan.id,
+          lender_user_id: business?.id ? null : user.id,
+          lender_business_id: business?.id || null,
+          match_score: 80,
+          match_rank: 1,
+          status: 'pending',
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error('[Matching POST] Error creating match:', insertError);
+        return NextResponse.json({ error: 'Failed to create match record' }, { status: 500 });
+      }
+
+      match = newMatch;
+      matchId = newMatch.id;
+      console.log('[Matching POST] Created new match record:', matchId);
     }
 
-    const loan = match.loan;
+    // Add loan to match object for further processing
+    match.loan = loan;
 
     if (action === 'accept') {
       // ACCEPT: Assign the loan to this lender
@@ -154,6 +260,14 @@ export async function POST(
         loanUpdate.lender_id = match.lender_user_id;
       } else if (match.lender_business_id) {
         loanUpdate.business_lender_id = match.lender_business_id;
+      }
+
+      // Set lender name and email for notifications
+      if (lenderName) {
+        loanUpdate.lender_name = lenderName;
+      }
+      if (lenderEmail) {
+        loanUpdate.lender_email = lenderEmail;
       }
 
       await serviceSupabase
@@ -871,7 +985,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id: matchId } = await params;
+    const { id } = await params;
     const supabase = await createServerSupabaseClient();
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -881,47 +995,124 @@ export async function GET(
 
     const serviceSupabase = await createServiceRoleClient();
 
-    // First, fetch the match
+    // Get user's business profile if exists
+    const { data: business } = await supabase
+      .from('business_profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .single();
+
+    // Get lender preferences
+    let lenderPrefs: any = null;
+    if (business?.id) {
+      const { data } = await supabase
+        .from('lender_preferences')
+        .select('*')
+        .eq('business_id', business.id)
+        .single();
+      lenderPrefs = data;
+    } else {
+      const { data } = await supabase
+        .from('lender_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+      lenderPrefs = data;
+    }
+
+    // First, try to find a match by ID in loan_matches
     const { data: match, error: matchError } = await serviceSupabase
       .from('loan_matches')
       .select('*')
-      .eq('id', matchId)
+      .eq('id', id)
       .single();
 
-    if (matchError || !match) {
-      console.error('[Matching GET] Match not found:', matchError);
-      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
-    }
+    let loan: any = null;
+    let borrower: any = null;
+    let isFromMatch = false;
 
-    // Verify user is the lender
-    let isAuthorized = match.lender_user_id === user.id;
-    if (!isAuthorized && match.lender_business_id) {
-      const { data: business } = await supabase
-        .from('business_profiles')
-        .select('user_id')
-        .eq('id', match.lender_business_id)
+    if (match && !matchError) {
+      // Found a match record
+      isFromMatch = true;
+      
+      // Verify user is the lender for this match
+      let isAuthorized = match.lender_user_id === user.id;
+      if (!isAuthorized && match.lender_business_id) {
+        isAuthorized = business?.id === match.lender_business_id;
+      }
+
+      if (!isAuthorized) {
+        return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+      }
+
+      // Fetch the loan
+      const { data: loanData, error: loanError } = await serviceSupabase
+        .from('loans')
+        .select('*')
+        .eq('id', match.loan_id)
         .single();
-      isAuthorized = business?.user_id === user.id;
+
+      if (loanError || !loanData) {
+        console.error('[Matching GET] Loan not found:', loanError);
+        return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
+      }
+      loan = loanData;
+
+    } else {
+      // No match record found - try to find a loan by ID
+      console.log('[Matching GET] No match found, trying as loan ID:', id);
+      
+      const { data: loanData, error: loanError } = await serviceSupabase
+        .from('loans')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (loanError || !loanData) {
+        console.error('[Matching GET] Loan not found:', loanError);
+        return NextResponse.json({ error: 'Match or loan not found' }, { status: 404 });
+      }
+      loan = loanData;
+
+      // Verify this loan matches lender's preferences
+      if (!lenderPrefs || !lenderPrefs.is_active) {
+        return NextResponse.json({ error: 'Lender preferences not active' }, { status: 403 });
+      }
+
+      const availableCapital = (lenderPrefs.capital_pool || 0) - (lenderPrefs.capital_reserved || 0);
+      
+      if (loan.amount < lenderPrefs.min_amount || loan.amount > lenderPrefs.max_amount) {
+        return NextResponse.json({ error: 'Loan amount outside your preferences' }, { status: 403 });
+      }
+
+      if (loan.amount > availableCapital) {
+        return NextResponse.json({ error: 'Insufficient capital' }, { status: 403 });
+      }
+
+      // Check if loan already has a lender
+      if (loan.lender_id || loan.business_lender_id) {
+        return NextResponse.json({ error: 'Loan already has a lender' }, { status: 400 });
+      }
+
+      // Check if lender already declined this loan
+      const lenderId = business?.id || user.id;
+      const lenderField = business?.id ? 'lender_business_id' : 'lender_user_id';
+      
+      const { data: existingDecline } = await serviceSupabase
+        .from('loan_matches')
+        .select('id')
+        .eq('loan_id', loan.id)
+        .eq(lenderField, lenderId)
+        .eq('status', 'declined')
+        .single();
+
+      if (existingDecline) {
+        return NextResponse.json({ error: 'You already declined this loan' }, { status: 400 });
+      }
     }
 
-    if (!isAuthorized) {
-      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
-    }
-
-    // Fetch the loan separately
-    const { data: loan, error: loanError } = await serviceSupabase
-      .from('loans')
-      .select('*')
-      .eq('id', match.loan_id)
-      .single();
-
-    if (loanError || !loan) {
-      console.error('[Matching GET] Loan not found:', loanError);
-      return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
-    }
-
-    // Fetch the borrower separately
-    const { data: borrower, error: borrowerError } = await serviceSupabase
+    // Fetch the borrower
+    const { data: borrowerData, error: borrowerError } = await serviceSupabase
       .from('users')
       .select('id, full_name, borrower_rating, verification_status, total_payments_made, payments_on_time, payments_early')
       .eq('id', loan.borrower_id)
@@ -931,20 +1122,30 @@ export async function GET(
       console.error('[Matching GET] Borrower fetch error:', borrowerError);
     }
 
+    borrower = borrowerData || {
+      id: loan.borrower_id,
+      full_name: 'Unknown',
+      borrower_rating: 'neutral',
+      verification_status: 'unverified',
+      total_payments_made: 0,
+      payments_on_time: 0,
+      payments_early: 0,
+    };
+
     // Combine the data
     const fullMatch = {
-      ...match,
+      id: match?.id || loan.id,
+      loan_id: loan.id,
+      match_score: match?.match_score || 80,
+      match_rank: match?.match_rank || 1,
+      status: match?.status || 'pending',
+      expires_at: match?.expires_at || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      lender_user_id: match?.lender_user_id || (business?.id ? null : user.id),
+      lender_business_id: match?.lender_business_id || business?.id,
+      is_from_match: isFromMatch,
       loan: {
         ...loan,
-        borrower: borrower || {
-          id: loan.borrower_id,
-          full_name: 'Unknown',
-          borrower_rating: 'neutral',
-          verification_status: 'unverified',
-          total_payments_made: 0,
-          payments_on_time: 0,
-          payments_early: 0,
-        }
+        borrower
       }
     };
 

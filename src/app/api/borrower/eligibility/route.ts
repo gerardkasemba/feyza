@@ -35,6 +35,60 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
+    // ============================================
+    // CHECK IF BORROWER IS BLOCKED OR RESTRICTED
+    // ============================================
+    
+    if (profile.is_blocked) {
+      const now = new Date();
+      const restrictionEndsAt = profile.restriction_ends_at ? new Date(profile.restriction_ends_at) : null;
+      const debtClearedAt = profile.debt_cleared_at ? new Date(profile.debt_cleared_at) : null;
+      
+      // Check if debt is cleared but still in 90-day restriction
+      if (debtClearedAt && restrictionEndsAt) {
+        const daysRemaining = Math.ceil((restrictionEndsAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        
+        if (daysRemaining > 0) {
+          return NextResponse.json({
+            canBorrow: false,
+            isBlocked: true,
+            blockType: 'restriction',
+            reason: `Your account is under a 90-day restriction period due to a previous default. You can request loans again on ${restrictionEndsAt.toLocaleDateString()}.`,
+            restrictionEndsAt: profile.restriction_ends_at,
+            daysRemaining,
+            debtClearedAt: profile.debt_cleared_at,
+            defaultCount: profile.default_count || 1,
+          });
+        }
+      } else {
+        // Still has outstanding debt - fully blocked
+        // Get total outstanding debt
+        const { data: outstandingPayments } = await supabase
+          .from('repayment_schedule')
+          .select('amount, currency, loan_id')
+          .eq('status', 'defaulted')
+          .in('loan_id', (
+            await supabase
+              .from('loans')
+              .select('id')
+              .eq('borrower_id', user.id)
+          ).data?.map(l => l.id) || []);
+        
+        const totalDebt = outstandingPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
+        
+        return NextResponse.json({
+          canBorrow: false,
+          isBlocked: true,
+          blockType: 'defaulted',
+          reason: `Your account is blocked due to payment default. Please clear your outstanding debt to restore access.`,
+          blockedAt: profile.blocked_at,
+          blockedReason: profile.blocked_reason,
+          totalOutstandingDebt: totalDebt,
+          defaultCount: profile.default_count || 1,
+        });
+      }
+    }
+
     // Get completed loans count to determine if first-time borrower
     const { count: completedLoansCount } = await supabase
       .from('loans')
@@ -61,6 +115,37 @@ export async function GET(request: NextRequest) {
 
     // For BUSINESS lenders: No fixed tier limits - matching happens based on lender preferences
     if (lenderType === 'business') {
+      // Check if borrower has an active business loan and hasn't paid 75%
+      const { data: activeBusinessLoans } = await supabase
+        .from('loans')
+        .select('id, amount, amount_paid, amount_remaining, business_lender_id')
+        .eq('borrower_id', user.id)
+        .eq('status', 'active')
+        .not('business_lender_id', 'is', null);
+
+      if (activeBusinessLoans && activeBusinessLoans.length > 0) {
+        // Borrower has active business loan(s)
+        const activeLoan = activeBusinessLoans[0]; // They can only have one at a time
+        const paidPercentage = activeLoan.amount > 0 
+          ? ((activeLoan.amount_paid || 0) / activeLoan.amount) * 100 
+          : 0;
+        
+        if (paidPercentage < 75) {
+          return NextResponse.json({
+            canBorrow: false,
+            reason: `You must pay at least 75% of your current business loan before requesting a new one. Currently paid: ${paidPercentage.toFixed(0)}% ($${(activeLoan.amount_paid || 0).toLocaleString()} of $${activeLoan.amount.toLocaleString()})`,
+            lenderType: 'business',
+            hasActiveBusinessLoan: true,
+            activeBusinessLoanId: activeLoan.id,
+            paidPercentage: Math.round(paidPercentage),
+            requiredPercentage: 75,
+            amountPaid: activeLoan.amount_paid || 0,
+            totalAmount: activeLoan.amount,
+            amountRemaining: activeLoan.amount_remaining || 0,
+          });
+        }
+      }
+
       // Get the range of limits from available business lenders
       const { data: lenderPrefs } = await supabase
         .from('lender_preferences')
@@ -87,6 +172,7 @@ export async function GET(request: NextRequest) {
         lenderType: 'business',
         isFirstTimeBorrower,
         maxAvailableFromBusinesses: maxFromBusinesses,
+        hasActiveBusinessLoan: false,
         // No tier limits for business lending
         borrowingTier: null,
         tierName: null,

@@ -5,26 +5,40 @@ export interface Country {
   code: string;
   name: string;
   enabled: boolean;
+  currency?: string;
+  currency_symbol?: string;
 }
 
-const DEFAULT_COUNTRIES: Country[] = [
-  { code: 'KE', name: 'Kenya', enabled: true },
-  { code: 'UG', name: 'Uganda', enabled: true },
-  { code: 'TZ', name: 'Tanzania', enabled: true },
-  { code: 'NG', name: 'Nigeria', enabled: true },
-  { code: 'GH', name: 'Ghana', enabled: true },
-  { code: 'ZA', name: 'South Africa', enabled: true },
-  { code: 'RW', name: 'Rwanda', enabled: true },
-  { code: 'ET', name: 'Ethiopia', enabled: true },
-  { code: 'ZM', name: 'Zambia', enabled: true },
-  { code: 'MW', name: 'Malawi', enabled: true },
-];
-
-// GET: Get supported countries (public)
+// GET: Get supported countries from database
 export async function GET() {
   try {
     const supabase = await createServiceRoleClient();
     
+    // First try to get from countries table
+    const { data: countriesFromTable, error: tableError } = await supabase
+      .from('countries')
+      .select('code, name, currency, currency_symbol, is_active')
+      .order('name');
+    
+    if (!tableError && countriesFromTable && countriesFromTable.length > 0) {
+      // Map database format to API format
+      const countries: Country[] = countriesFromTable.map(c => ({
+        code: c.code,
+        name: c.name,
+        enabled: c.is_active,
+        currency: c.currency,
+        currency_symbol: c.currency_symbol,
+      }));
+      
+      const enabledCountries = countries.filter(c => c.enabled);
+      
+      return NextResponse.json({ 
+        countries: enabledCountries,
+        allCountries: countries,
+      });
+    }
+    
+    // Fall back to platform_settings if countries table doesn't exist
     const { data } = await supabase
       .from('platform_settings')
       .select('value')
@@ -32,13 +46,11 @@ export async function GET() {
       .single();
     
     const countries: Country[] = data?.value || DEFAULT_COUNTRIES;
-    
-    // Return only enabled countries for non-admin users
     const enabledCountries = countries.filter(c => c.enabled);
     
     return NextResponse.json({ 
       countries: enabledCountries,
-      allCountries: countries, // Include all for admin
+      allCountries: countries,
     });
   } catch (error: any) {
     console.error('Error getting supported countries:', error);
@@ -48,6 +60,18 @@ export async function GET() {
     );
   }
 }
+
+const DEFAULT_COUNTRIES: Country[] = [
+  { code: 'US', name: 'United States', enabled: true, currency: 'USD', currency_symbol: '$' },
+  { code: 'GB', name: 'United Kingdom', enabled: true, currency: 'GBP', currency_symbol: '£' },
+  { code: 'CA', name: 'Canada', enabled: true, currency: 'CAD', currency_symbol: 'C$' },
+  { code: 'AU', name: 'Australia', enabled: false, currency: 'AUD', currency_symbol: 'A$' },
+  { code: 'DE', name: 'Germany', enabled: false, currency: 'EUR', currency_symbol: '€' },
+  { code: 'KE', name: 'Kenya', enabled: true, currency: 'KES', currency_symbol: 'KSh' },
+  { code: 'NG', name: 'Nigeria', enabled: true, currency: 'NGN', currency_symbol: '₦' },
+  { code: 'GH', name: 'Ghana', enabled: true, currency: 'GHS', currency_symbol: 'GH₵' },
+  { code: 'ZA', name: 'South Africa', enabled: true, currency: 'ZAR', currency_symbol: 'R' },
+];
 
 // POST: Update supported countries (admin only)
 export async function POST(request: NextRequest) {

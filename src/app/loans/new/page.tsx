@@ -308,6 +308,9 @@ function NewLoanContent() {
       lender_type: data.lenderType,
       business_lender_id: targetLenderId,
       loan_type_id: data.loanTypeId || null,
+      // Borrower location for matching
+      country: user.country || null,
+      state: user.state || null,
       // Use invited user's email if found by username
       invite_email: data.lenderType === 'personal' 
         ? (invitedLenderInfo?.email || data.inviteEmail || null) 

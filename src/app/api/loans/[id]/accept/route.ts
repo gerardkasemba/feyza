@@ -111,12 +111,30 @@ export async function POST(
       return NextResponse.json({ error: 'Not authorized to accept this loan' }, { status: 403 });
     }
 
-    // Update loan status to active and set lender_id using service role
+    // Get lender email
+    let lenderEmail = user.email;
+    
+    // If business lender, get business contact email
+    if (loan.business_lender_id) {
+      const { data: business } = await serviceSupabase
+        .from('business_profiles')
+        .select('contact_email, business_name')
+        .eq('id', loan.business_lender_id)
+        .single();
+      if (business) {
+        lenderEmail = business.contact_email || user.email;
+        lenderName = business.business_name || lenderName;
+      }
+    }
+
+    // Update loan status to active and set lender details using service role
     const { error: updateError } = await serviceSupabase
       .from('loans')
       .update({
         status: 'active',
         lender_id: user.id,
+        lender_name: lenderName,
+        lender_email: lenderEmail,
         updated_at: new Date().toISOString(),
       })
       .eq('id', loanId);

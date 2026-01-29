@@ -51,7 +51,14 @@ export async function POST(request: NextRequest) {
     }
     
     // Check if user is admin
-    const serviceSupabase = await createServiceRoleClient();
+    let serviceSupabase;
+    try {
+      serviceSupabase = await createServiceRoleClient();
+    } catch (err) {
+      // Fall back to regular client if service role not configured
+      serviceSupabase = supabase;
+    }
+    
     const { data: profile } = await serviceSupabase
       .from('users')
       .select('is_admin')
@@ -77,7 +84,7 @@ export async function POST(request: NextRequest) {
     const updates: Partial<PlatformFeeSettings> = {};
     
     if (enabled !== undefined) updates.enabled = enabled;
-    if (type !== undefined) updates.type = type;
+    if (type !== undefined) updates.type = type; // Now supports 'fixed', 'percentage', 'combined'
     if (fixed_amount !== undefined) updates.fixed_amount = parseFloat(fixed_amount);
     if (percentage !== undefined) updates.percentage = parseFloat(percentage);
     if (min_fee !== undefined) updates.min_fee = parseFloat(min_fee);

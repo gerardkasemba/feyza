@@ -20,6 +20,9 @@ import {
   Shield,
   AlertCircle,
   Lock,
+  Info,
+  Users,
+  Briefcase,
 } from 'lucide-react';
 
 const PURPOSES = [
@@ -64,7 +67,7 @@ export default function GuestLoanRequestForm() {
   const [plaidLoading, setPlaidLoading] = useState(false);
   const [plaidConnecting, setPlaidConnecting] = useState(false);
 
-  // “App-like” behavior on mobile
+  // "App-like" behavior on mobile
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -270,14 +273,14 @@ export default function GuestLoanRequestForm() {
   }, [amount, bankInfo, canSubmit, currency, description, email, fullName, purpose, router, selectedPreset, startDate]);
 
   // ====== BUSINESS CTA (kept, simpler) ======
-    if (loanType === ('business' as LoanType)) {
-      return (
-        <div className="bg-white dark:bg-neutral-900 rounded-2xl lg:rounded-3xl dark:border-neutral-800">
-          <div className="px-4 py-4 sm:px-6 sm:py-5   flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-              <h2 className="font-semibold text-neutral-900 dark:text-white">Business Loans</h2>
-            </div>
+  if (loanType === ('business' as LoanType)) {
+    return (
+      <div className="bg-white dark:bg-neutral-900 rounded-2xl lg:rounded-3xl dark:border-neutral-800">
+        <div className="px-4 py-4 sm:px-6 sm:py-5   flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+            <h2 className="font-semibold text-neutral-900 dark:text-white">Business Loans</h2>
+          </div>
 
           <div className="flex items-center gap-2">
             <button
@@ -291,6 +294,18 @@ export default function GuestLoanRequestForm() {
         </div>
 
         <div className="p-4 sm:p-6">
+          <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+            <div className="flex items-start gap-2">
+              <Info className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-blue-800 dark:text-blue-300">Business Lending Requires Account</p>
+                <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                  For business loans, lenders require verified accounts to ensure security and compliance.
+                </p>
+              </div>
+            </div>
+          </div>
+
           <p className="text-sm sm:text-base text-neutral-600 dark:text-neutral-300">
             Get access to verified business lenders, larger amounts, and business-friendly terms.
           </p>
@@ -356,7 +371,6 @@ export default function GuestLoanRequestForm() {
             </button>
           )}
 
-
           <div className="flex-1">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -407,10 +421,50 @@ export default function GuestLoanRequestForm() {
 
       {/* Content */}
       <div className={cx(isMobile ? 'px-0 pt-4 pb-28' : 'px-0 pt-6 pb-6')}>
+        {/* First-time user info banner - only show on step 1 */}
+        {step === 1 && (
+          <div className="mb-5 mx-0">
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <Info className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="font-semibold text-blue-900 dark:text-blue-300 text-sm">
+                    First time here? Here's how it works:
+                  </h3>
+                  <div className="mt-2 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <Users className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-blue-800 dark:text-blue-400">Personal Loans</p>
+                        <p className="text-xs text-blue-700 dark:text-blue-400">
+                          Request from friends & family. No account needed! Share your link with people you know.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <Briefcase className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-blue-800 dark:text-blue-400">Business Loans</p>
+                        <p className="text-xs text-blue-700 dark:text-blue-400">
+                          Need a business lender? You'll need to create a free account for verification and security.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* STEP 1: Amount + Purpose (combined) */}
         {step === 1 && (
           <div className="space-y-5">
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-800/30 p-4">
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-800/30 p-4 mx-0">
               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mb-2">
                 How much do you need?
               </p>
@@ -455,9 +509,9 @@ export default function GuestLoanRequestForm() {
               </div>
             </div>
 
-            <div>
+            <div className="mx-4">
               <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200 mb-2">
-                What’s it for?
+                What's it for?
               </p>
 
               <div className="flex flex-wrap gap-2">
@@ -481,7 +535,7 @@ export default function GuestLoanRequestForm() {
             </div>
 
             {error && (
-              <div className="p-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm flex gap-2">
+              <div className="mx-4 p-3 rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm flex gap-2">
                 <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                 <span>{error}</span>
               </div>
@@ -491,7 +545,7 @@ export default function GuestLoanRequestForm() {
 
         {/* STEP 2: Schedule + Start date */}
         {step === 2 && (
-          <div className="space-y-5">
+          <div className="space-y-5 mx-0">
             <div>
               <div className="flex items-center gap-2 mb-2">
                 <CalendarIcon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
@@ -563,7 +617,7 @@ export default function GuestLoanRequestForm() {
 
         {/* STEP 3: Identity + Bank + Review + Submit */}
         {step === 3 && (
-          <div className="space-y-5">
+          <div className="space-y-5 mx-0">
             <div className="grid gap-3">
               <div>
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -743,7 +797,7 @@ export default function GuestLoanRequestForm() {
         )}
       </div>
 
-      {/* Bottom fixed actions (mobile “app” feel) / normal actions (desktop) */}
+      {/* Bottom fixed actions (mobile "app" feel) / normal actions (desktop) */}
       <div
         className={cx(
           'border-t border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur',

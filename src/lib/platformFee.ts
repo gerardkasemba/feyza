@@ -5,7 +5,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export interface PlatformFeeSettings {
   enabled: boolean;
-  type: 'fixed' | 'percentage';
+  type: 'fixed' | 'percentage' | 'combined';
   fixed_amount: number;
   percentage: number;
   min_fee: number;
@@ -18,7 +18,7 @@ export interface FeeCalculation {
   grossAmount: number;      // Original amount
   platformFee: number;      // Fee charged by Feyza
   netAmount: number;        // Amount after fee (what recipient gets)
-  feeType: 'fixed' | 'percentage';
+  feeType: 'fixed' | 'percentage' | 'combined';
   feeLabel: string;
   feeDescription: string;
   feeEnabled: boolean;
@@ -27,7 +27,7 @@ export interface FeeCalculation {
 // Default settings if database is unavailable
 const DEFAULT_FEE_SETTINGS: PlatformFeeSettings = {
   enabled: true,
-  type: 'fixed',
+  type: 'percentage',
   fixed_amount: 1.50,
   percentage: 2.5,
   min_fee: 0.50,
@@ -36,10 +36,10 @@ const DEFAULT_FEE_SETTINGS: PlatformFeeSettings = {
   fee_description: 'Platform processing fee',
 };
 
-// Cache for fee settings (refreshes every 5 minutes)
+// Cache for fee settings (refreshes every 30 seconds)
 let cachedSettings: PlatformFeeSettings | null = null;
 let cacheTimestamp: number = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const CACHE_DURATION = 30 * 1000; // 30 seconds for quicker updates
 
 /**
  * Get platform fee settings from database
@@ -56,6 +56,31 @@ export async function getPlatformFeeSettings(): Promise<PlatformFeeSettings> {
   try {
     const supabase = await createServiceRoleClient();
     
+    // First try to get from fee_configurations table (new admin dashboard)
+    const { data: feeConfig, error: feeConfigError } = await supabase
+      .from('fee_configurations')
+      .select('*')
+      .eq('fee_type', 'platform_fee')
+      .eq('is_active', true)
+      .single();
+    
+    if (!feeConfigError && feeConfig) {
+      // Convert from fee_configurations format to PlatformFeeSettings format
+      cachedSettings = {
+        enabled: feeConfig.is_active,
+        type: feeConfig.fee_mode as 'fixed' | 'percentage' | 'combined',
+        fixed_amount: feeConfig.flat_fee || 0,
+        percentage: feeConfig.fee_percentage || 2.5,
+        min_fee: feeConfig.min_fee || 0,
+        max_fee: feeConfig.max_fee || 0,
+        fee_label: feeConfig.fee_name || 'Platform Fee',
+        fee_description: feeConfig.description || 'Platform processing fee',
+      };
+      cacheTimestamp = now;
+      return cachedSettings;
+    }
+    
+    // Fall back to old platform_settings table
     const { data, error } = await supabase
       .from('platform_settings')
       .select('value')
@@ -63,7 +88,7 @@ export async function getPlatformFeeSettings(): Promise<PlatformFeeSettings> {
       .single();
     
     if (error || !data) {
-      console.warn('Could not fetch platform fee settings, using defaults:', error);
+      console.warn('Could not fetch platform fee settings, using defaults');
       return DEFAULT_FEE_SETTINGS;
     }
     
@@ -107,6 +132,17 @@ export async function calculatePlatformFee(amount: number): Promise<FeeCalculati
   
   if (settings.type === 'fixed') {
     fee = settings.fixed_amount;
+  } else if (settings.type === 'combined') {
+    // Combined: percentage + fixed
+    fee = (amount * (settings.percentage / 100)) + settings.fixed_amount;
+    
+    // Apply min/max limits
+    if (settings.min_fee && fee < settings.min_fee) {
+      fee = settings.min_fee;
+    }
+    if (settings.max_fee && fee > settings.max_fee) {
+      fee = settings.max_fee;
+    }
   } else {
     // Percentage calculation
     fee = amount * (settings.percentage / 100);
@@ -157,6 +193,15 @@ export function calculateFeeWithSettings(
   
   if (settings.type === 'fixed') {
     fee = settings.fixed_amount;
+  } else if (settings.type === 'combined') {
+    fee = (amount * (settings.percentage / 100)) + settings.fixed_amount;
+    
+    if (settings.min_fee && fee < settings.min_fee) {
+      fee = settings.min_fee;
+    }
+    if (settings.max_fee && fee > settings.max_fee) {
+      fee = settings.max_fee;
+    }
   } else {
     fee = amount * (settings.percentage / 100);
     
@@ -191,6 +236,18 @@ export function formatFeeDescription(settings: PlatformFeeSettings): string {
   
   if (settings.type === 'fixed') {
     return `$${settings.fixed_amount.toFixed(2)} per transaction`;
+  } else if (settings.type === 'combined') {
+    let desc = `${settings.percentage}% + $${settings.fixed_amount.toFixed(2)}`;
+    if (settings.min_fee) {
+      desc += ` (min $${settings.min_fee.toFixed(2)}`;
+      if (settings.max_fee) {
+        desc += `, max $${settings.max_fee.toFixed(2)}`;
+      }
+      desc += ')';
+    } else if (settings.max_fee) {
+      desc += ` (max $${settings.max_fee.toFixed(2)})`;
+    }
+    return desc;
   } else {
     let desc = `${settings.percentage}%`;
     if (settings.min_fee) {
@@ -230,7 +287,8 @@ export async function updatePlatformFeeSettings(
     if (newSettings.type === 'fixed' && newSettings.fixed_amount < 0) {
       return { success: false, error: 'Fixed amount cannot be negative' };
     }
-    if (newSettings.type === 'percentage' && (newSettings.percentage < 0 || newSettings.percentage > 100)) {
+    if ((newSettings.type === 'percentage' || newSettings.type === 'combined') && 
+        (newSettings.percentage < 0 || newSettings.percentage > 100)) {
       return { success: false, error: 'Percentage must be between 0 and 100' };
     }
     if (newSettings.min_fee < 0) {

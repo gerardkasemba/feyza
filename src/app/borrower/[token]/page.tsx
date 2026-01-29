@@ -153,7 +153,7 @@ function Shell({
     <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
       <Navbar />
       <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-4">
             <Link
               href={backHref}
@@ -189,7 +189,7 @@ function Shell({
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 px-4 sm:px-6 lg:px-8 px-4 py-6">{children}</div>
+      <div className="max-w-7xl mx-auto px-4 py-6">{children}</div>
 
       <Footer />
     </div>
@@ -207,7 +207,7 @@ function MobileTabsBar({
 }) {
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/90 dark:bg-neutral-950/90 border-t border-neutral-200 dark:border-neutral-800 backdrop-blur">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 px-4 sm:px-6 lg:px-8 px-2">
+      <div className="max-w-7xl mx-auto px-2">
         <div className="grid grid-cols-4 gap-1 py-2">
           {items.map((it) => {
             const active = value === it.value;
@@ -292,7 +292,6 @@ export default function GuestBorrowerPage() {
       const data = await response.json();
 
       if (!response.ok) throw new Error(data.error || 'Failed to load loan');
-      
 
       if (data.type === 'loan' && data.loan) {
         setLoan(data.loan);
@@ -572,6 +571,27 @@ export default function GuestBorrowerPage() {
             </div>
           </Card>
         ) : null}
+
+        {/* Fee Information Banner */}
+        {loan.status === 'active' && feeSettings?.enabled && !feeLoading && (
+          <Card className="bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-neutral-500 dark:text-neutral-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-medium text-neutral-800 dark:text-neutral-200">Platform Fee Information</h4>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+                  A platform fee of {feeSettings.type === 'fixed' 
+                    ? formatCurrency(feeSettings.fixed_amount, loan.currency)
+                    : feeSettings.type === 'combined'
+                    ? `${feeSettings.percentage}% + ${formatCurrency(feeSettings.fixed_amount, loan.currency)}`
+                    : `${feeSettings.percentage}%`} is applied to each payment. 
+                  The lender receives the net amount after fees.
+                  {feeSettings.min_fee > 0 && ` Minimum fee: ${formatCurrency(feeSettings.min_fee, loan.currency)}.`}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {loan.status === 'completed' ? (
           <Card className="bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800">
@@ -960,7 +980,6 @@ export default function GuestBorrowerPage() {
   // ========= LOAN VIEW (TABBED + MOBILE APP NAV) =========
   return (
     <>
-    <Navbar />
       <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950">
         <UpdateNotification
           show={showUpdateNotification}
@@ -971,8 +990,10 @@ export default function GuestBorrowerPage() {
           }}
         />
 
+        <Navbar />
+
         <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 px-4 py-4">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <Link
                 href="/"
@@ -1006,7 +1027,7 @@ export default function GuestBorrowerPage() {
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 px-4 sm:px-6 lg:px-8 px-4 py-6">
+        <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="space-y-6">{statusCards}</div>
 
           {/* Desktop Tabs */}
@@ -1502,54 +1523,166 @@ export default function GuestBorrowerPage() {
               </>
             )}
 
-            {/* ACTIVITY - SIMPLIFIED VERSION */}
+            {/* ACTIVITY */}
             {loanTab === 'activity' && (
               <Card>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Transfer Activity</h2>
-                  <Button variant="ghost" size="sm" onClick={fetchLoan}>
+                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+                    <ArrowDownLeft className="w-5 h-5" />
+                    Transfer Activity
+                  </h2>
+                  <Button variant="ghost" size="sm" onClick={fetchLoan} className="text-sm">
                     <RefreshCw className="w-4 h-4 mr-1" />
                     Refresh
                   </Button>
                 </div>
-                
-                {/* Check if we have loan and transfers data */}
-                {!loan ? (
-                  <div className="text-center py-8">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary-600" />
-                    <p>Loading loan data...</p>
+
+                {/* Summary Card */}
+                {loan.transfers && loan.transfers.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                      <p className="text-xs text-green-600 dark:text-green-400 font-medium">Received from Lender</p>
+                      <p className="text-lg font-bold text-green-700 dark:text-green-300">
+                        {formatCurrency(
+                          loan.transfers
+                            .filter(t => t.type === 'disbursement' && (t.status === 'completed' || t.status === 'processed'))
+                            .reduce((sum, t) => sum + t.amount, 0),
+                          loan.currency
+                        )}
+                      </p>
+                    </div>
+                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+                      <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Paid to Lender</p>
+                      <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
+                        {formatCurrency(
+                          loan.transfers
+                            .filter(t => t.type === 'repayment' && (t.status === 'completed' || t.status === 'processed'))
+                            .reduce((sum, t) => sum + (t.gross_amount || t.amount), 0),
+                          loan.currency
+                        )}
+                      </p>
+                      {/* Show total fees paid */}
+                      {loan.transfers
+                        .filter(t => t.type === 'repayment' && (t.status === 'completed' || t.status === 'processed') && t.platform_fee && t.platform_fee > 0)
+                        .reduce((sum, t) => sum + (t.platform_fee || 0), 0) > 0 && (
+                        <p className="text-xs text-blue-500 dark:text-blue-400 mt-1">
+                          incl. {formatCurrency(
+                            loan.transfers
+                              .filter(t => t.type === 'repayment' && (t.status === 'completed' || t.status === 'processed'))
+                              .reduce((sum, t) => sum + (t.platform_fee || 0), 0),
+                            loan.currency
+                          )} fees
+                        </p>
+                      )}
+                    </div>
                   </div>
-                ) : !loan.transfers ? (
-                  <div className="text-center py-8">
-                    <p className="text-neutral-500">No transfer data available</p>
-                  </div>
-                ) : loan.transfers.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-neutral-500">No transfers yet</p>
-                  </div>
-                ) : (
+                )}
+
+                {loan.transfers && loan.transfers.length > 0 ? (
                   <div className="space-y-3">
-                    {loan.transfers.map((transfer) => (
-                      <div key={transfer.id} className="p-4 border rounded-lg">
-                        <div className="flex justify-between">
-                          <div>
-                            <p className="font-medium">
-                              {transfer.type === 'disbursement' ? 'Loan Received' : 'Payment Sent'}
-                            </p>
-                            <p className="text-sm text-neutral-500">
-                              {formatDate(transfer.created_at)}
-                            </p>
+                    {loan.transfers.slice(0, 15).map((transfer) => {
+                      const statusColors = {
+                        pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                        processing: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                        completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                        processed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                        failed: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                        cancelled: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-400',
+                      } as const;
+
+                      const statusIcons = {
+                        pending: <Clock className="w-4 h-4" />,
+                        processing: <Loader2 className="w-4 h-4 animate-spin" />,
+                        completed: <CheckCircle className="w-4 h-4" />,
+                        processed: <CheckCircle className="w-4 h-4" />,
+                        failed: <AlertCircle className="w-4 h-4" />,
+                        cancelled: <X className="w-4 h-4" />,
+                      } as const;
+
+                      const color =
+                        statusColors[transfer.status as keyof typeof statusColors] || statusColors.pending;
+                      const icon = statusIcons[transfer.status as keyof typeof statusIcons] || statusIcons.pending;
+
+                      // Determine direction and description
+                      const isDisbursement = transfer.type === 'disbursement';
+                      const transferTitle = isDisbursement ? 'Loan Received' : 'Payment to Lender';
+                      const transferSubtitle = isDisbursement 
+                        ? `From ${lenderName}` 
+                        : `To ${lenderName}`;
+
+                      return (
+                        <div
+                          key={transfer.id}
+                          className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-100 dark:border-neutral-700"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2.5 rounded-xl ${isDisbursement ? 'bg-green-100 dark:bg-green-900/30' : 'bg-blue-100 dark:bg-blue-900/30'}`}>
+                              {isDisbursement ? (
+                                <ArrowDownLeft className={`w-5 h-5 ${isDisbursement ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`} />
+                              ) : (
+                                <Send className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                              )}
+                            </div>
+                            <div>
+                              <p className="font-medium text-neutral-900 dark:text-white">
+                                {transferTitle}
+                              </p>
+                              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                {transferSubtitle}
+                              </p>
+                              <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
+                                {formatDate(transfer.created_at)}
+                                {transfer.completed_at && (transfer.status === 'completed' || transfer.status === 'processed') ? (
+                                  <span> • Completed {formatDate(transfer.completed_at)}</span>
+                                ) : null}
+                              </p>
+                            </div>
                           </div>
+
                           <div className="text-right">
-                            <p className={`font-bold ${transfer.type === 'disbursement' ? 'text-green-600' : 'text-blue-600'}`}>
-                              {transfer.type === 'disbursement' ? '+' : '-'}
-                              {formatCurrency(transfer.amount, loan.currency)}
+                            <p
+                              className={`font-bold text-lg ${
+                                isDisbursement
+                                  ? 'text-green-600 dark:text-green-400'
+                                  : 'text-blue-600 dark:text-blue-400'
+                              }`}
+                            >
+                              {isDisbursement ? '+' : '-'}
+                              {formatCurrency(transfer.gross_amount || transfer.amount, loan.currency)}
                             </p>
-                            <Badge className="capitalize">{transfer.status}</Badge>
+                            {/* Show fee breakdown for repayments */}
+                            {!isDisbursement && transfer.platform_fee && transfer.platform_fee > 0 && (
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                {formatCurrency(transfer.net_amount || transfer.amount, loan.currency)} to lender
+                                <span className="text-neutral-400 dark:text-neutral-500"> + {formatCurrency(transfer.platform_fee, loan.currency)} fee</span>
+                              </p>
+                            )}
+                            <Badge
+                              variant={
+                                transfer.status === 'completed' || transfer.status === 'processed'
+                                  ? 'success'
+                                  : transfer.status === 'failed'
+                                  ? 'error'
+                                  : 'warning'
+                              }
+                              className="text-xs capitalize mt-1"
+                            >
+                              {transfer.status === 'processed' ? 'completed' : transfer.status}
+                            </Badge>
                           </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <ArrowDownLeft className="w-8 h-8 text-neutral-400 dark:text-neutral-500" />
+                    </div>
+                    <h3 className="font-medium text-neutral-900 dark:text-white mb-1">No transfers yet</h3>
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      Transfer activity between you and {lenderName} will appear here.
+                    </p>
                   </div>
                 )}
               </Card>

@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
         await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
         // Send payment received email to lender
-        await sendPaymentReceivedEmail(loan, payment, newAmountRemaining, isCompleted);
+        await sendPaymentReceivedEmail(loan, payment, newAmountRemaining, isCompleted, supabase);
 
         results.processed++;
         console.log(`[Auto-Pay] Successfully processed payment ${payment.id}`);
@@ -429,13 +429,61 @@ async function sendPaymentReceivedEmail(
   loan: any, 
   payment: any, 
   amountRemaining: number,
-  isCompleted: boolean
+  isCompleted: boolean,
+  supabase?: any
 ) {
-  const lenderEmail = loan.lender_email;
-  const lenderName = loan.lender_name || 'Lender';
+  let lenderEmail = loan.lender_email;
+  let lenderName = loan.lender_name || 'Lender';
   const borrowerName = loan.borrower_name || 'Borrower';
   const borrowerEmail = loan.borrower_invite_email || loan.borrower_email;
   const currency = loan.currency || 'USD';
+  
+  // If lender email is not on the loan, fetch it from users/business_profiles
+  if (!lenderEmail && supabase) {
+    try {
+      if (loan.business_lender_id) {
+        // Business lender - get from business_profiles
+        const { data: business } = await supabase
+          .from('business_profiles')
+          .select('contact_email, business_name')
+          .eq('id', loan.business_lender_id)
+          .single();
+        if (business) {
+          lenderEmail = business.contact_email;
+          if (!loan.lender_name && business.business_name) {
+            lenderName = business.business_name;
+          }
+        }
+      } else if (loan.lender_id) {
+        // Individual lender - get from users
+        const { data: lender } = await supabase
+          .from('users')
+          .select('email, full_name')
+          .eq('id', loan.lender_id)
+          .single();
+        if (lender) {
+          lenderEmail = lender.email;
+          if (!loan.lender_name && lender.full_name) {
+            lenderName = lender.full_name;
+          }
+        }
+      }
+      
+      // Update the loan with the lender email for future notifications
+      if (lenderEmail) {
+        await supabase
+          .from('loans')
+          .update({ 
+            lender_email: lenderEmail,
+            lender_name: lenderName 
+          })
+          .eq('id', loan.id);
+        console.log(`[Auto-Pay] Updated loan ${loan.id} with lender_email: ${lenderEmail}`);
+      }
+    } catch (err) {
+      console.error('[Auto-Pay] Error fetching lender email:', err);
+    }
+  }
   
   // Determine if this is a guest loan (has invite_token)
   const isGuestLoan = !!loan.invite_token;
@@ -481,6 +529,8 @@ async function sendPaymentReceivedEmail(
     } catch (emailErr) {
       console.error('[Auto-Pay] Failed to send lender payment email:', emailErr);
     }
+  } else {
+    console.log(`[Auto-Pay] ⚠️ No lender email found for loan ${loan.id} - cannot send notification`);
   }
 
   // 2. Send email to BORROWER
@@ -709,7 +759,7 @@ export async function POST(request: NextRequest) {
     await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
     // Send payment received email
-    await sendPaymentReceivedEmail(loan, payment, Math.max(0, newAmountRemaining), isCompleted);
+    await sendPaymentReceivedEmail(loan, payment, Math.max(0, newAmountRemaining), isCompleted, supabase);
 
     return NextResponse.json({
       success: true,

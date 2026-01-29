@@ -107,20 +107,22 @@ export function usePlatformFee() {
   const [settings, setSettings] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
 
-  React.useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const res = await fetch('/api/admin/platform-fee');
-        const data = await res.json();
-        setSettings(data.settings);
-      } catch (error) {
-        console.error('Failed to fetch platform fee settings:', error);
-      } finally {
-        setLoading(false);
-      }
+  const fetchSettings = React.useCallback(async () => {
+    try {
+      // Add timestamp to bust any browser caching
+      const res = await fetch(`/api/admin/platform-fee?_t=${Date.now()}`);
+      const data = await res.json();
+      setSettings(data.settings);
+    } catch (error) {
+      console.error('Failed to fetch platform fee settings:', error);
+    } finally {
+      setLoading(false);
     }
-    fetchSettings();
   }, []);
+
+  React.useEffect(() => {
+    fetchSettings();
+  }, [fetchSettings]);
 
   const calculateFee = React.useCallback((amount: number) => {
     if (!settings || !settings.enabled) {
@@ -136,9 +138,19 @@ export function usePlatformFee() {
     let fee: number;
     
     if (settings.type === 'fixed') {
-      fee = settings.fixed_amount;
+      fee = settings.fixed_amount || 0;
+    } else if (settings.type === 'combined') {
+      // Combined: percentage + fixed
+      fee = (amount * ((settings.percentage || 0) / 100)) + (settings.fixed_amount || 0);
+      if (settings.min_fee && fee < settings.min_fee) {
+        fee = settings.min_fee;
+      }
+      if (settings.max_fee && fee > settings.max_fee) {
+        fee = settings.max_fee;
+      }
     } else {
-      fee = amount * (settings.percentage / 100);
+      // Percentage mode
+      fee = amount * ((settings.percentage || 0) / 100);
       if (settings.min_fee && fee < settings.min_fee) {
         fee = settings.min_fee;
       }
@@ -162,6 +174,7 @@ export function usePlatformFee() {
     settings,
     loading,
     calculateFee,
+    refetch: fetchSettings, // Allow manual refetch
   };
 }
 

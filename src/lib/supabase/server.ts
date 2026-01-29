@@ -29,6 +29,9 @@ export async function createServerSupabaseClient() {
   )
 }
 
+// Alias for createServerSupabaseClient for convenience
+export const createClient = createServerSupabaseClient;
+
 export async function createServiceRoleClient() {
   const cookieStore = await cookies()
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature } from '@/lib/dwolla';
-import { sendEmail, getDisbursementFailedEmail, getFundsArrivedEmail } from '@/lib/email';
+import { sendEmail, getDisbursementFailedEmail, getFundsArrivedEmail, getPaymentReceivedLenderEmail } from '@/lib/email';
 import { format } from 'date-fns';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
@@ -199,6 +199,19 @@ async function handleTransferCompleted(supabase: any, transfer: any, loan: any) 
 
     // Send email notifications
     await sendFundsArrivedEmails(loan);
+  } else if (transfer.type === 'repayment') {
+    // Handle repayment transfer completion
+    console.log(`[Dwolla Webhook] Processing repayment completion for loan ${loan.id}`);
+    
+    // Find the associated payment schedule item
+    const { data: payment } = await supabase
+      .from('payment_schedule')
+      .select('id, amount')
+      .eq('transfer_id', transfer.id)
+      .single();
+    
+    // Send payment received email to lender
+    await sendRepaymentReceivedEmail(loan, transfer, payment, supabase);
   }
 }
 
@@ -379,6 +392,86 @@ async function sendFundsArrivedEmails(loan: any) {
     } catch (e) {
       console.error('[Dwolla Webhook] Failed to send lender email:', e);
     }
+  }
+}
+
+// Send repayment notification to lender
+async function sendRepaymentReceivedEmail(loan: any, transfer: any, payment: any, supabase?: any) {
+  let lenderEmail = loan.lender_email;
+  let lenderName = loan.lender_name || 'Lender';
+  const borrowerName = loan.borrower_name || loan.borrower_invite_email?.split('@')[0] || 'Borrower';
+  const currency = loan.currency || 'USD';
+  const amount = payment?.amount || transfer.amount || 0;
+  const amountRemaining = loan.amount_remaining || 0;
+  const isCompleted = amountRemaining <= 0;
+
+  // If lender email is not on the loan, fetch it from users/business_profiles
+  if (!lenderEmail && supabase) {
+    try {
+      if (loan.business_lender_id) {
+        const { data: business } = await supabase
+          .from('business_profiles')
+          .select('contact_email, business_name')
+          .eq('id', loan.business_lender_id)
+          .single();
+        if (business) {
+          lenderEmail = business.contact_email;
+          if (!loan.lender_name && business.business_name) {
+            lenderName = business.business_name;
+          }
+        }
+      } else if (loan.lender_id) {
+        const { data: lender } = await supabase
+          .from('users')
+          .select('email, full_name')
+          .eq('id', loan.lender_id)
+          .single();
+        if (lender) {
+          lenderEmail = lender.email;
+          if (!loan.lender_name && lender.full_name) {
+            lenderName = lender.full_name;
+          }
+        }
+      }
+      
+      // Update the loan with the lender email for future notifications
+      if (lenderEmail) {
+        await supabase
+          .from('loans')
+          .update({ lender_email: lenderEmail, lender_name: lenderName })
+          .eq('id', loan.id);
+        console.log(`[Dwolla Webhook] Updated loan ${loan.id} with lender_email: ${lenderEmail}`);
+      }
+    } catch (err) {
+      console.error('[Dwolla Webhook] Error fetching lender email:', err);
+    }
+  }
+
+  if (!lenderEmail) {
+    console.log('[Dwolla Webhook] No lender email for repayment notification');
+    return;
+  }
+
+  try {
+    const email = getPaymentReceivedLenderEmail({
+      lenderName,
+      borrowerName,
+      amount,
+      currency,
+      remainingBalance: amountRemaining,
+      loanId: loan.id,
+      isCompleted,
+    });
+
+    await sendEmail({
+      to: lenderEmail,
+      subject: email.subject,
+      html: email.html,
+    });
+
+    console.log(`[Dwolla Webhook] ✅ Sent repayment received email to lender: ${lenderEmail}`);
+  } catch (e) {
+    console.error('[Dwolla Webhook] Failed to send repayment email to lender:', e);
   }
 }
 

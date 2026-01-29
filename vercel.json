@@ -9,6 +9,14 @@
       "schedule": "0 9 * * *"
     },
     {
+      "path": "/api/cron/payment-retry",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/lift-restrictions",
+      "schedule": "0 7 * * *"
+    },
+    {
       "path": "/api/cron/match-expiry",
       "schedule": "0 * * * *"
     },

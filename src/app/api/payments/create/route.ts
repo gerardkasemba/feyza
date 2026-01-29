@@ -136,12 +136,27 @@ export async function POST(request: NextRequest) {
     await updateBorrowerRating(supabase, user.id);
 
     // Create notification for lender
-    const lenderEmail = loan.lender?.email || loan.guest_lender?.paypal_email || loan.invite_email;
-    const lenderName = loan.lender?.full_name || loan.guest_lender?.full_name || 'Lender';
+    let lenderEmail = loan.lender?.email || loan.guest_lender?.paypal_email || loan.invite_email || loan.lender_email;
+    let lenderName = loan.lender?.full_name || loan.guest_lender?.full_name || loan.lender_name || 'Lender';
+    let lenderUserId = loan.lender_id;
 
-    if (loan.lender_id) {
+    // If no lender email found and there's a business lender, fetch from business_profiles
+    if (!lenderEmail && loan.business_lender_id) {
+      const { data: business } = await supabase
+        .from('business_profiles')
+        .select('contact_email, business_name, user_id')
+        .eq('id', loan.business_lender_id)
+        .single();
+      if (business) {
+        lenderEmail = business.contact_email;
+        lenderName = business.business_name || lenderName;
+        lenderUserId = business.user_id;
+      }
+    }
+
+    if (lenderUserId) {
       await supabase.from('notifications').insert({
-        user_id: loan.lender_id,
+        user_id: lenderUserId,
         loan_id: loanId,
         type: 'payment_received',
         title: 'Payment Received',

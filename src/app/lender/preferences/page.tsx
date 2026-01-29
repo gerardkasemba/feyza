@@ -22,12 +22,21 @@ import {
   Star,
   UserPlus,
   CreditCard,
+  MapPin,
 } from 'lucide-react';
 
 interface Country {
   code: string;
   name: string;
   enabled: boolean;
+}
+
+interface USState {
+  id?: string;
+  code: string;
+  name: string;
+  country_code?: string;
+  country_id?: string;
 }
 
 interface LoanType {
@@ -57,6 +66,7 @@ interface Preferences {
   interest_rate: number;
   interest_type: string;
   countries: string[];
+  states: string[];
   min_borrower_rating: string;
   require_verified_borrower: boolean;
   min_term_weeks: number;
@@ -79,6 +89,8 @@ export default function LenderPreferencesPage() {
   const [error, setError] = useState<string | null>(null);
   const [isBusinessLender, setIsBusinessLender] = useState(false);
   const [availableCountries, setAvailableCountries] = useState<Country[]>([]);
+  const [availableStates, setAvailableStates] = useState<USState[]>([]);
+  const [loadingStates, setLoadingStates] = useState(false);
   
   // Loan types state
   const [loanTypes, setLoanTypes] = useState<LoanType[]>([]);
@@ -95,6 +107,7 @@ export default function LenderPreferencesPage() {
     interest_rate: 10,
     interest_type: 'simple',
     countries: [],
+    states: [],
     min_borrower_rating: 'neutral',
     require_verified_borrower: false,
     min_term_weeks: 1,
@@ -111,6 +124,46 @@ export default function LenderPreferencesPage() {
   useEffect(() => {
     fetchUserAndPreferences();
   }, []);
+
+  // Fetch states for selected countries
+  useEffect(() => {
+    const fetchStatesForCountries = async () => {
+      if (preferences.countries.length === 0) {
+        setAvailableStates([]);
+        return;
+      }
+
+      setLoadingStates(true);
+      try {
+        // Fetch states for all selected countries
+        const allStates: USState[] = [];
+        for (const countryCode of preferences.countries) {
+          const statesRes = await fetch(`/api/states?country=${countryCode}`);
+          if (statesRes.ok) {
+            const statesData = await statesRes.json();
+            if (statesData.states && statesData.states.length > 0) {
+              allStates.push(...statesData.states.map((s: any) => ({
+                ...s,
+                country_code: countryCode,
+              })));
+            }
+          }
+        }
+        setAvailableStates(allStates);
+        
+        // Clean up states that are no longer valid for selected countries
+        const validStateCodes = allStates.map(s => s.code);
+        setPreferences(prev => ({
+          ...prev,
+          states: prev.states.filter(s => validStateCodes.includes(s)),
+        }));
+      } catch (err) {
+        console.error('Failed to fetch states:', err);
+      }
+      setLoadingStates(false);
+    };
+    fetchStatesForCountries();
+  }, [preferences.countries]);
 
   const fetchUserAndPreferences = async () => {
     try {
@@ -158,6 +211,7 @@ export default function LenderPreferencesPage() {
             ...preferences,
             ...data.preferences,
             countries: data.preferences.countries || [],
+            states: data.preferences.states || [],
           });
         }
       }
@@ -277,7 +331,27 @@ export default function LenderPreferencesPage() {
   };
 
   const clearCountries = () => {
-    setPreferences(prev => ({ ...prev, countries: [] }));
+    setPreferences(prev => ({ ...prev, countries: [], states: [] }));
+  };
+
+  const toggleState = (code: string) => {
+    setPreferences(prev => ({
+      ...prev,
+      states: prev.states.includes(code)
+        ? prev.states.filter(s => s !== code)
+        : [...prev.states, code],
+    }));
+  };
+
+  const selectAllStates = () => {
+    setPreferences(prev => ({
+      ...prev,
+      states: availableStates.map(s => s.code),
+    }));
+  };
+
+  const clearStates = () => {
+    setPreferences(prev => ({ ...prev, states: [] }));
   };
 
   if (loading) {
@@ -549,6 +623,90 @@ export default function LenderPreferencesPage() {
               </p>
             )}
           </Card>
+
+          {/* States/Regions (shown when any country with states is selected) */}
+          {availableStates.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <MapPin className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">States / Regions</h2>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={selectAllStates}>
+                    Select All
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={clearStates}>
+                    Clear
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
+                Select specific states/regions where you're willing to lend. Leave empty to accept all regions.
+              </p>
+
+              {loadingStates ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full" />
+                </div>
+              ) : (
+                <>
+                  {/* Group states by country */}
+                  {(() => {
+                    const statesByCountry = availableStates.reduce((acc, state) => {
+                      const countryCode = state.country_code || 'Unknown';
+                      if (!acc[countryCode]) acc[countryCode] = [];
+                      acc[countryCode].push(state);
+                      return acc;
+                    }, {} as Record<string, USState[]>);
+
+                    return Object.entries(statesByCountry).map(([countryCode, states]) => {
+                      const country = availableCountries.find(c => c.code === countryCode);
+                      return (
+                        <div key={countryCode} className="mb-4 last:mb-0">
+                          <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2 flex items-center gap-2">
+                            <Globe className="w-4 h-4 text-green-500" />
+                            {country?.name || countryCode}
+                          </h3>
+                          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-60 overflow-y-auto p-2 bg-neutral-50 dark:bg-neutral-800/50 rounded-lg">
+                            {states.map((state) => (
+                              <button
+                                key={`${countryCode}-${state.code}`}
+                                onClick={() => toggleState(state.code)}
+                                className={`p-2 rounded-lg text-sm font-medium transition-all ${
+                                  preferences.states.includes(state.code)
+                                    ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-2 border-blue-500'
+                                    : 'bg-white dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-2 border-transparent hover:bg-neutral-100 dark:hover:bg-neutral-700'
+                                }`}
+                              >
+                                <span className="font-bold mr-1">{state.code}</span>
+                                <span className="text-xs opacity-70 block truncate">{state.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    });
+                  })()}
+
+                  {availableStates.length > 0 && preferences.states.length === 0 && (
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400 mt-4 flex items-center gap-2">
+                      <Info className="w-4 h-4" />
+                      All states/regions selected (no filter applied)
+                    </p>
+                  )}
+
+                  {preferences.states.length > 0 && (
+                    <p className="text-sm text-blue-600 dark:text-blue-400 mt-4 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      {preferences.states.length} state{preferences.states.length !== 1 ? 's' : ''}/region{preferences.states.length !== 1 ? 's' : ''} selected
+                    </p>
+                  )}
+                </>
+              )}
+            </Card>
+          )}
 
           {/* Borrower Requirements */}
           <Card>

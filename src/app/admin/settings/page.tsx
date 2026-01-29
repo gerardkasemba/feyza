@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { DEFAULT_SETTINGS } from '@/lib/platformSettings';
+import { DEFAULT_SETTINGS } from '@/hooks/platformSettings';
 import {
   Settings,
   Save,

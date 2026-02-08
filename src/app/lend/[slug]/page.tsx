@@ -160,6 +160,20 @@ export default function PublicLenderPage() {
 
   const handleRequestLoan = () => {
     sessionStorage.setItem('preferred_lender_slug', slug);
+    
+    // If user is not logged in, redirect to apply page
+    if (!user) {
+      router.push('/apply/' + slug);
+      return;
+    }
+    
+    // If user is logged in but not verified, redirect to apply page
+    if (!user.is_verified) {
+      router.push('/apply/' + slug);
+      return;
+    }
+    
+    // If user is logged in and verified, go to loan form
     router.push('/loans/new?lender=' + slug);
   };
 

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import {
   ClipboardCheck,
@@ -17,80 +16,137 @@ import {
   FileText,
   Calendar,
   AlertTriangle,
+  Briefcase,
+  MapPin,
+  CreditCard,
+  ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 
-interface PendingVerification {
+interface PendingBusiness {
   id: string;
   business_name: string;
   business_type: string;
   contact_email: string;
   contact_phone?: string;
-  website?: string;
-  address?: string;
+  website_url?: string;
+  location?: string;
   city?: string;
+  state?: string;
   country?: string;
-  registration_number?: string;
-  tax_id?: string;
+  ein_tax_id?: string;
+  years_in_business?: number;
+  verification_status: string;
   created_at: string;
-  owner?: { full_name: string; email: string };
-  documents?: any[];
+  owner?: { id: string; full_name: string; email: string } | null;
 }
 
+interface PendingUser {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  verification_status: string;
+  verification_submitted_at?: string;
+  id_type?: string;
+  id_number?: string;
+  id_document_url?: string;
+  id_expiry_date?: string;
+  employment_status?: string;
+  employer_name?: string;
+  employer_address?: string;
+  employment_start_date?: string;
+  employment_document_url?: string;
+  monthly_income?: number;
+  address_line1?: string;
+  address_line2?: string;
+  city?: string;
+  state_province?: string;
+  postal_code?: string;
+  country?: string;
+  address_document_url?: string;
+  address_document_type?: string;
+  created_at: string;
+  pending_loan_requests?: {
+    id: string;
+    amount: number;
+    purpose: string;
+    description?: string;
+    term_months: number;
+    business_lender?: { id: string; business_name: string } | null;
+  }[];
+}
+
+type Tab = 'users' | 'businesses';
+
 export default function VerificationPage() {
-  const [pending, setPending] = useState<PendingVerification[]>([]);
+  const [activeTab, setActiveTab] = useState<Tab>('users');
+  const [pendingUsers, setPendingUsers] = useState<PendingUser[]>([]);
+  const [pendingBusinesses, setPendingBusinesses] = useState<PendingBusiness[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedBusiness, setSelectedBusiness] = useState<PendingVerification | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedUser, setSelectedUser] = useState<PendingUser | null>(null);
+  const [selectedBusiness, setSelectedBusiness] = useState<PendingBusiness | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
-  const supabase = createClient();
 
-  const fetchPending = async () => {
+  const fetchVerifications = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from('business_profiles')
-      .select(`
-        *,
-        owner:users!owner_id(full_name, email)
-      `)
-      .eq('is_verified', false)
-      .order('created_at', { ascending: true });
-
-    setPending(data || []);
-    setLoading(false);
+    setError(null);
+    
+    try {
+      const response = await fetch('/api/admin/verifications');
+      const data = await response.json();
+      
+      if (!response.ok) {
+        setError(data.error || 'Failed to fetch verifications');
+        return;
+      }
+      
+      setPendingUsers(data.users || []);
+      setPendingBusinesses(data.businesses || []);
+    } catch (err: any) {
+      console.error('Error fetching verifications:', err);
+      setError(err.message || 'Failed to fetch verifications');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchPending();
+    fetchVerifications();
   }, []);
 
-  const handleVerify = async (businessId: string) => {
-    setProcessing(businessId);
-    const { error } = await supabase
-      .from('business_profiles')
-      .update({ is_verified: true, verification_status: 'approved' })
-      .eq('id', businessId);
-
-    if (!error) {
-      setPending(pending.filter(p => p.id !== businessId));
-      setSelectedBusiness(null);
+  const handleAction = async (type: 'user' | 'business', id: string, action: 'approve' | 'reject', reason?: string) => {
+    setProcessing(id);
+    
+    try {
+      const response = await fetch('/api/admin/verifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, id, action, reason })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        alert(data.error || 'Failed to process verification');
+        return;
+      }
+      
+      // Remove from list
+      if (type === 'user') {
+        setPendingUsers(pendingUsers.filter(u => u.id !== id));
+        setSelectedUser(null);
+      } else {
+        setPendingBusinesses(pendingBusinesses.filter(b => b.id !== id));
+        setSelectedBusiness(null);
+      }
+    } catch (err: any) {
+      console.error('Error processing verification:', err);
+      alert(err.message || 'Failed to process verification');
+    } finally {
+      setProcessing(null);
     }
-    setProcessing(null);
-  };
-
-  const handleReject = async (businessId: string, reason?: string) => {
-    setProcessing(businessId);
-    const { error } = await supabase
-      .from('business_profiles')
-      .update({ 
-        verification_status: 'rejected',
-        rejection_reason: reason || 'Did not meet verification requirements'
-      })
-      .eq('id', businessId);
-
-    if (!error) {
-      setPending(pending.filter(p => p.id !== businessId));
-      setSelectedBusiness(null);
-    }
-    setProcessing(null);
   };
 
   if (loading) {
@@ -104,6 +160,8 @@ export default function VerificationPage() {
     );
   }
 
+  const totalPending = pendingUsers.length + pendingBusinesses.length;
+
   return (
     <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
@@ -111,111 +169,470 @@ export default function VerificationPage() {
         <div>
           <h1 className="text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-3">
             <ClipboardCheck className="w-7 h-7 text-emerald-500" />
-            Pending Verification
+            Pending Verifications
           </h1>
           <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-            {pending.length} business{pending.length !== 1 ? 'es' : ''} awaiting verification
+            {totalPending} total pending ({pendingUsers.length} users, {pendingBusinesses.length} businesses)
           </p>
         </div>
         <button
-          onClick={fetchPending}
-          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-sm font-medium text-neutral-700 dark:text-neutral-200"
+          onClick={fetchVerifications}
+          disabled={loading}
+          className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors text-sm font-medium disabled:opacity-50"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
       </div>
 
-      {/* Alert if many pending */}
-      {pending.length > 5 && (
-        <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-4">
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
           <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
-            <p className="text-amber-800 dark:text-amber-300 font-medium">
-              {pending.length} businesses waiting for verification
-            </p>
+            <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+            <p className="text-red-800 dark:text-red-300">{error}</p>
           </div>
         </div>
       )}
 
-      {/* Pending List */}
-      {pending.length === 0 ? (
-        <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-12 text-center">
-          <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-neutral-900 dark:text-white mb-2">All caught up!</h3>
-          <p className="text-neutral-500 dark:text-neutral-400">No pending verifications at the moment.</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {pending.map((business) => (
-            <div
-              key={business.id}
-              className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 hover:shadow-lg transition-shadow"
-            >
-              <div className="flex items-start gap-3 mb-4">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-500/20 rounded-xl flex items-center justify-center shrink-0">
-                  <Building2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-semibold text-neutral-900 dark:text-white truncate">{business.business_name}</h3>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{business.business_type}</p>
-                </div>
-              </div>
+      {/* Tabs */}
+      <div className="flex gap-2 border-b border-neutral-200 dark:border-neutral-700">
+        <button
+          onClick={() => setActiveTab('users')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'users'
+              ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <User className="w-4 h-4" />
+            Borrowers / Users
+            {pendingUsers.length > 0 && (
+              <span className="px-2 py-0.5 text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 rounded-full">
+                {pendingUsers.length}
+              </span>
+            )}
+          </div>
+        </button>
+        <button
+          onClick={() => setActiveTab('businesses')}
+          className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'businesses'
+              ? 'border-emerald-500 text-emerald-600 dark:text-emerald-400'
+              : 'border-transparent text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Building2 className="w-4 h-4" />
+            Business Lenders
+            {pendingBusinesses.length > 0 && (
+              <span className="px-2 py-0.5 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded-full">
+                {pendingBusinesses.length}
+              </span>
+            )}
+          </div>
+        </button>
+      </div>
 
-              <div className="space-y-2 text-sm mb-4">
-                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
-                  <User className="w-4 h-4 text-neutral-400" />
-                  <span className="truncate">{business.owner?.full_name || 'Unknown'}</span>
-                </div>
-                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
-                  <Mail className="w-4 h-4 text-neutral-400" />
-                  <span className="truncate">{business.contact_email}</span>
-                </div>
-                <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
-                  <Calendar className="w-4 h-4 text-neutral-400" />
-                  <span>Applied {format(new Date(business.created_at), 'MMM d, yyyy')}</span>
-                </div>
-              </div>
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <>
+          {pendingUsers.length === 0 ? (
+            <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-12 text-center">
+              <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-neutral-900 dark:text-white mb-2">All caught up!</h3>
+              <p className="text-neutral-500 dark:text-neutral-400">No pending user verifications.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pendingUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 hover:shadow-lg transition-shadow"
+                >
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-500/20 rounded-xl flex items-center justify-center shrink-0">
+                      <User className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-neutral-900 dark:text-white truncate">{user.full_name}</h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">{user.email}</p>
+                    </div>
+                  </div>
 
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedBusiness(business)}
-                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                  <div className="space-y-2 text-sm mb-4">
+                    {user.id_type && (
+                      <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                        <CreditCard className="w-4 h-4 text-neutral-400" />
+                        <span>{user.id_type.replace(/_/g, ' ')}: {user.id_number}</span>
+                      </div>
+                    )}
+                    {user.employer_name && (
+                      <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                        <Briefcase className="w-4 h-4 text-neutral-400" />
+                        <span className="truncate">{user.employer_name}</span>
+                      </div>
+                    )}
+                    {user.city && (
+                      <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                        <MapPin className="w-4 h-4 text-neutral-400" />
+                        <span>{user.city}, {user.country}</span>
+                      </div>
+                    )}
+                    {user.pending_loan_requests && user.pending_loan_requests.length > 0 && (
+                      <div className="mt-2 p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                        <p className="text-xs text-amber-700 dark:text-amber-400 font-medium">
+                          Pending Loan: ${user.pending_loan_requests[0].amount.toLocaleString()} 
+                          {user.pending_loan_requests[0].business_lender?.business_name && 
+                            ` with ${user.pending_loan_requests[0].business_lender.business_name}`}
+                        </p>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                      <Calendar className="w-4 h-4 text-neutral-400" />
+                      <span>Submitted {user.verification_submitted_at ? format(new Date(user.verification_submitted_at), 'MMM d, yyyy') : 'N/A'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedUser(user)}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Review
+                    </button>
+                    <button
+                      onClick={() => handleAction('user', user.id, 'approve')}
+                      disabled={processing === user.id}
+                      className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {processing === user.id ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleAction('user', user.id, 'reject')}
+                      disabled={processing === user.id}
+                      className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 text-red-700 dark:text-red-300 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Businesses Tab */}
+      {activeTab === 'businesses' && (
+        <>
+          {pendingBusinesses.length === 0 ? (
+            <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-12 text-center">
+              <CheckCircle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-neutral-900 dark:text-white mb-2">All caught up!</h3>
+              <p className="text-neutral-500 dark:text-neutral-400">No pending business verifications.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pendingBusinesses.map((business) => (
+                <div
+                  key={business.id}
+                  className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-5 hover:shadow-lg transition-shadow"
                 >
-                  <Eye className="w-4 h-4" />
-                  Review
-                </button>
+                  <div className="flex items-start gap-3 mb-4">
+                    <div className="w-12 h-12 bg-blue-100 dark:bg-blue-500/20 rounded-xl flex items-center justify-center shrink-0">
+                      <Building2 className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-neutral-900 dark:text-white truncate">{business.business_name}</h3>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">{business.business_type}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2 text-sm mb-4">
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                      <User className="w-4 h-4 text-neutral-400" />
+                      <span className="truncate">{business.owner?.full_name || 'Unknown'}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                      <Mail className="w-4 h-4 text-neutral-400" />
+                      <span className="truncate">{business.contact_email}</span>
+                    </div>
+                    {business.ein_tax_id && (
+                      <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                        <FileText className="w-4 h-4 text-neutral-400" />
+                        <span>EIN: {business.ein_tax_id}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-300">
+                      <Calendar className="w-4 h-4 text-neutral-400" />
+                      <span>Applied {format(new Date(business.created_at), 'MMM d, yyyy')}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setSelectedBusiness(business)}
+                      className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      Review
+                    </button>
+                    <button
+                      onClick={() => handleAction('business', business.id, 'approve')}
+                      disabled={processing === business.id}
+                      className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {processing === business.id ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <CheckCircle className="w-4 h-4" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleAction('business', business.id, 'reject')}
+                      disabled={processing === business.id}
+                      className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 text-red-700 dark:text-red-300 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* User Review Modal */}
+      {selectedUser && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-neutral-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-neutral-200 dark:border-neutral-700">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-neutral-900 dark:text-white">Review User Verification</h2>
                 <button
-                  onClick={() => handleVerify(business.id)}
-                  disabled={processing === business.id}
-                  className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50"
+                  onClick={() => setSelectedUser(null)}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
                 >
-                  {processing === business.id ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <CheckCircle className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  onClick={() => handleReject(business.id)}
-                  disabled={processing === business.id}
-                  className="flex items-center justify-center gap-1 px-3 py-2 text-sm bg-red-100 dark:bg-red-500/20 hover:bg-red-200 dark:hover:bg-red-500/30 text-red-700 dark:text-red-300 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  <XCircle className="w-4 h-4" />
+                  <XCircle className="w-5 h-5 text-neutral-400" />
                 </button>
               </div>
             </div>
-          ))}
+            <div className="p-6 space-y-6">
+              {/* User Info */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Personal Information</h3>
+                <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">Name</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.full_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">Email</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.email}</span>
+                  </div>
+                  {selectedUser.phone && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Phone</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.phone}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ID Verification */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Identity Document</h3>
+                <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">ID Type</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_type?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">ID Number</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_number}</span>
+                  </div>
+                  {selectedUser.id_expiry_date && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Expiry</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_expiry_date}</span>
+                    </div>
+                  )}
+                  {selectedUser.id_document_url && (
+                    <div className="pt-2">
+                      <a
+                        href={selectedUser.id_document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View ID Document
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Employment */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Employment</h3>
+                <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">Status</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employment_status?.replace(/_/g, ' ')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">Employer</span>
+                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employer_name}</span>
+                  </div>
+                  {selectedUser.employment_start_date && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Since</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employment_start_date}</span>
+                    </div>
+                  )}
+                  {selectedUser.monthly_income && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Monthly Income</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">${selectedUser.monthly_income.toLocaleString()}</span>
+                    </div>
+                  )}
+                  {selectedUser.employment_document_url && (
+                    <div className="pt-2">
+                      <a
+                        href={selectedUser.employment_document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View Employment Document
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Address */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Address</h3>
+                <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-neutral-500 dark:text-neutral-400">Address</span>
+                    <span className="font-medium text-neutral-900 dark:text-white text-right">
+                      {selectedUser.address_line1}
+                      {selectedUser.address_line2 && <><br />{selectedUser.address_line2}</>}
+                      <br />
+                      {selectedUser.city}, {selectedUser.state_province} {selectedUser.postal_code}
+                      <br />
+                      {selectedUser.country}
+                    </span>
+                  </div>
+                  {selectedUser.address_document_type && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Proof Type</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.address_document_type.replace(/_/g, ' ')}</span>
+                    </div>
+                  )}
+                  {selectedUser.address_document_url && (
+                    <div className="pt-2">
+                      <a
+                        href={selectedUser.address_document_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
+                      >
+                        <FileText className="w-4 h-4" />
+                        View Address Document
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Pending Loan */}
+              {selectedUser.pending_loan_requests && selectedUser.pending_loan_requests.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Pending Loan Request</h3>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-amber-700 dark:text-amber-400">Amount</span>
+                      <span className="font-bold text-amber-800 dark:text-amber-300">
+                        ${selectedUser.pending_loan_requests[0].amount.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-700 dark:text-amber-400">Purpose</span>
+                      <span className="font-medium text-amber-800 dark:text-amber-300">
+                        {selectedUser.pending_loan_requests[0].purpose}
+                      </span>
+                    </div>
+                    {selectedUser.pending_loan_requests[0].term_months && (
+                      <div className="flex justify-between mt-2">
+                        <span className="text-amber-700 dark:text-amber-400">Term</span>
+                        <span className="font-medium text-amber-800 dark:text-amber-300">
+                          {selectedUser.pending_loan_requests[0].term_months} months
+                        </span>
+                      </div>
+                    )}
+                    {selectedUser.pending_loan_requests[0].business_lender?.business_name && (
+                      <div className="flex justify-between mt-2">
+                        <span className="text-amber-700 dark:text-amber-400">Lender</span>
+                        <span className="font-medium text-amber-800 dark:text-amber-300">
+                          {selectedUser.pending_loan_requests[0].business_lender.business_name}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => handleAction('user', selectedUser.id, 'approve')}
+                  disabled={processing === selectedUser.id}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
+                >
+                  {processing === selectedUser.id ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <CheckCircle className="w-5 h-5" />
+                  )}
+                  Approve
+                </button>
+                <button
+                  onClick={() => handleAction('user', selectedUser.id, 'reject')}
+                  disabled={processing === selectedUser.id}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
+                >
+                  <XCircle className="w-5 h-5" />
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* Review Modal */}
+      {/* Business Review Modal */}
       {selectedBusiness && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-neutral-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="p-6 border-b border-neutral-200 dark:border-neutral-700">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-neutral-900 dark:text-white">Review Application</h2>
+                <h2 className="text-xl font-semibold text-neutral-900 dark:text-white">Review Business Application</h2>
                 <button
                   onClick={() => setSelectedBusiness(null)}
                   className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
@@ -225,7 +642,6 @@ export default function VerificationPage() {
               </div>
             </div>
             <div className="p-6 space-y-6">
-              {/* Business Info */}
               <div>
                 <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Business Information</h3>
                 <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
@@ -237,22 +653,21 @@ export default function VerificationPage() {
                     <span className="text-neutral-500 dark:text-neutral-400">Type</span>
                     <span className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.business_type}</span>
                   </div>
-                  {selectedBusiness.registration_number && (
+                  {selectedBusiness.ein_tax_id && (
                     <div className="flex justify-between">
-                      <span className="text-neutral-500 dark:text-neutral-400">Registration #</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.registration_number}</span>
+                      <span className="text-neutral-500 dark:text-neutral-400">EIN/Tax ID</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.ein_tax_id}</span>
                     </div>
                   )}
-                  {selectedBusiness.tax_id && (
+                  {selectedBusiness.years_in_business && (
                     <div className="flex justify-between">
-                      <span className="text-neutral-500 dark:text-neutral-400">Tax ID</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.tax_id}</span>
+                      <span className="text-neutral-500 dark:text-neutral-400">Years in Business</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.years_in_business}</span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Contact Info */}
               <div>
                 <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Contact Information</h3>
                 <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
@@ -266,28 +681,25 @@ export default function VerificationPage() {
                       <span className="text-neutral-900 dark:text-white">{selectedBusiness.contact_phone}</span>
                     </div>
                   )}
-                  {selectedBusiness.website && (
+                  {selectedBusiness.website_url && (
                     <div className="flex items-center gap-3">
                       <Globe className="w-5 h-5 text-neutral-400" />
-                      <a href={selectedBusiness.website} target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline">
-                        {selectedBusiness.website}
+                      <a href={selectedBusiness.website_url} target="_blank" rel="noopener noreferrer" className="text-emerald-600 dark:text-emerald-400 hover:underline">
+                        {selectedBusiness.website_url}
                       </a>
                     </div>
                   )}
-                  {selectedBusiness.address && (
+                  {(selectedBusiness.location || selectedBusiness.city) && (
                     <div className="flex items-start gap-3">
-                      <Building2 className="w-5 h-5 text-neutral-400 shrink-0" />
+                      <MapPin className="w-5 h-5 text-neutral-400 shrink-0" />
                       <span className="text-neutral-900 dark:text-white">
-                        {selectedBusiness.address}
-                        {selectedBusiness.city && `, ${selectedBusiness.city}`}
-                        {selectedBusiness.country && `, ${selectedBusiness.country}`}
+                        {selectedBusiness.location || `${selectedBusiness.city}, ${selectedBusiness.state || ''} ${selectedBusiness.country || ''}`}
                       </span>
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Owner Info */}
               <div>
                 <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Owner Information</h3>
                 <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4">
@@ -296,17 +708,16 @@ export default function VerificationPage() {
                       <User className="w-5 h-5 text-neutral-500 dark:text-neutral-400" />
                     </div>
                     <div>
-                      <p className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.owner?.full_name}</p>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">{selectedBusiness.owner?.email}</p>
+                      <p className="font-medium text-neutral-900 dark:text-white">{selectedBusiness.owner?.full_name || 'Unknown'}</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">{selectedBusiness.owner?.email || 'N/A'}</p>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex gap-3 pt-4">
                 <button
-                  onClick={() => handleVerify(selectedBusiness.id)}
+                  onClick={() => handleAction('business', selectedBusiness.id, 'approve')}
                   disabled={processing === selectedBusiness.id}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
                 >
@@ -318,7 +729,7 @@ export default function VerificationPage() {
                   Approve
                 </button>
                 <button
-                  onClick={() => handleReject(selectedBusiness.id)}
+                  onClick={() => handleAction('business', selectedBusiness.id, 'reject')}
                   disabled={processing === selectedBusiness.id}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors font-medium disabled:opacity-50"
                 >

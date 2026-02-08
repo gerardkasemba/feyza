@@ -5,43 +5,43 @@ export const DEFAULT_SETTINGS = {
   // Email
   email_notifications_enabled: true,
   email_from_name: 'Feyza',
-  email_from_address: 'team@feyza.app',
-
+  email_from_address: 'noreply@feyza.com',
+  
   // Reminders
   reminder_enabled: true,
   reminder_days_before: 3,
   overdue_reminder_frequency: 'daily',
-
+  
   // Security
   max_login_attempts: 5,
   session_timeout_hours: 24,
   require_email_verification: true,
-
+  
   // Platform
   maintenance_mode: false,
   allow_new_registrations: true,
   allow_business_registrations: true,
-
+  
   // Loans
   max_active_loans_per_user: 3,
   min_days_between_loans: 7,
   auto_matching_enabled: true,
   default_loan_currency: 'USD',
-
+  
   // Payments
   auto_pay_enabled: true,
   payment_retry_max_attempts: 3,
   payment_retry_interval_hours: 24,
   restriction_period_days: 90,
-} as const;
+};
 
 export type SettingKey = keyof typeof DEFAULT_SETTINGS;
-export type SettingValue = (typeof DEFAULT_SETTINGS)[SettingKey];
+export type SettingValue = typeof DEFAULT_SETTINGS[SettingKey];
 
 // Cache for settings to avoid repeated DB calls
 let settingsCache: Record<string, any> | null = null;
-let cacheTimestamp = 0;
-const CACHE_TTL = 60_000; // 1 minute cache
+let cacheTimestamp: number = 0;
+const CACHE_TTL = 60000; // 1 minute cache
 
 /**
  * Parse a setting value from JSONB
@@ -67,26 +67,32 @@ function parseSettingValue(value: any): any {
  * Uses caching to minimize DB calls
  */
 export async function getSettings(): Promise<Record<string, any>> {
+  // Check cache
   if (settingsCache && Date.now() - cacheTimestamp < CACHE_TTL) {
     return settingsCache;
   }
 
   try {
     const supabase = createClient();
-    const { data, error } = await supabase.from('platform_settings').select('key, value');
+    const { data, error } = await supabase
+      .from('platform_settings')
+      .select('key, value');
 
     if (error) {
       console.error('Error fetching settings:', error);
       return { ...DEFAULT_SETTINGS };
     }
 
+    // Convert to key-value object
     const settings: Record<string, any> = { ...DEFAULT_SETTINGS };
     (data || []).forEach((row) => {
       settings[row.key] = parseSettingValue(row.value);
     });
 
+    // Update cache
     settingsCache = settings;
     cacheTimestamp = Date.now();
+
     return settings;
   } catch (err) {
     console.error('Error in getSettings:', err);
@@ -99,9 +105,9 @@ export async function getSettings(): Promise<Record<string, any>> {
  */
 export async function getSetting<K extends SettingKey>(
   key: K
-): Promise<(typeof DEFAULT_SETTINGS)[K]> {
+): Promise<typeof DEFAULT_SETTINGS[K]> {
   const settings = await getSettings();
-  return (settings[key] ?? DEFAULT_SETTINGS[key]) as (typeof DEFAULT_SETTINGS)[K];
+  return settings[key] ?? DEFAULT_SETTINGS[key];
 }
 
 /**
@@ -113,27 +119,28 @@ export async function updateSetting(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createClient();
-
+    
     const { error } = await supabase
       .from('platform_settings')
-      .upsert(
-        {
-          key,
-          value: JSON.stringify(value),
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: 'key',
-        }
-      );
+      .upsert({ 
+        key, 
+        value: JSON.stringify(value),
+        updated_at: new Date().toISOString() 
+      }, { 
+        onConflict: 'key' 
+      });
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      return { success: false, error: error.message };
+    }
 
+    // Invalidate cache
     settingsCache = null;
     cacheTimestamp = 0;
+
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to update setting' };
+    return { success: false, error: err.message };
   }
 }
 
@@ -141,26 +148,32 @@ export async function updateSetting(
  * Update multiple settings at once
  */
 export async function updateSettings(
-  settingsObj: Record<string, any>
+  settings: Record<string, any>
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createClient();
-
-    const updates = Object.entries(settingsObj).map(([key, value]) => ({
+    
+    const updates = Object.entries(settings).map(([key, value]) => ({
       key,
       value: JSON.stringify(value),
       updated_at: new Date().toISOString(),
     }));
 
-    const { error } = await supabase.from('platform_settings').upsert(updates, { onConflict: 'key' });
+    const { error } = await supabase
+      .from('platform_settings')
+      .upsert(updates, { onConflict: 'key' });
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      return { success: false, error: error.message };
+    }
 
+    // Invalidate cache
     settingsCache = null;
     cacheTimestamp = 0;
+
     return { success: true };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Failed to update settings' };
+    return { success: false, error: err.message };
   }
 }
 
@@ -172,22 +185,37 @@ export function clearSettingsCache(): void {
   cacheTimestamp = 0;
 }
 
+/**
+ * Check if maintenance mode is enabled
+ */
 export async function isMaintenanceMode(): Promise<boolean> {
   return getSetting('maintenance_mode');
 }
 
+/**
+ * Check if new registrations are allowed
+ */
 export async function canRegister(): Promise<boolean> {
   return getSetting('allow_new_registrations');
 }
 
+/**
+ * Check if business registrations are allowed
+ */
 export async function canRegisterBusiness(): Promise<boolean> {
   return getSetting('allow_business_registrations');
 }
 
+/**
+ * Get max active loans per user
+ */
 export async function getMaxActiveLoans(): Promise<number> {
   return getSetting('max_active_loans_per_user');
 }
 
+/**
+ * Get payment retry settings
+ */
 export async function getPaymentRetrySettings(): Promise<{
   maxAttempts: number;
   intervalHours: number;
@@ -200,3 +228,5 @@ export async function getPaymentRetrySettings(): Promise<{
     restrictionDays: settings.restriction_period_days || 90,
   };
 }
+
+// Types are already exported where they are declared above

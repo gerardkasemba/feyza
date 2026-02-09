@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { Button, Input, Select, Card, Calendar as CalendarPicker, Alert } from '@/components/ui';
 import { BusinessProfile, DisbursementMethod } from '@/types';
 import { formatCurrency, formatPercentage, calculateTotalInterest, calculateLoanTermMonths } from '@/lib/utils';
+import { createClient } from '@/lib/supabase/client';
 import { 
   getRepaymentPresets, 
   validateRepaymentSchedule, 
@@ -151,6 +152,10 @@ export function LoanRequestForm({
   const [disbursementData, setDisbursementData] = useState<any>({
     disbursement_method: 'bank_transfer',
   });
+
+  // Payment provider state (controlled by admin)
+  const supabase = createClient();
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
 
   // Smart schedule state
   const [useSmartSchedule, setUseSmartSchedule] = useState(true);
@@ -423,6 +428,41 @@ const incomeBasedSchedule = useMemo(() => {
     fetchLoanTypes();
   }, []);
 
+  // Check if Dwolla (ACH bank transfers) is enabled by admin
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      }
+    };
+
+    checkPaymentProviders();
+
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel('loan_form_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          checkPaymentProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
   // Sync lenderType state with form (important for preferredLender case)
   useEffect(() => {
     if (lenderType) {
@@ -484,7 +524,8 @@ const incomeBasedSchedule = useMemo(() => {
 
   // Step validation functions
   const validateStep1 = (): boolean => {
-    if (!userBankConnected) {
+    // Only require bank connection if Dwolla is enabled
+    if (isDwollaEnabled && !userBankConnected) {
       setStepError('Please connect your Bank account first');
       return false;
     }
@@ -584,6 +625,11 @@ const incomeBasedSchedule = useMemo(() => {
   };
 
   const validateStep4 = (): boolean => {
+    // If Dwolla is disabled, skip bank validation - payments will be manual
+    if (!isDwollaEnabled) {
+      return true;
+    }
+    
     // If user has bank connected via Plaid, they're good to go
     if (userBankConnected) {
       return true;
@@ -787,8 +833,8 @@ const incomeBasedSchedule = useMemo(() => {
       {/* Step 1: Bank Check & Lender Type */}
       {step === 1 && (
         <div className="space-y-6 animate-fade-in">
-          {/* Bank Connection Check */}
-          {!userBankConnected && (
+          {/* Bank Connection Check - Only show if Dwolla is enabled */}
+          {isDwollaEnabled && !userBankConnected && (
             <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
@@ -814,15 +860,25 @@ const incomeBasedSchedule = useMemo(() => {
             </Card>
           )}
 
-          {userBankConnected && (
+          {isDwollaEnabled && userBankConnected && (
             <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
               <Check className="w-5 h-5 text-green-600" />
               <span className="text-sm text-green-700 dark:text-green-300">Bank connected</span>
             </div>
           )}
 
+          {/* Manual payment notice when Dwolla is disabled */}
+          {!isDwollaEnabled && (
+            <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+              <Wallet className="w-5 h-5 text-blue-600" />
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                Payments will be handled via Cash App, Venmo, Zelle, or PayPal
+              </span>
+            </div>
+          )}
+
           {/* Borrowing Limit Card - Show based on lender type selection */}
-          {userBankConnected && !loadingLimit && (
+          {(userBankConnected || !isDwollaEnabled) && !loadingLimit && (
             <>
               {/* Personal Lending Tier Card */}
               {(!lenderType || lenderType === 'personal') && borrowingLimit && (
@@ -964,9 +1020,9 @@ const incomeBasedSchedule = useMemo(() => {
               hover
               className={`cursor-pointer transition-all ${
                 lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''
-              } ${!userBankConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
+              } ${(isDwollaEnabled && !userBankConnected) || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
-                if (userBankConnected && userVerificationStatus === 'verified') {
+                if ((!isDwollaEnabled || userBankConnected) && userVerificationStatus === 'verified') {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -998,9 +1054,9 @@ const incomeBasedSchedule = useMemo(() => {
               hover
               className={`cursor-pointer transition-all ${
                 lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''
-              } ${!userBankConnected ? 'opacity-50 pointer-events-none' : ''}`}
+              } ${isDwollaEnabled && !userBankConnected ? 'opacity-50 pointer-events-none' : ''}`}
               onClick={() => {
-                if (userBankConnected) {
+                if (!isDwollaEnabled || userBankConnected) {
                   setLenderType('personal');
                   setValue('lenderType', 'personal');
                   setValue('interestRate', 0);
@@ -1052,7 +1108,7 @@ const incomeBasedSchedule = useMemo(() => {
             <Button 
               type="button" 
               onClick={() => goToNextStep(2)}
-              disabled={!lenderType || !userBankConnected}
+              disabled={!lenderType || (isDwollaEnabled && !userBankConnected)}
             >
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />

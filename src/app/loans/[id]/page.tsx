@@ -69,17 +69,22 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'relative inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition',
-        'border',
+        'relative inline-flex items-center gap-1.5 sm:gap-2 rounded-lg sm:rounded-xl px-2.5 sm:px-3 py-2 sm:py-2 text-xs sm:text-sm font-medium transition-all',
+        'border active:scale-95',
+        'min-w-[70px] sm:min-w-0 justify-center sm:justify-start',
         active
           ? 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800 text-neutral-900 dark:text-white shadow-sm'
-          : 'bg-transparent border-transparent text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100/70 dark:hover:bg-neutral-900/60',
+          : 'bg-transparent border-transparent text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-white hover:bg-neutral-100/70 dark:hover:bg-neutral-800/60',
       ].join(' ')}
     >
-      <Icon className="w-4 h-4" />
+      <Icon className="w-4 h-4 flex-shrink-0" />
       <span className="whitespace-nowrap">{label}</span>
       {badge !== undefined && (
-        <span className="ml-1 rounded-full bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 text-xs text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-neutral-700">
+        <span className={`ml-0.5 sm:ml-1 rounded-full px-1.5 sm:px-2 py-0.5 text-[10px] sm:text-xs font-medium ${
+          active 
+            ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+            : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
+        }`}>
           {badge}
         </span>
       )}
@@ -144,6 +149,18 @@ export default function LoanDetailPage() {
 
   // Manual payment processing state
   const [processingPayment, setProcessingPayment] = useState<string | null>(null);
+  
+  // Payment provider state (controlled by admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  
+  // Manual payment modal for borrower (when ACH is not available)
+  const [showManualPaymentModal, setShowManualPaymentModal] = useState(false);
+  const [manualPaymentId, setManualPaymentId] = useState<string | null>(null);
+  const [manualPaymentMethod, setManualPaymentMethod] = useState<string>('');
+  const [manualPaymentReference, setManualPaymentReference] = useState('');
+  const [manualPaymentProofFile, setManualPaymentProofFile] = useState<File | null>(null);
+  const [manualPaymentProofPreview, setManualPaymentProofPreview] = useState<string | null>(null);
+  const [submittingManualPayment, setSubmittingManualPayment] = useState(false);
 
   // Payment confirmation dialog state
   const [paymentConfirmDialog, setPaymentConfirmDialog] = useState<{
@@ -405,6 +422,43 @@ export default function LoanDetailPage() {
   }, [isLender, loan?.borrower_id, fetchBorrowerRating]);
 
   /* -------------------------------------------
+     Check if Dwolla (ACH) is enabled by admin
+  -------------------------------------------- */
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      }
+    };
+
+    checkPaymentProviders();
+
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel('loan_detail_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          checkPaymentProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  /* -------------------------------------------
      Real-time updates (full functionality kept)
   -------------------------------------------- */
   useEffect(() => {
@@ -509,6 +563,29 @@ export default function LoanDetailPage() {
   const fetchTransferStatus = useCallback(async () => {
     if (!loanId) return;
 
+    // If Dwolla is not enabled, handle manual payment status differently
+    if (!isDwollaEnabled) {
+      // For manual payments, just check if funds_sent flag is set
+      if (loan?.funds_sent) {
+        setTransferStatus({
+          status: 'completed',
+          statusMessage: loan?.funds_sent_method 
+            ? `Payment sent via ${loan.funds_sent_method.charAt(0).toUpperCase() + loan.funds_sent_method.slice(1)}`
+            : 'Payment has been sent',
+          timeline: null,
+          transfer: null,
+        });
+      } else {
+        setTransferStatus({
+          status: 'not_started',
+          statusMessage: 'Waiting for lender to send payment',
+          timeline: null,
+          transfer: null,
+        });
+      }
+      return;
+    }
+
     try {
       const response = await fetch(`/api/dwolla/sync-status?loan_id=${loanId}`);
       if (!response.ok) return;
@@ -596,13 +673,33 @@ export default function LoanDetailPage() {
     } catch (error) {
       console.error('Error fetching transfer status:', error);
     }
-  }, [loanId, loan]);
+  }, [loanId, loan, isDwollaEnabled]);
 
   // Poll for transfer status when funds are being transferred
   useEffect(() => {
     if (!loan) return;
 
-    // Only poll if disbursement is in progress
+    // Don't poll for ACH transfer status if Dwolla is not enabled
+    // (manual payments don't need polling)
+    if (!isDwollaEnabled) {
+      // For manual payments, just set status based on funds_sent
+      if (loan.funds_sent) {
+        setTransferStatus({
+          status: 'completed',
+          statusMessage: (loan as any).funds_sent_method 
+            ? `Payment sent via ${(loan as any).funds_sent_method.charAt(0).toUpperCase() + (loan as any).funds_sent_method.slice(1)}`
+            : 'Payment has been sent',
+          timeline: null,
+          transfer: null,
+        });
+      } else {
+        // Don't show any transfer banner for manual payments that haven't been sent yet
+        setTransferStatus(null);
+      }
+      return;
+    }
+
+    // Only poll if disbursement is in progress (Dwolla only)
     const shouldPoll =
       loan.status === 'active' &&
       (((loan as any).disbursement_status === 'processing') ||
@@ -616,7 +713,7 @@ export default function LoanDetailPage() {
       const interval = setInterval(fetchTransferStatus, 30000);
       return () => clearInterval(interval);
     }
-  }, [loan?.id, loan?.status, (loan as any)?.disbursement_status, fetchTransferStatus]);
+  }, [loan?.id, loan?.status, (loan as any)?.disbursement_status, fetchTransferStatus, isDwollaEnabled, loan?.funds_sent]);
 
   /* -------------------------------------------
      Actions (full functionality kept)
@@ -815,6 +912,106 @@ export default function LoanDetailPage() {
     }
   };
 
+  // Open manual payment modal for borrower (when Dwolla is not enabled)
+  const handleOpenManualPayment = (paymentId: string) => {
+    setManualPaymentId(paymentId);
+    setManualPaymentMethod('');
+    setManualPaymentReference('');
+    setManualPaymentProofFile(null);
+    setManualPaymentProofPreview(null);
+    setShowManualPaymentModal(true);
+  };
+
+  // Handle file selection for manual payment proof
+  const handleManualPaymentProofChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setManualPaymentProofFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setManualPaymentProofPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Submit manual payment with proof
+  const handleSubmitManualPayment = async () => {
+    if (!loan || !manualPaymentId || !manualPaymentMethod || !manualPaymentProofFile) {
+      showToast({ type: 'warning', title: 'Required Fields', message: 'Please select payment method and upload proof' });
+      return;
+    }
+
+    setSubmittingManualPayment(true);
+    try {
+      // Upload proof image to Supabase Storage
+      const fileExt = manualPaymentProofFile.name.split('.').pop();
+      const fileName = `${user?.id}_${manualPaymentId}_${Date.now()}.${fileExt}`;
+      const filePath = `payment-proofs/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage.from('loan-documents').upload(filePath, manualPaymentProofFile);
+
+      let proofUrl = null;
+      if (!uploadError) {
+        const { data: { publicUrl } } = supabase.storage.from('loan-documents').getPublicUrl(filePath);
+        proofUrl = publicUrl;
+      }
+
+      // Calculate platform fee if enabled
+      const payment = schedule.find(p => p.id === manualPaymentId);
+      const feeCalc = feeSettings?.enabled && payment ? calculateFee(payment.amount) : null;
+      const platformFee = feeCalc?.platformFee || 0;
+
+      // Call API to process manual payment (uses service role to bypass RLS)
+      const response = await fetch('/api/payments/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          loanId: loan.id,
+          paymentId: manualPaymentId,
+          paymentMethod: manualPaymentMethod,
+          transactionReference: manualPaymentReference || null,
+          proofUrl,
+          platformFee,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to process payment');
+      }
+
+      // Update local state with new amounts from API response
+      if (result.success) {
+        setLoan(prev => prev ? {
+          ...prev,
+          amount_paid: result.newAmountPaid,
+          amount_remaining: result.newAmountRemaining,
+          status: result.isComplete ? 'completed' : prev.status,
+        } : prev);
+      }
+
+      showToast({ type: 'success', title: 'Payment Submitted', message: 'Your payment has been recorded. The lender will be notified.' });
+      
+      // Close modal and refresh data
+      setShowManualPaymentModal(false);
+      setManualPaymentId(null);
+      setManualPaymentMethod('');
+      setManualPaymentReference('');
+      setManualPaymentProofFile(null);
+      setManualPaymentProofPreview(null);
+      
+      refetchLoan();
+      refetchSchedule();
+    } catch (error: any) {
+      console.error('Error submitting manual payment:', error);
+      showToast({ type: 'error', title: 'Error', message: error.message || 'Failed to submit payment' });
+    } finally {
+      setSubmittingManualPayment(false);
+    }
+  };
+
   const handleSendFunds = async () => {
     if (!loan) return;
 
@@ -908,14 +1105,17 @@ export default function LoanDetailPage() {
         ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
         : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800';
 
+    // Adjust title based on whether Dwolla (ACH) is enabled
     const title =
       transferStatus.status === 'completed'
         ? isBorrower
           ? 'Funds received'
-          : 'Funds delivered'
+          : 'Funds sent'
         : transferStatus.status === 'failed'
         ? 'Transfer failed'
-        : 'Transfer in progress';
+        : isDwollaEnabled 
+          ? 'Transfer in progress'
+          : 'Payment pending';
 
     const icon =
       transferStatus.status === 'completed'
@@ -990,55 +1190,58 @@ export default function LoanDetailPage() {
     <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
       <Navbar user={user} />
 
-      <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {/* Top bar */}
-          <div className="mb-6 flex items-center justify-between gap-4">
+      <main className="flex-1 pb-safe">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+          {/* Top bar - compact on mobile */}
+          <div className="mb-4 sm:mb-6 flex items-center justify-between gap-2">
             <Link
               href="/dashboard"
-              className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
+              className="inline-flex items-center gap-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
-              Back to dashboard
+              <span className="hidden sm:inline">Back to dashboard</span>
+              <span className="sm:hidden">Back</span>
             </Link>
 
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
+                className="px-2 sm:px-3"
                 onClick={async () => {
                   await refetchLoan();
                   await refetchSchedule();
                   await fetchTransferStatus();
                 }}
               >
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Refresh
+                <RefreshCw className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Refresh</span>
               </Button>
 
               {loan.lender_type === 'personal' && (loan as any).borrower_token && (
                 <Button
                   size="sm"
+                  className="px-2 sm:px-3"
                   onClick={() => {
                     const shareUrl = `${window.location.origin}/loan-request/${loan.id}`;
                     navigator.clipboard.writeText(shareUrl);
                     showToast({ type: 'success', title: 'Link Copied!', message: 'Share this link with someone who can help' });
                   }}
                 >
-                  <Share2 className="w-4 h-4 mr-2" />
-                  Share
+                  <Share2 className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Share</span>
                 </Button>
               )}
             </div>
           </div>
 
-          {/* Header card */}
-          <Card className="mb-6">
-            <div className="flex flex-col gap-6">
+          {/* Header card - compact on mobile */}
+          <Card className="mb-4 sm:mb-6 p-4 sm:p-6">
+            <div className="flex flex-col gap-4 sm:gap-6">
               <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-                <div className="flex items-center gap-4">
-                  <Avatar name={otherPartyName} size="lg" />
-                  <div className="min-w-0">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <Avatar name={otherPartyName} size="lg" className="w-12 h-12 sm:w-14 sm:h-14" />
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-3 flex-wrap">
                       <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white truncate">
                         {otherPartyName}
@@ -1073,22 +1276,23 @@ export default function LoanDetailPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3 w-full lg:w-auto">
-                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Principal</p>
-                    <p className="text-lg font-bold text-neutral-900 dark:text-white">
+                {/* Stat cards - responsive grid */}
+                <div className="grid grid-cols-3 gap-2 sm:gap-3 w-full lg:w-auto">
+                  <div className="rounded-xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-2.5 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400">Principal</p>
+                    <p className="text-sm sm:text-lg font-bold text-neutral-900 dark:text-white truncate">
                       {formatCurrency(loan.amount, loan.currency)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Paid</p>
-                    <p className="text-lg font-bold text-primary-600 dark:text-primary-400">
+                  <div className="rounded-xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-2.5 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400">Paid</p>
+                    <p className="text-sm sm:text-lg font-bold text-primary-600 dark:text-primary-400 truncate">
                       {formatCurrency(loan.amount_paid, loan.currency)}
                     </p>
                   </div>
-                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4">
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400">Remaining</p>
-                    <p className="text-lg font-bold text-neutral-800 dark:text-neutral-200">
+                  <div className="rounded-xl sm:rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-2.5 sm:p-4">
+                    <p className="text-[10px] sm:text-xs text-neutral-500 dark:text-neutral-400">Remaining</p>
+                    <p className="text-sm sm:text-lg font-bold text-neutral-800 dark:text-neutral-200 truncate">
                       {formatCurrency(loan.amount_remaining, loan.currency)}
                     </p>
                   </div>
@@ -1353,22 +1557,33 @@ export default function LoanDetailPage() {
                           icon: <CreditCard className="w-6 h-6 text-white" />,
                           name: 'PayPal',
                           value: borrower?.paypal_email,
-                          getLink: (amount) => `https://www.paypal.com/paypalme/${borrower?.paypal_email?.split('@')[0]}/${amount}`,
+                          getLink: (amount) => {
+                            const handle = borrower?.paypal_email?.includes('@') 
+                              ? borrower?.paypal_email?.split('@')[0] 
+                              : borrower?.paypal_email;
+                            return `https://paypal.me/${handle}/${amount.toFixed(2)}`;
+                          },
                         },
                         cashapp: {
                           bg: 'bg-[#00D632] dark:bg-[#00A826]',
                           icon: <span className="text-white font-bold text-2xl">$</span>,
                           name: 'Cash App',
                           value: borrower?.cashapp_username,
-                          getLink: (amount) => `https://cash.app/${borrower?.cashapp_username}/${amount}`,
+                          getLink: (amount) => {
+                            const cashtag = borrower?.cashapp_username?.replace(/^\$/, '').trim();
+                            return `https://cash.app/$${cashtag}/${amount.toFixed(2)}`;
+                          },
                         },
                         venmo: {
                           bg: 'bg-[#3D95CE] dark:bg-[#2a6a9a]',
                           icon: <span className="text-white font-bold text-2xl">V</span>,
                           name: 'Venmo',
                           value: borrower?.venmo_username,
-                          getLink: (amount) =>
-                            `https://venmo.com/${borrower?.venmo_username?.replace('@', '')}?txn=pay&amount=${amount}&note=Loan%20from%20Feyza`,
+                          getLink: (amount) => {
+                            const username = borrower?.venmo_username?.replace(/^@/, '').trim();
+                            const note = encodeURIComponent(`Loan Disbursement - ${loan.purpose || 'Feyza'}`);
+                            return `https://venmo.com/${username}?txn=pay&amount=${amount.toFixed(2)}&note=${note}`;
+                          },
                         },
                       };
 
@@ -1470,10 +1685,10 @@ export default function LoanDetailPage() {
             </div>
           </Card>
 
-          {/* Tabs */}
-          <div className="sticky top-[64px] sm:top-[72px] z-30 mb-6">
-            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/95 backdrop-blur-lg shadow-sm px-3 py-2">
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+          {/* Tabs - mobile-first sticky navigation */}
+          <div className="sticky top-0 sm:top-[64px] z-30 -mx-3 sm:mx-0 mb-4 sm:mb-6">
+            <div className="sm:rounded-2xl border-b sm:border border-neutral-200 dark:border-neutral-800 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-lg shadow-sm px-2 sm:px-3 py-1.5 sm:py-2">
+              <div className="flex items-center gap-0.5 sm:gap-1 overflow-x-auto pb-1 no-scrollbar -mx-1 px-1">
                 <TabButton 
                   active={tab === 'overview'} 
                   onClick={() => setTab('overview')} 
@@ -1486,7 +1701,7 @@ export default function LoanDetailPage() {
                   onClick={() => setTab('timeline')}
                   icon={Calendar}
                   label="Timeline"
-                  badge={unpaidCount}
+                  badge={schedule.length > 0 ? schedule.length : undefined}
                 />
                 
                 <TabButton
@@ -1494,7 +1709,7 @@ export default function LoanDetailPage() {
                   onClick={() => setTab('payments')}
                   icon={CreditCard}
                   label="Payments"
-                  badge={paidCount}
+                  badge={unpaidCount > 0 ? unpaidCount : undefined}
                 />
                 
                 {hasTermsTab && (
@@ -1740,10 +1955,21 @@ export default function LoanDetailPage() {
                     </Button>
                   )}
 
-                  {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && nextPayment && (
-                    <Button className="w-full" onClick={() => handleProcessPayment(nextPayment.id)}>
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Pay next installment
+                  {loan.status === 'active' && isBorrower && 
+                   ((loan as any).disbursement_status === 'completed' || (!isDwollaEnabled && loan.funds_sent)) && 
+                   nextPayment && (
+                    <Button className="w-full" onClick={() => isDwollaEnabled ? handleProcessPayment(nextPayment.id) : handleOpenManualPayment(nextPayment.id)}>
+                      {isDwollaEnabled ? (
+                        <>
+                          <CreditCard className="w-4 h-4 mr-2" />
+                          Pay next installment
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-4 h-4 mr-2" />
+                          Mark payment as paid
+                        </>
+                      )}
                     </Button>
                   )}
 
@@ -1804,44 +2030,275 @@ export default function LoanDetailPage() {
           )}
 
           {tab === 'payments' && (
-            <div className="space-y-6">
-              {/* Next payment (borrower) */}
-              {loan.status === 'active' && isBorrower && (loan as any).disbursement_status === 'completed' && nextPayment && (
-                <Card>
-                  <div className="flex items-center justify-between gap-3 mb-4">
+            <div className="space-y-4 sm:space-y-6">
+              {/* Next payment (borrower) - show when funds have been sent (either via ACH or manually) */}
+              {loan.status === 'active' && isBorrower && 
+               ((loan as any).disbursement_status === 'completed' || (!isDwollaEnabled && loan.funds_sent)) && 
+               nextPayment && (
+                <Card className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div>
-                      <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white">Make a payment</h2>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">Pay early and stay ahead.</p>
+                      <h2 className="text-base sm:text-lg font-display font-semibold text-neutral-900 dark:text-white">Make a payment</h2>
+                      <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+                        {isDwollaEnabled ? 'Pay early and stay ahead.' : 'Pay your lender and upload proof.'}
+                      </p>
                     </div>
-                    <Button onClick={() => handleProcessPayment(nextPayment.id)} disabled={processingPayment === nextPayment.id}>
-                      {processingPayment === nextPayment.id ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                          Processing...
-                        </>
-                      ) : (
-                        <>
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          Pay {formatCurrency(nextPayment.amount, loan.currency)}
-                        </>
-                      )}
-                    </Button>
+                    {isDwollaEnabled ? (
+                      // Automatic payment via Dwolla/ACH
+                      <Button 
+                        onClick={() => handleProcessPayment(nextPayment.id)} 
+                        disabled={processingPayment === nextPayment.id}
+                        className="w-full sm:w-auto"
+                      >
+                        {processingPayment === nextPayment.id ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                            Processing...
+                          </>
+                        ) : (
+                          <>
+                            <CreditCard className="w-4 h-4 mr-2" />
+                            Pay {formatCurrency(nextPayment.amount, loan.currency)}
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      // Manual payment with proof upload
+                      <Button onClick={() => handleOpenManualPayment(nextPayment.id)} className="w-full sm:w-auto">
+                        <Upload className="w-4 h-4 mr-2" />
+                        Mark as Paid
+                      </Button>
+                    )}
                   </div>
 
-                  <div className="rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 p-4">
+                  <div className="rounded-xl bg-neutral-50 dark:bg-neutral-900/40 border border-neutral-200 dark:border-neutral-800 p-3 sm:p-4">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Due date</p>
-                        <p className="font-semibold text-neutral-900 dark:text-white">{formatDate(nextPayment.due_date)}</p>
+                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">Due date</p>
+                        <p className="font-semibold text-sm sm:text-base text-neutral-900 dark:text-white">{formatDate(nextPayment.due_date)}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Amount</p>
-                        <p className="font-bold text-neutral-900 dark:text-white">{formatCurrency(nextPayment.amount, loan.currency)}</p>
+                        <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">Amount</p>
+                        <p className="font-bold text-sm sm:text-base text-neutral-900 dark:text-white">{formatCurrency(nextPayment.amount, loan.currency)}</p>
                       </div>
                     </div>
 
+                    {!isDwollaEnabled && (() => {
+                      // Calculate total with platform fee if enabled
+                      const feeCalc = feeSettings?.enabled ? calculateFee(nextPayment.amount) : null;
+                      const totalToPay = feeCalc ? feeCalc.grossAmount : nextPayment.amount;
+                      const platformFee = feeCalc?.platformFee || 0;
+                      
+                      // Get lender payment info - check both business_lender and personal lender
+                      const lenderProfile = loan.business_lender as any;
+                      const personalLender = loan.lender as any;
+                      
+                      const cashappUsername = lenderProfile?.cashapp_username || personalLender?.cashapp_username;
+                      const venmoUsername = lenderProfile?.venmo_username || personalLender?.venmo_username;
+                      const zelleEmail = lenderProfile?.zelle_email || personalLender?.zelle_email;
+                      const paypalEmail = lenderProfile?.paypal_email || personalLender?.paypal_email;
+                      const preferredMethod = lenderProfile?.preferred_payment_method || personalLender?.preferred_payment_method;
+                      
+                      // Clean usernames - remove $ or @ prefix if present
+                      const cleanCashapp = cashappUsername?.replace(/^\$/, '').trim();
+                      const cleanVenmo = venmoUsername?.replace(/^@/, '').trim();
+                      
+                      // Build payment note with loan info
+                      const loanNote = `Loan Payment - ${loan.purpose || 'Feyza'}`;
+                      const encodedNote = encodeURIComponent(loanNote);
+                      
+                      const amount = Number(totalToPay || 0);
+                      const formattedAmount = Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
+                      
+                      const hasAnyMethod = !!cleanCashapp || !!cleanVenmo || !!zelleEmail || !!paypalEmail;
+                      
+                      // Payment methods config with proper deep links
+                      const paymentMethods = [
+                        {
+                          key: 'cashapp',
+                          name: 'Cash App',
+                          available: !!cleanCashapp,
+                          username: cleanCashapp,
+                          displayName: `$${cleanCashapp}`,
+                          // Cash App URL format: https://cash.app/$cashtag/amount
+                          url: cleanCashapp ? `https://cash.app/$${cleanCashapp}/${formattedAmount}` : null,
+                          emoji: '💵',
+                          colors: {
+                            default: 'bg-[#00D632]/10 hover:bg-[#00D632]/20 text-[#00D632] dark:text-[#00D632] border-[#00D632]/30',
+                            preferred: 'bg-[#00D632] hover:bg-[#00C12D] text-white shadow-lg shadow-green-500/30',
+                          },
+                        },
+                        {
+                          key: 'venmo',
+                          name: 'Venmo',
+                          available: !!cleanVenmo,
+                          username: cleanVenmo,
+                          displayName: `@${cleanVenmo}`,
+                          // Venmo URL with note: https://venmo.com/username?txn=pay&amount=X&note=Y
+                          url: cleanVenmo ? `https://venmo.com/${cleanVenmo}?txn=pay&amount=${formattedAmount}&note=${encodedNote}` : null,
+                          emoji: '💙',
+                          colors: {
+                            default: 'bg-[#008CFF]/10 hover:bg-[#008CFF]/20 text-[#008CFF] dark:text-[#008CFF] border-[#008CFF]/30',
+                            preferred: 'bg-[#008CFF] hover:bg-[#0070CC] text-white shadow-lg shadow-blue-500/30',
+                          },
+                        },
+                        {
+                          key: 'zelle',
+                          name: 'Zelle',
+                          available: !!zelleEmail,
+                          username: zelleEmail,
+                          displayName: zelleEmail,
+                          url: null, // Zelle doesn't have web links
+                          emoji: '🏦',
+                          colors: {
+                            default: 'bg-[#6D1ED4]/10 hover:bg-[#6D1ED4]/20 text-[#6D1ED4] dark:text-[#6D1ED4] border-[#6D1ED4]/30',
+                            preferred: 'bg-[#6D1ED4] hover:bg-[#5A19B0] text-white shadow-lg shadow-purple-500/30',
+                          },
+                        },
+                        {
+                          key: 'paypal',
+                          name: 'PayPal',
+                          available: !!paypalEmail,
+                          username: paypalEmail,
+                          displayName: paypalEmail?.includes('@') ? paypalEmail.split('@')[0] : paypalEmail,
+                          url: paypalEmail ? `https://paypal.me/${paypalEmail.includes('@') ? paypalEmail.split('@')[0] : paypalEmail}/${formattedAmount}` : null,
+                          emoji: '🅿️',
+                          colors: {
+                            default: 'bg-[#003087]/10 hover:bg-[#003087]/20 text-[#003087] dark:text-[#0070BA] border-[#003087]/30',
+                            preferred: 'bg-[#003087] hover:bg-[#001F5C] text-white shadow-lg shadow-indigo-500/30',
+                          },
+                        },
+                      ];
+                      
+                      // Sort to put preferred method first
+                      const sortedMethods = [...paymentMethods].sort((a, b) => {
+                        if (a.key === preferredMethod) return -1;
+                        if (b.key === preferredMethod) return 1;
+                        return 0;
+                      });
+                      
+                      const availableMethods = sortedMethods.filter(m => m.available);
+                      
+                      return (
+                        <div className="mt-4 space-y-4">
+                          {/* Platform fee notice */}
+                          {platformFee > 0 && (
+                            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                              <p className="text-sm text-amber-800 dark:text-amber-300">
+                                <strong>Total to send:</strong> {formatCurrency(totalToPay, loan.currency)} 
+                                <span className="text-xs ml-1">(includes {formatCurrency(platformFee, loan.currency)} platform fee)</span>
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Direct payment buttons */}
+                          {hasAnyMethod ? (
+                            <div className="space-y-3">
+                              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                                Tap to pay via:
+                              </p>
+                              
+                              <div className="flex flex-col gap-2">
+                                {availableMethods.map((method) => {
+                                  const isPreferred = method.key === preferredMethod;
+                                  const colorClass = isPreferred ? method.colors.preferred : method.colors.default;
+                                  
+                                  const content = (
+                                    <>
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <span className="text-2xl flex-shrink-0">{method.emoji}</span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-semibold">{method.name}</span>
+                                            {isPreferred && (
+                                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isPreferred ? 'bg-white/25' : 'bg-current/10'}`}>
+                                                ★ Preferred
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className={`text-sm truncate block ${isPreferred ? 'opacity-90' : 'opacity-70'}`}>
+                                            {method.displayName}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-2 flex-shrink-0">
+                                        <span className="font-bold text-base">{formatCurrency(totalToPay, loan.currency)}</span>
+                                        {method.url && <ExternalLink className="w-4 h-4 opacity-70" />}
+                                      </div>
+                                    </>
+                                  );
+                                  
+                                  if (method.url) {
+                                    return (
+                                      <a
+                                        key={method.key}
+                                        href={method.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className={`flex items-center justify-between px-4 py-4 rounded-xl font-medium transition-all active:scale-[0.98] border ${colorClass}`}
+                                      >
+                                        {content}
+                                      </a>
+                                    );
+                                  }
+                                  
+                                  // Zelle - no link, show info card
+                                  return (
+                                    <div
+                                      key={method.key}
+                                      className={`flex items-center justify-between px-4 py-4 rounded-xl font-medium border ${colorClass}`}
+                                    >
+                                      <div className="flex items-center gap-3 min-w-0">
+                                        <span className="text-2xl flex-shrink-0">{method.emoji}</span>
+                                        <div className="min-w-0 flex-1">
+                                          <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="font-semibold">{method.name}</span>
+                                            {isPreferred && (
+                                              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isPreferred ? 'bg-white/25' : 'bg-current/10'}`}>
+                                                ★ Preferred
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className={`text-sm truncate block ${isPreferred ? 'opacity-90' : 'opacity-70'}`}>
+                                            {method.displayName}
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div className="text-right flex-shrink-0">
+                                        <span className="font-bold text-base block">{formatCurrency(totalToPay, loan.currency)}</span>
+                                        <span className={`text-[10px] ${isPreferred ? 'opacity-80' : 'opacity-60'}`}>Open your bank app</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              
+                              {/* Payment note reminder */}
+                              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+                                <p className="text-xs text-blue-700 dark:text-blue-300">
+                                  <strong>💡 Tip:</strong> Include "<span className="font-mono">{loanNote}</span>" as a note for easy tracking.
+                                </p>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl text-center">
+                              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                Contact your lender for payment details.
+                              </p>
+                            </div>
+                          )}
+
+                          <div className="text-center pt-3 border-t border-neutral-200 dark:border-neutral-700">
+                            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                              After sending, tap <strong>"Mark as Paid"</strong> to upload proof.
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
                     {feeSettings?.enabled &&
-                      !feeLoading &&
+                      !feeLoading && isDwollaEnabled &&
                       (() => {
                         const feeCalc = calculateFee(nextPayment.amount);
                         return feeCalc.platformFee > 0 ? (
@@ -1910,6 +2367,86 @@ export default function LoanDetailPage() {
                         </div>
                       ))}
                   </div>
+                </Card>
+              )}
+
+              {/* Upcoming payments - always show if there are unpaid payments */}
+              {schedule.filter((s) => !s.is_paid).length > 0 && (
+                <Card>
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white">Upcoming payments</h2>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        {schedule.filter((s) => !s.is_paid).length} payment(s) remaining
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {schedule
+                      .filter((s) => !s.is_paid)
+                      .map((p, index) => (
+                        <div
+                          key={p.id}
+                          className={`flex items-center justify-between rounded-xl border p-4 ${
+                            index === 0 
+                              ? 'border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20' 
+                              : 'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              index === 0 
+                                ? 'bg-primary-100 dark:bg-primary-900/30' 
+                                : 'bg-neutral-100 dark:bg-neutral-800'
+                            }`}>
+                              <Calendar className={`w-4 h-4 ${
+                                index === 0 
+                                  ? 'text-primary-600 dark:text-primary-400' 
+                                  : 'text-neutral-500 dark:text-neutral-400'
+                              }`} />
+                            </div>
+                            <div>
+                              <p className={`font-semibold ${
+                                index === 0 
+                                  ? 'text-primary-900 dark:text-primary-100' 
+                                  : 'text-neutral-900 dark:text-white'
+                              }`}>
+                                {formatCurrency(p.amount, loan.currency)}
+                              </p>
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                Due: {formatDate(p.due_date)}
+                              </p>
+                            </div>
+                          </div>
+
+                          {index === 0 ? (
+                            <Badge variant="warning" className="text-xs">Next due</Badge>
+                          ) : (
+                            <Badge variant="default" className="text-xs bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">
+                              Upcoming
+                            </Badge>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Show waiting message if funds not yet sent */}
+                  {loan.status === 'active' && !loan.funds_sent && (loan as any).disbursement_status !== 'completed' && (
+                    <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                      <div className="flex items-start gap-3">
+                        <Clock className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-amber-800 dark:text-amber-300">Waiting for funds</p>
+                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                            {isBorrower 
+                              ? 'Your lender will send the loan amount shortly. You\'ll be notified when the funds are on the way.'
+                              : 'Please send the loan funds to the borrower to begin the repayment schedule.'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </Card>
               )}
             </div>
@@ -2556,6 +3093,161 @@ export default function LoanDetailPage() {
         cancelText="Keep Request"
         type="warning"
       />
+
+      {/* Manual Payment Modal - For borrowers when ACH is not available */}
+      {showManualPaymentModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">Mark Payment as Made</h3>
+                <button
+                  onClick={() => setShowManualPaymentModal(false)}
+                  className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-neutral-500" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Payment amount with fee breakdown */}
+                {(() => {
+                  const feeCalc = feeSettings?.enabled && nextPayment ? calculateFee(nextPayment.amount) : null;
+                  const totalToPay = feeCalc ? feeCalc.grossAmount : (nextPayment?.amount || 0);
+                  const platformFee = feeCalc?.platformFee || 0;
+                  
+                  return (
+                    <div className="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
+                      <div className="flex justify-between items-start mb-2">
+                        <p className="text-sm text-primary-700 dark:text-primary-300">Loan Payment</p>
+                        <p className="font-semibold text-primary-900 dark:text-primary-100">
+                          {nextPayment && formatCurrency(nextPayment.amount, loan?.currency)}
+                        </p>
+                      </div>
+                      {platformFee > 0 && (
+                        <div className="flex justify-between items-start mb-2 text-sm">
+                          <p className="text-primary-600 dark:text-primary-400">Platform Fee</p>
+                          <p className="text-primary-800 dark:text-primary-200">
+                            +{formatCurrency(platformFee, loan?.currency)}
+                          </p>
+                        </div>
+                      )}
+                      <div className="border-t border-primary-200 dark:border-primary-700 pt-2 mt-2">
+                        <div className="flex justify-between items-center">
+                          <p className="font-medium text-primary-800 dark:text-primary-200">Total to Send</p>
+                          <p className="text-2xl font-bold text-primary-900 dark:text-primary-100">
+                            {formatCurrency(totalToPay, loan?.currency)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Payment method selection */}
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    Payment Method Used *
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {['Cash App', 'Venmo', 'Zelle', 'PayPal'].map(method => (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => setManualPaymentMethod(method.toLowerCase().replace(' ', ''))}
+                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                          manualPaymentMethod === method.toLowerCase().replace(' ', '')
+                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-neutral-900 dark:text-white">{method}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Transaction reference */}
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                    Transaction ID / Reference (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={manualPaymentReference}
+                    onChange={(e) => setManualPaymentReference(e.target.value)}
+                    placeholder="e.g., #ABC123"
+                    className="w-full px-4 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white"
+                  />
+                </div>
+
+                {/* Proof upload */}
+                <div>
+                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                    Payment Screenshot *
+                  </label>
+                  {manualPaymentProofPreview ? (
+                    <div className="relative">
+                      <img
+                        src={manualPaymentProofPreview}
+                        alt="Payment proof"
+                        className="w-full h-48 object-cover rounded-lg"
+                      />
+                      <button
+                        onClick={() => {
+                          setManualPaymentProofFile(null);
+                          setManualPaymentProofPreview(null);
+                        }}
+                        className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-lg cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors">
+                      <Upload className="w-8 h-8 text-neutral-400 mb-2" />
+                      <span className="text-sm text-neutral-500">Click to upload proof</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleManualPaymentProofChange}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowManualPaymentModal(false)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmitManualPayment}
+                  disabled={!manualPaymentMethod || !manualPaymentProofFile || submittingManualPayment}
+                  className="flex-1"
+                >
+                  {submittingManualPayment ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Confirm Payment
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

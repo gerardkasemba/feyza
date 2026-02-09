@@ -18,10 +18,12 @@ import {
   AlertCircle, FileText, CreditCard, Check, AlertTriangle, Shield,
   TrendingUp, Lock, Star, Zap, Calendar as CalendarIcon, Clock, Edit3, Search, AtSign, Loader2,
   Wallet, Sparkles, Building, Eye, EyeOff, Upload, Briefcase, MapPin, CheckCircle, ChevronDown, X,
+  Smartphone,
   // Loan type icons
   Heart, GraduationCap, Home, Car, Plane, ShoppingBag, Wrench, Baby, Stethoscope, 
   Banknote, PiggyBank, Gift, Package, LucideIcon
 } from 'lucide-react';
+import { ConnectedPaymentDisplay } from '@/components/payments';
 
 // Icon mapping for loan types
 const LOAN_TYPE_ICONS: Record<string, LucideIcon> = {
@@ -118,6 +120,12 @@ interface BankInfo {
 interface GuestLoanRequestFormProps {
   businessSlug?: string | null;
   businessLenderId?: string | null;
+  // Business-specific settings (passed from parent when doing direct application)
+  businessName?: string | null;
+  businessInterestRate?: number | null;
+  businessInterestType?: 'simple' | 'compound' | null;
+  businessFirstTimeLimit?: number | null;
+  businessMaxLoanAmount?: number | null;
 }
 
 const ID_TYPES = [
@@ -156,7 +164,15 @@ const COUNTRIES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-export default function GuestLoanRequestForm({ businessSlug, businessLenderId }: GuestLoanRequestFormProps = {}) {
+export default function GuestLoanRequestForm({ 
+  businessSlug, 
+  businessLenderId,
+  businessName,
+  businessInterestRate,
+  businessInterestType,
+  businessFirstTimeLimit,
+  businessMaxLoanAmount,
+}: GuestLoanRequestFormProps = {}) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -166,9 +182,41 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
   const [user, setUser] = useState<any>(null);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // Form state
-  const [step, setStep] = useState(1);
-  const [lenderType, setLenderType] = useState<'business' | 'personal' | null>(businessSlug || businessLenderId ? 'business' : null);
+  // Determine if this is a direct application to a specific business
+  const isDirectBusinessApplication = !!(businessSlug || businessLenderId);
+
+  // Form state - start at step 3 if direct business application (skip lender type and lender selection)
+  const [step, setStep] = useState(isDirectBusinessApplication ? 3 : 1);
+  const [lenderType, setLenderType] = useState<'business' | 'personal' | null>(isDirectBusinessApplication ? 'business' : null);
+  
+  // Sync state when businessLenderId prop changes (e.g., after parent component loads business data)
+  useEffect(() => {
+    if (businessLenderId) {
+      setStep(3); // Skip to loan details
+      setLenderType('business');
+    }
+  }, [businessLenderId]);
+
+  // Store business settings in state for direct applications
+  const [directBusinessConfig, setDirectBusinessConfig] = useState<{
+    interestRate: number;
+    interestType: 'simple' | 'compound';
+    firstTimeLimit: number;
+    maxAmount: number | null;
+  } | null>(null);
+
+  // Set business config when props are available
+  useEffect(() => {
+    if (isDirectBusinessApplication && (businessInterestRate !== null || businessInterestType !== null)) {
+      setDirectBusinessConfig({
+        interestRate: businessInterestRate ?? 10,
+        interestType: businessInterestType ?? 'simple',
+        firstTimeLimit: businessFirstTimeLimit ?? 50,
+        maxAmount: businessMaxLoanAmount ?? null,
+      });
+    }
+  }, [isDirectBusinessApplication, businessInterestRate, businessInterestType, businessFirstTimeLimit, businessMaxLoanAmount]);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -199,6 +247,12 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
   const [plaidLoaded, setPlaidLoaded] = useState(false);
   const [connectingBank, setConnectingBank] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
+
+  // Payment provider settings (controlled from admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
+  // Bank connection is only required if Dwolla is enabled
+  const requiresBankConnection = isDwollaEnabled;
 
   // Username search (for personal loans)
   const [usernameSearch, setUsernameSearch] = useState('');
@@ -268,11 +322,25 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
     }
   }, [selectedStartDate, setValue]);
 
-  // Calculate totals
+  // Set interest rate from business config when available
+  useEffect(() => {
+    if (directBusinessConfig && isDirectBusinessApplication) {
+      setValue('interestRate', directBusinessConfig.interestRate);
+      setValue('interestType', directBusinessConfig.interestType);
+    }
+  }, [directBusinessConfig, isDirectBusinessApplication, setValue]);
+
+  // Calculate totals - use business config if direct application
   const freqType = repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-  const intType = (interestType || 'simple') as 'simple' | 'compound';
+  const effectiveInterestRate = isDirectBusinessApplication && directBusinessConfig 
+    ? directBusinessConfig.interestRate 
+    : interestRate;
+  const effectiveInterestType = isDirectBusinessApplication && directBusinessConfig 
+    ? directBusinessConfig.interestType 
+    : (interestType || 'simple') as 'simple' | 'compound';
+  const intType = effectiveInterestType;
   const termMonths = calculateLoanTermMonths(totalInstallments || 1, freqType);
-  const totalInterest = calculateTotalInterest(amount, interestRate, termMonths, intType);
+  const totalInterest = calculateTotalInterest(amount, effectiveInterestRate, termMonths, intType);
   const totalAmount = amount + totalInterest;
   const repaymentAmount = totalInstallments > 0 ? totalAmount / totalInstallments : 0;
 
@@ -418,14 +486,28 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           setLoadingFinancialProfile(false);
         }
 
-        // Fetch loan types
+        // Fetch loan types (business-specific if direct application)
         try {
-          const ltRes = await fetch('/api/loan-types');
+          const loanTypesUrl = businessLenderId 
+            ? `/api/loan-types?business_id=${businessLenderId}`
+            : '/api/loan-types';
+          const ltRes = await fetch(loanTypesUrl);
           if (ltRes.ok) {
             const ltData = await ltRes.json();
             setLoanTypes(ltData.loanTypes || []);
           }
         } catch (e) { console.error('Failed to fetch loan types:', e); }
+
+        // Check if Dwolla (automated bank transfers) is enabled
+        try {
+          const ppRes = await fetch('/api/payment-methods?country=US&type=disbursement');
+          if (ppRes.ok) {
+            const ppData = await ppRes.json();
+            const dwollaEnabled = (ppData.providers || []).some((p: any) => p.slug === 'dwolla');
+            setIsDwollaEnabled(dwollaEnabled);
+          }
+        } catch (e) { console.error('Failed to fetch payment providers:', e); }
+        setLoadingPaymentProviders(false);
 
       } catch (err) {
         console.error('Init error:', err);
@@ -434,6 +516,37 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       }
     };
     init();
+  }, [supabase]);
+
+  // Real-time subscription for payment provider changes
+  useEffect(() => {
+    const checkProviders = async () => {
+      try {
+        const ppRes = await fetch('/api/payment-methods?country=US&type=disbursement');
+        if (ppRes.ok) {
+          const ppData = await ppRes.json();
+          const dwollaEnabled = (ppData.providers || []).some((p: any) => p.slug === 'dwolla');
+          setIsDwollaEnabled(dwollaEnabled);
+        }
+      } catch (e) { console.error('Failed to fetch payment providers:', e); }
+    };
+
+    // Subscribe to real-time changes
+    const channel = supabase
+      .channel('guest_loan_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          console.log('[GuestLoanRequestForm] Payment provider changed, refreshing...');
+          checkProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [supabase]);
 
   // Update form when preset selected
@@ -600,18 +713,29 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
   // Logged-in: 5 steps
   // Guest personal: 6 steps (add account creation)
   // Guest business: 9 steps (add account + 3 verification steps)
+  // For direct business applications, we skip steps 1 and 2, so reduce total by 2
   const totalSteps = useMemo(() => {
-    if (isLoggedIn) return 5;
-    if (lenderType === 'personal') return 6;
-    if (lenderType === 'business') return 9;
-    return 5;
-  }, [isLoggedIn, lenderType]);
+    let steps: number;
+    if (isLoggedIn) steps = 5;
+    else if (lenderType === 'personal') steps = 6;
+    else if (lenderType === 'business') steps = 9;
+    else steps = 5;
+    
+    // If direct business application, we skip steps 1 and 2
+    if (isDirectBusinessApplication) {
+      steps = steps - 2;
+    }
+    return steps;
+  }, [isLoggedIn, lenderType, isDirectBusinessApplication]);
 
-  const progressPercent = (step / totalSteps) * 100;
+  // Calculate display step (adjusted for direct applications)
+  const displayStep = isDirectBusinessApplication ? step - 2 : step;
+  const progressPercent = (displayStep / totalSteps) * 100;
 
   // Validation functions
   const validateStep1 = (): boolean => {
-    if (!bankConnected && isLoggedIn) {
+    // Only require bank connection if Dwolla is enabled
+    if (requiresBankConnection && !bankConnected && isLoggedIn) {
       setStepError('Please connect your bank account first');
       return false;
     }
@@ -717,7 +841,8 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       setStepError('Please complete all address fields');
       return false;
     }
-    if (!bankConnected) {
+    // Only require bank connection if Dwolla is enabled
+    if (requiresBankConnection && !bankConnected) {
       setStepError('Please connect your bank account');
       return false;
     }
@@ -747,7 +872,8 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
         else if (step === 8) isValid = true;
         else if (step === 9) isValid = agreementAccepted;
       } else {
-        if (step === 5) isValid = bankConnected;
+        // Bank connection only required if Dwolla is enabled
+        if (step === 5) isValid = !requiresBankConnection || bankConnected;
         else if (step === 6) isValid = agreementAccepted;
       }
     }
@@ -784,14 +910,15 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       const data = getValues();
       const inviteToken = lenderType === 'personal' ? generateInviteToken() : null;
       const frequency = data.repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-      const intTypeCalc = (interestType || 'simple') as 'simple' | 'compound';
+      // Use effective interest values for direct business applications
+      const intTypeCalc = effectiveInterestType;
       const schedule = calculateRepaymentSchedule({
         amount: data.amount,
         repaymentAmount: repaymentAmount,
         totalInstallments: data.totalInstallments,
         startDate: data.startDate,
         frequency: frequency,
-        interestRate: interestRate,
+        interestRate: effectiveInterestRate,
         interestType: intTypeCalc,
       });
 
@@ -812,8 +939,8 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           amount: data.amount,
           currency: data.currency,
           purpose: data.purpose || loanTypes.find((lt: LoanTypeOption) => lt.id === selectedLoanTypeId)?.name,
-          interest_rate: interestRate,
-          interest_type: interestType,
+          interest_rate: effectiveInterestRate,
+          interest_type: effectiveInterestType,
           total_interest: Math.round(totalInterest * 100) / 100,
           total_amount: Math.round(totalAmount * 100) / 100,
           repayment_frequency: data.repaymentFrequency,
@@ -824,7 +951,10 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           borrower_signed: true,
           borrower_signed_at: new Date().toISOString(),
           status: 'pending',
-          match_status: lenderType === 'business' ? 'pending' : 'manual',
+          // If direct application to a business, mark as 'direct' (no matching needed)
+          // If personal loan, mark as 'manual' (invite-based)
+          // Otherwise mark as 'pending' (needs auto-matching)
+          match_status: businessLenderId ? 'direct' : (lenderType === 'personal' ? 'manual' : 'pending'),
           amount_paid: 0,
           amount_remaining: Math.round(totalAmount * 100) / 100,
           borrower_name: user?.full_name,
@@ -1116,7 +1246,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       {/* Progress Bar */}
       <div className="mb-6">
         <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
-          <span>Step {step} of {totalSteps}</span>
+          <span>Step {displayStep} of {totalSteps}</span>
           <span>{Math.round(progressPercent)}% complete</span>
         </div>
         <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
@@ -1135,7 +1265,8 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       {/* STEP 1: Bank Check & Lender Type */}
       {step === 1 && (
         <div className="space-y-6 animate-fade-in">
-          {isLoggedIn && !bankConnected && (
+          {/* Bank Connection - only show if Dwolla is enabled */}
+          {isLoggedIn && requiresBankConnection && !bankConnected && (
             <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
               <div className="flex items-start gap-4">
                 <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
@@ -1143,7 +1274,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
                 </div>
                 <div className="flex-1">
                   <h3 className="font-semibold text-yellow-900 dark:text-yellow-300">Connect Bank First</h3>
-                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">Connect your bank account before requesting a loan.</p>
+                  <p className="text-sm text-yellow-700 dark:text-yellow-400 mt-1">Connect your bank account for automatic transfers.</p>
                   <Button type="button" onClick={handleConnectBank} className="mt-3" size="sm" disabled={connectingBank}>
                     {connectingBank ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}
                     Connect Bank
@@ -1153,10 +1284,41 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
             </Card>
           )}
 
-          {isLoggedIn && bankConnected && (
+          {/* Bank Connected Status - only show if Dwolla enabled */}
+          {isLoggedIn && requiresBankConnection && bankConnected && (
             <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
               <Check className="w-5 h-5 text-green-600" />
               <span className="text-sm text-green-700 dark:text-green-300">Bank connected - {bankInfo?.bank_name} ••••{bankInfo?.account_mask}</span>
+            </div>
+          )}
+
+          {/* Payment Methods Section - show connected accounts or prompt to add */}
+          {isLoggedIn && !loadingPaymentProviders && (
+            <Card className="border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50/50 to-white dark:from-green-900/10 dark:to-neutral-800">
+              <div className="flex items-center gap-2 mb-3">
+                <Smartphone className="w-5 h-5 text-green-600 dark:text-green-400" />
+                <h3 className="font-semibold text-neutral-900 dark:text-white">Where You'll Receive Funds</h3>
+              </div>
+              <ConnectedPaymentDisplay
+                userId={user?.id}
+                userCountry={user?.country || 'US'}
+                bankConnected={bankConnected}
+                bankName={bankInfo?.bank_name}
+                bankAccountMask={bankInfo?.account_mask}
+                showTitle={false}
+                showAddPrompt={true}
+                compact={false}
+              />
+            </Card>
+          )}
+
+          {/* Manual Payment Info for non-logged in users */}
+          {!isLoggedIn && !loadingPaymentProviders && (
+            <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+              <Wallet className="w-5 h-5 text-blue-600" />
+              <span className="text-sm text-blue-700 dark:text-blue-300">
+                You'll add your Cash App, Venmo, or other payment method after signing up
+              </span>
             </div>
           )}
 
@@ -1193,9 +1355,10 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           <div className="grid md:grid-cols-2 gap-4">
             <Card
               hover
-              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${isLoggedIn && (!bankConnected || user?.verification_status !== 'verified') ? 'opacity-50' : ''}`}
+              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${isLoggedIn && (isDwollaEnabled && !bankConnected || user?.verification_status !== 'verified') ? 'opacity-50' : ''}`}
               onClick={() => {
-                if (!isLoggedIn || (bankConnected && user?.verification_status === 'verified')) {
+                // Allow selection if: not logged in, OR (bank connected or Dwolla disabled) AND verified
+                if (!isLoggedIn || ((!isDwollaEnabled || bankConnected) && user?.verification_status === 'verified')) {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -1240,7 +1403,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || (isLoggedIn && !bankConnected)}>
+            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || (isLoggedIn && requiresBankConnection && !bankConnected)}>
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -1467,20 +1630,48 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       {/* STEP 3: Loan Details */}
       {step === 3 && (
         <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(2); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
-          </button>
+          {/* Only show back button if not a direct business application */}
+          {!isDirectBusinessApplication && (
+            <button type="button" onClick={() => { setStep(2); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
+              <ChevronLeft className="w-4 h-4" /> Back
+            </button>
+          )}
 
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Details</h2>
             <p className="text-neutral-500">Specify the amount and repayment terms</p>
           </div>
 
+          {/* First-time borrower notice for guests - only show if NOT direct application */}
+          {!isLoggedIn && lenderType === 'business' && !isDirectBusinessApplication && (
+            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-300">You're applying as a first-time borrower</p>
+                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                    First-time borrowers have lower borrowing limits. After completing your first loan successfully, you'll unlock higher amounts.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push('/sign-in?redirect=/loans/new')}
+                    className="mt-2 text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
+                  >
+                    Already have an account? Sign in for higher limits →
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid md:grid-cols-2 gap-4">
             <div>
               <Input label="Principal Amount *" type="number" placeholder="1000" min="1" {...register('amount', { valueAsNumber: true })} />
               {isLoggedIn && borrowingLimit && lenderType === 'personal' && (
                 <p className="text-xs mt-1 text-neutral-500">Available: {formatCurrency(borrowingLimit.availableAmount || 0)}</p>
+              )}
+              {!isLoggedIn && lenderType === 'business' && amount > 0 && (
+                <p className="text-xs mt-1 text-neutral-500">First-time borrower limit applies</p>
               )}
             </div>
             <Select label="Currency *" options={currencyOptions} {...register('currency')} />
@@ -1847,33 +2038,79 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Connect Your Bank</h2>
-            <p className="text-neutral-500">Funds will be sent to your bank account</p>
+            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
+              {requiresBankConnection ? 'Connect Your Bank' : 'How to Receive Money'}
+            </h2>
+            <p className="text-neutral-500">
+              {requiresBankConnection 
+                ? 'Funds will be sent directly to your bank account' 
+                : 'Your lender will send funds via Cash App, Venmo, or another method'}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200">
-            <div className="p-4 bg-neutral-50"><p className="text-sm font-semibold">Bank Connection *</p></div>
-            <div className="p-4">
-              {bankConnected && bankInfo ? (
-                <div className="flex items-center gap-3">
-                  <Building className="w-5 h-5 text-green-700" />
-                  <div>
-                    <p className="font-semibold">{bankInfo.bank_name}</p>
-                    <p className="text-xs text-neutral-500">••••{bankInfo.account_mask}</p>
+          {/* Show bank connection only if Dwolla is enabled */}
+          {requiresBankConnection ? (
+            <div className="rounded-2xl border border-neutral-200">
+              <div className="p-4 bg-neutral-50"><p className="text-sm font-semibold">Bank Connection *</p></div>
+              <div className="p-4">
+                {bankConnected && bankInfo ? (
+                  <div className="flex items-center gap-3">
+                    <Building className="w-5 h-5 text-green-700" />
+                    <div>
+                      <p className="font-semibold">{bankInfo.bank_name}</p>
+                      <p className="text-xs text-neutral-500">••••{bankInfo.account_mask}</p>
+                    </div>
+                    <CheckCircle className="w-4 h-4 text-green-600 ml-auto" />
                   </div>
-                  <CheckCircle className="w-4 h-4 text-green-600 ml-auto" />
-                </div>
-              ) : (
-                <Button type="button" onClick={handleConnectBank} disabled={!plaidLoaded || connectingBank || !guestFullName || !guestEmail} className="w-full">
-                  {connectingBank ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Building className="w-4 h-4 mr-2" />}
-                  Connect Bank
-                </Button>
-              )}
+                ) : (
+                  <Button type="button" onClick={handleConnectBank} disabled={!plaidLoaded || connectingBank || !guestFullName || !guestEmail} className="w-full">
+                    {connectingBank ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Building className="w-4 h-4 mr-2" />}
+                    Connect Bank
+                  </Button>
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            // Manual payment info when Dwolla is disabled
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Wallet className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-blue-900">Manual Payment</p>
+                    <p className="text-sm text-blue-700">Your lender will send funds directly</p>
+                  </div>
+                </div>
+                <p className="text-sm text-blue-800">
+                  Once your loan is approved, you'll receive payment via Cash App, Venmo, Zelle, 
+                  or another method. You'll confirm receipt in the app.
+                </p>
+              </div>
+
+              {/* Optional: Let user add their payment identifiers */}
+              <div className="p-4 bg-neutral-50 border border-neutral-200 rounded-xl">
+                <p className="text-sm font-medium text-neutral-700 mb-3">Add your payment info (optional)</p>
+                <div className="grid gap-3">
+                  <Input 
+                    label="Cash App $Cashtag" 
+                    placeholder="$username"
+                    value={guestPhone} // reusing for cashtag temporarily
+                    onChange={(e) => setGuestPhone(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-neutral-500 mt-2">
+                  This helps your lender know where to send funds
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(6)} disabled={!bankConnected}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
+            <Button type="button" onClick={() => goToNextStep(6)} disabled={requiresBankConnection && !bankConnected}>
+              Continue <ChevronRight className="w-4 h-4 ml-1" />
+            </Button>
           </div>
         </div>
       )}

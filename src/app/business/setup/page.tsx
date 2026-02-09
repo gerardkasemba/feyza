@@ -10,7 +10,7 @@ import {
   ArrowLeft, Building2, Percent, Building, FileText, 
   CheckCircle, ChevronRight, ChevronLeft, AlertCircle,
   MapPin, Globe, Users, DollarSign, Calendar, Shield,
-  Upload, Image as ImageIcon, X, Calculator
+  Upload, Image as ImageIcon, X, Calculator, Wallet
 } from 'lucide-react';
 import { FaHospital, FaGraduationCap, FaBriefcase, FaHome, FaFileAlt, FaCar } from 'react-icons/fa';
 
@@ -132,6 +132,10 @@ export default function BusinessSetupPage() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(true);
 
+  // Payment providers (controlled by admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
+
   const interestTypeOptions = [
     { value: 'simple', label: 'Simple Interest' },
     { value: 'compound', label: 'Compound Interest' },
@@ -182,6 +186,28 @@ export default function BusinessSetupPage() {
     checkAuth();
   }, [router]);
 
+  // Check if Dwolla (ACH bank transfers) is enabled by admin
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const supabase = createClient();
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      } finally {
+        setLoadingPaymentProviders(false);
+      }
+    };
+
+    checkPaymentProviders();
+  }, []);
+
   const validateStep1 = () => {
     if (!businessName.trim()) {
       setError('Business name is required');
@@ -230,7 +256,8 @@ export default function BusinessSetupPage() {
   };
 
   const validateStep4 = () => {
-    if (!bankConnected && !userProfile?.bank_connected) {
+    // Only require bank connection if Dwolla is enabled
+    if (isDwollaEnabled && !bankConnected && !userProfile?.bank_connected) {
       setError('Please connect your bank account to receive payments');
       return false;
     }
@@ -598,33 +625,58 @@ export default function BusinessSetupPage() {
                   <ChevronLeft className="w-4 h-4" />Back
                 </button>
                 <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Building className="w-5 h-5 text-primary-600 dark:text-primary-500" />
-                    <h3 className="font-semibold text-neutral-900 dark:text-white">Bank Account Setup</h3>
-                  </div>
-                  {(userProfile?.bank_connected || bankConnected) ? (
-                    <ConnectedBank
-                      bankName={bankName || userProfile?.bank_name || 'Bank Account'}
-                      accountMask={bankAccountMask || userProfile?.bank_account_mask || '****'}
-                      accountType={userProfile?.bank_account_type}
-                    />
-                  ) : (
-                    <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
-                      <div className="w-12 h-12 mx-auto mb-3 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
-                        <Building className="w-6 h-6 text-neutral-500 dark:text-neutral-400" />
+                  {isDwollaEnabled ? (
+                    <>
+                      {/* Bank Connection - Only when Dwolla is enabled */}
+                      <div className="flex items-center gap-2 mb-4">
+                        <Building className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Bank Account Setup</h3>
                       </div>
-                      <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                        Connect your bank account to receive loan repayments
-                      </p>
-                      <PlaidLinkButton
-                        onSuccess={(data) => {
-                          setBankConnected(true);
-                          setBankName(data.bank_name);
-                          setBankAccountMask(data.account_mask);
-                        }}
-                        buttonText="Connect Bank Account"
-                      />
-                    </div>
+                      {(userProfile?.bank_connected || bankConnected) ? (
+                        <ConnectedBank
+                          bankName={bankName || userProfile?.bank_name || 'Bank Account'}
+                          accountMask={bankAccountMask || userProfile?.bank_account_mask || '****'}
+                          accountType={userProfile?.bank_account_type}
+                        />
+                      ) : (
+                        <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+                          <div className="w-12 h-12 mx-auto mb-3 bg-neutral-200 dark:bg-neutral-700 rounded-full flex items-center justify-center">
+                            <Building className="w-6 h-6 text-neutral-500 dark:text-neutral-400" />
+                          </div>
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                            Connect your bank account to receive loan repayments
+                          </p>
+                          <PlaidLinkButton
+                            onSuccess={(data) => {
+                              setBankConnected(true);
+                              setBankName(data.bank_name);
+                              setBankAccountMask(data.account_mask);
+                            }}
+                            buttonText="Connect Bank Account"
+                          />
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* Manual Payment Methods - When Dwolla is disabled */}
+                      <div className="flex items-center gap-2 mb-4">
+                        <Wallet className="w-5 h-5 text-blue-600 dark:text-blue-500" />
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Payment Setup</h3>
+                      </div>
+                      <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium text-green-800 dark:text-green-300">No Bank Connection Required</h4>
+                            <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                              You'll receive loan repayments directly via Cash App, Venmo, Zelle, or PayPal.
+                              You can manage your payment methods in settings after setup.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </>
                   )}
                 </div>
                 <div className="p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
@@ -673,7 +725,7 @@ export default function BusinessSetupPage() {
                   </label>
                 </div>
                 <div className="pt-4">
-                  <Button type="submit" loading={saving} className="w-full" disabled={!termsAccepted || (!userProfile?.bank_connected && !bankConnected)}>
+                  <Button type="submit" loading={saving} className="w-full" disabled={!termsAccepted || (isDwollaEnabled && !userProfile?.bank_connected && !bankConnected)}>
                     <CheckCircle className="w-4 h-4 mr-2" />Submit for Review
                   </Button>
                 </div>

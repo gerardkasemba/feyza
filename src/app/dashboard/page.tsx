@@ -6,6 +6,7 @@ import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/compon
 import { StatsCard, BorrowerTrustCard, IncomeProfileCard, DashboardClient } from '@/components/dashboard';
 import { DashboardBorrowingLimit } from '@/components/dashboard/DashboardBorrowingLimit';
 import { LoanCard } from '@/components/loans';
+import { PaymentSetupBanner } from '@/components/payments';
 import { formatCurrency } from '@/lib/utils';
 import {
   Plus,
@@ -18,7 +19,9 @@ import {
   Shield,
   CheckCircle,
   Building2,
-  Building,
+  RefreshCw,
+  AlertTriangle,
+  Camera,
 } from 'lucide-react';
 
 // Use ISR with revalidation for better performance
@@ -101,6 +104,42 @@ export default async function DashboardPage() {
   const totalLent = activeLoansAsLender.reduce((sum, l) => sum + (l.amount_remaining || 0), 0);
   const totalPendingCount = pendingLoansAsBorrower.length + pendingLoansAsLender.length;
 
+  // Check if re-verification is needed (every 3 months)
+  const needsReverification = (() => {
+    if (profile?.verification_status !== 'verified') return false;
+    if (profile?.reverification_required) return true;
+    if (!profile?.verified_at) return false;
+    
+    const verifiedAt = new Date(profile.verified_at);
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+    
+    return verifiedAt < threeMonthsAgo;
+  })();
+
+  // Calculate days until re-verification is due (or days overdue)
+  const reverificationDaysInfo = (() => {
+    if (!profile?.verified_at) return null;
+    
+    const verifiedAt = new Date(profile.verified_at);
+    const dueDate = new Date(verifiedAt);
+    dueDate.setMonth(dueDate.getMonth() + 3);
+    
+    const today = new Date();
+    const diffTime = dueDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    return {
+      dueDate,
+      daysRemaining: diffDays,
+      isOverdue: diffDays < 0,
+      isWarning: diffDays <= 14 && diffDays > 0, // Warning when 2 weeks or less
+    };
+  })();
+
+  // Account restrictions when re-verification is needed
+  const accountRestricted = needsReverification;
+
   // Helper function to get Monday of current week
   const getMonday = (date: Date) => {
     const d = new Date(date);
@@ -181,13 +220,81 @@ export default async function DashboardPage() {
                 </h1>
                 <p className="text-neutral-500 dark:text-neutral-400 mt-1">Here&apos;s your loan overview</p>
               </div>
-              <Link href="/loans/new">
-                <Button>
+              {accountRestricted ? (
+                <Button disabled className="opacity-50 cursor-not-allowed">
                   <Plus className="w-4 h-4 mr-2" />
                   Request Loan
                 </Button>
-              </Link>
+              ) : (
+                <Link href="/loans/new">
+                  <Button>
+                    <Plus className="w-4 h-4 mr-2" />
+                    Request Loan
+                  </Button>
+                </Link>
+              )}
             </div>
+
+            {/* Re-verification Required Banner - HIGH PRIORITY */}
+            {needsReverification && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-xl animate-pulse-subtle">
+                <div className="flex items-start gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-red-100 dark:bg-red-900/50 flex items-center justify-center flex-shrink-0">
+                    <Camera className="w-6 h-6 text-red-600 dark:text-red-400" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold text-red-800 dark:text-red-300">Re-verification Required</h3>
+                      <span className="px-2 py-0.5 bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 text-xs font-semibold rounded-full">
+                        Account Restricted
+                      </span>
+                    </div>
+                    <p className="text-sm text-red-700 dark:text-red-400 mb-1">
+                      Your verification expired {reverificationDaysInfo?.isOverdue 
+                        ? `${Math.abs(reverificationDaysInfo.daysRemaining)} days ago` 
+                        : 'today'}. 
+                      Please take a new selfie to continue using Feyza.
+                    </p>
+                    <p className="text-xs text-red-600 dark:text-red-500 mb-3">
+                      <strong>Restricted:</strong> You cannot request new loans or receive disbursements until re-verified.
+                    </p>
+                    <Link href="/verify">
+                      <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
+                        <Camera className="w-4 h-4 mr-2" />
+                        Complete Re-verification Now
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Re-verification Warning Banner (due soon) */}
+            {!needsReverification && reverificationDaysInfo?.isWarning && profile?.verification_status === 'verified' && (
+              <div className="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
+                    <RefreshCw className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-1">
+                      Re-verification Due Soon
+                    </h3>
+                    <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
+                      Your verification will expire in <strong>{reverificationDaysInfo.daysRemaining} days</strong> 
+                      {reverificationDaysInfo.dueDate && ` (${reverificationDaysInfo.dueDate.toLocaleDateString()})`}. 
+                      Complete re-verification early to avoid account restrictions.
+                    </p>
+                    <Link href="/verify">
+                      <Button size="sm" variant="outline" className="border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30">
+                        <RefreshCw className="w-4 h-4 mr-2" />
+                        Re-verify Now
+                      </Button>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Verification Banner for Individual Users */}
             {userProfile.user_type === 'individual' && profile?.verification_status !== 'verified' && (
@@ -351,28 +458,13 @@ export default async function DashboardPage() {
             </div>
           )}
 
-          {/* Bank Connection Banner */}
-          {!profile?.bank_connected && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 bg-amber-100 dark:bg-amber-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
-                  <Building className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Connect Your Bank Account</h3>
-                  <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
-                    Link your bank account to receive loan funds and make repayments securely. We use bank-level encryption to keep your information safe.
-                  </p>
-                  <Link href="/settings?tab=payments">
-                    <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white">
-                      <Building className="w-4 h-4 mr-2" />
-                      Connect Bank
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Smart Payment Setup Banner - Shows only when user has NO payment methods (bank OR manual) */}
+          <PaymentSetupBanner
+            userId={user.id}
+            bankConnected={profile?.bank_connected || false}
+            bankName={profile?.bank_name}
+            showWhenConnected={false}
+          />
 
           {/* Stats Row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

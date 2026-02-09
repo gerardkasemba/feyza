@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client';
+import { useState, useEffect } from 'react';
 
 // Default settings values - safe for client and server
 export const DEFAULT_SETTINGS = {
@@ -229,4 +230,126 @@ export async function getPaymentRetrySettings(): Promise<{
   };
 }
 
-// Types are already exported where they are declared above
+/**
+ * React hook for accessing platform settings
+ * Automatically refreshes when settings change
+ */
+export function usePlatformSettings() {
+  const [settings, setSettings] = useState<Record<string, any>>(DEFAULT_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function fetchSettings() {
+      try {
+        setLoading(true);
+        const data = await getSettings();
+        if (mounted) {
+          setSettings(data);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (mounted) {
+          setError(err.message || 'Failed to load settings');
+          setSettings(DEFAULT_SETTINGS);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    fetchSettings();
+
+    // Set up real-time subscription
+    const supabase = createClient();
+    const channel = supabase
+      .channel('platform_settings_changes')
+      .on(
+        'postgres_changes',
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'platform_settings' 
+        },
+        () => {
+          // Refresh settings when they change
+          fetchSettings();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mounted = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  /**
+   * Get a single setting value
+   */
+  const getSettingValue = <K extends SettingKey>(key: K): typeof DEFAULT_SETTINGS[K] => {
+    return settings[key] ?? DEFAULT_SETTINGS[key];
+  };
+
+  /**
+   * Update a setting (admin only)
+   */
+  const updateSettingValue = async (
+    key: string,
+    value: any
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const result = await updateSetting(key, value);
+      if (result.success) {
+        // Refresh settings
+        const updatedSettings = await getSettings();
+        setSettings(updatedSettings);
+      }
+      return result;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  /**
+   * Update multiple settings at once
+   */
+  const updateMultipleSettings = async (
+    newSettings: Record<string, any>
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const result = await updateSettings(newSettings);
+      if (result.success) {
+        // Refresh settings
+        const updatedSettings = await getSettings();
+        setSettings(updatedSettings);
+      }
+      return result;
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  };
+
+  return {
+    settings,
+    loading,
+    error,
+    getSetting: getSettingValue,
+    updateSetting: updateSettingValue,
+    updateMultipleSettings,
+    refresh: () => {
+      setLoading(true);
+      getSettings().then(data => {
+        setSettings(data);
+        setLoading(false);
+      }).catch(err => {
+        setError(err.message);
+        setLoading(false);
+      });
+    },
+  };
+}

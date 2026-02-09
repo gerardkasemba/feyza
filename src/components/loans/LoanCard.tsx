@@ -13,7 +13,9 @@ interface LoanCardProps {
 }
 
 export function LoanCard({ loan, role }: LoanCardProps) {
-  const progress = getLoanProgress(loan.amount_paid, loan.amount);
+  const amountPaid = Number(loan.amount_paid) || 0;
+  const totalAmount = Number(loan.total_amount) || Number(loan.amount) || 0;
+  const progress = getLoanProgress(amountPaid, totalAmount);
   const otherParty = role === 'borrower' ? loan.lender : loan.borrower;
   const isPersonalLoan = loan.lender_type === 'personal';
   
@@ -135,7 +137,7 @@ export function LoanCard({ loan, role }: LoanCardProps) {
             <div className="flex items-center justify-between text-sm mb-2">
               <span className="text-neutral-500 dark:text-neutral-400">Repaid</span>
               <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                {formatCurrency(loan.amount_paid, loan.currency)} of {formatCurrency(loan.total_amount || loan.amount, loan.currency)}
+                {formatCurrency(amountPaid, loan.currency)} of {formatCurrency(totalAmount, loan.currency)}
               </span>
             </div>
             <Progress value={progress} />

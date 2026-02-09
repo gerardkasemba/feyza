@@ -21,6 +21,8 @@ import {
   CreditCard,
   ExternalLink,
   AlertCircle,
+  Camera,
+  Shield,
 } from 'lucide-react';
 
 interface PendingBusiness {
@@ -45,19 +47,34 @@ interface PendingUser {
   id: string;
   full_name: string;
   email: string;
-  phone?: string;
+  phone_number?: string;
+  date_of_birth?: string;
   verification_status: string;
   verification_submitted_at?: string;
+  verified_at?: string;
+  reverification_required?: boolean;
+  verification_count?: number;
+  // Identity
   id_type?: string;
   id_number?: string;
+  id_front_url?: string;
+  id_back_url?: string;
   id_document_url?: string;
+  id_expiry?: string;
   id_expiry_date?: string;
+  // Selfie
+  selfie_url?: string;
+  selfie_verified?: boolean;
+  // Employment
   employment_status?: string;
   employer_name?: string;
+  job_title?: string;
   employer_address?: string;
   employment_start_date?: string;
   employment_document_url?: string;
   monthly_income?: number;
+  monthly_income_range?: string;
+  // Address
   address_line1?: string;
   address_line2?: string;
   city?: string;
@@ -66,6 +83,8 @@ interface PendingUser {
   country?: string;
   address_document_url?: string;
   address_document_type?: string;
+  // SSN
+  ssn_last4?: string;
   created_at: string;
   pending_loan_requests?: {
     id: string;
@@ -438,10 +457,30 @@ export default function VerificationPage() {
                     <span className="text-neutral-500 dark:text-neutral-400">Email</span>
                     <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.email}</span>
                   </div>
-                  {selectedUser.phone && (
+                  {selectedUser.phone_number && (
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-neutral-400">Phone</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.phone}</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.phone_number}</span>
+                    </div>
+                  )}
+                  {selectedUser.date_of_birth && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Date of Birth</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.date_of_birth}</span>
+                    </div>
+                  )}
+                  {selectedUser.ssn_last4 && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">SSN (Last 4)</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">••• {selectedUser.ssn_last4}</span>
+                    </div>
+                  )}
+                  {selectedUser.verification_submitted_at && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Submitted</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">
+                        {format(new Date(selectedUser.verification_submitted_at), 'MMM d, yyyy h:mm a')}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -453,34 +492,90 @@ export default function VerificationPage() {
                 <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-neutral-500 dark:text-neutral-400">ID Type</span>
-                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_type?.replace(/_/g, ' ')}</span>
+                    <span className="font-medium text-neutral-900 dark:text-white capitalize">{selectedUser.id_type?.replace(/_/g, ' ')}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-neutral-500 dark:text-neutral-400">ID Number</span>
                     <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_number}</span>
                   </div>
-                  {selectedUser.id_expiry_date && (
+                  {(selectedUser.id_expiry_date || selectedUser.id_expiry) && (
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-neutral-400">Expiry</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_expiry_date}</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.id_expiry || selectedUser.id_expiry_date}</span>
                     </div>
                   )}
-                  {selectedUser.id_document_url && (
-                    <div className="pt-2">
-                      <a
-                        href={selectedUser.id_document_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
-                      >
-                        <FileText className="w-4 h-4" />
-                        View ID Document
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  )}
+                  {/* ID Images */}
+                  <div className="pt-2 grid grid-cols-2 gap-3">
+                    {(selectedUser.id_front_url || selectedUser.id_document_url) && (
+                      <div>
+                        <p className="text-xs text-neutral-500 mb-1">Front</p>
+                        <a
+                          href={selectedUser.id_front_url || selectedUser.id_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <img 
+                            src={selectedUser.id_front_url || selectedUser.id_document_url} 
+                            alt="ID Front" 
+                            className="w-full h-24 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600 hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    {selectedUser.id_back_url && (
+                      <div>
+                        <p className="text-xs text-neutral-500 mb-1">Back</p>
+                        <a
+                          href={selectedUser.id_back_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block"
+                        >
+                          <img 
+                            src={selectedUser.id_back_url} 
+                            alt="ID Back" 
+                            className="w-full h-24 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600 hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
+
+              {/* Selfie Verification */}
+              {selectedUser.selfie_url && (
+                <div>
+                  <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">Selfie Verification</h3>
+                  <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4">
+                    <a
+                      href={selectedUser.selfie_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img 
+                        src={selectedUser.selfie_url} 
+                        alt="Selfie with ID" 
+                        className="w-full h-48 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600 hover:opacity-80 transition-opacity"
+                      />
+                    </a>
+                    <p className="text-xs text-neutral-500 mt-2 text-center">Click to view full size</p>
+                    {selectedUser.reverification_required && (
+                      <div className="mt-3 p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center gap-2 text-amber-700 dark:text-amber-400 text-sm">
+                        <AlertTriangle className="w-4 h-4" />
+                        Re-verification submission
+                      </div>
+                    )}
+                    {selectedUser.verification_count && selectedUser.verification_count > 1 && (
+                      <p className="text-xs text-neutral-500 mt-2 text-center">
+                        Verified {selectedUser.verification_count} times
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Employment */}
               <div>
@@ -488,22 +583,35 @@ export default function VerificationPage() {
                 <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-neutral-500 dark:text-neutral-400">Status</span>
-                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employment_status?.replace(/_/g, ' ')}</span>
+                    <span className="font-medium text-neutral-900 dark:text-white capitalize">{selectedUser.employment_status?.replace(/_/g, ' ')}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-neutral-500 dark:text-neutral-400">Employer</span>
-                    <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employer_name}</span>
-                  </div>
+                  {selectedUser.employer_name && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Employer</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employer_name}</span>
+                    </div>
+                  )}
+                  {selectedUser.job_title && (
+                    <div className="flex justify-between">
+                      <span className="text-neutral-500 dark:text-neutral-400">Job Title</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.job_title}</span>
+                    </div>
+                  )}
                   {selectedUser.employment_start_date && (
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-neutral-400">Since</span>
                       <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.employment_start_date}</span>
                     </div>
                   )}
-                  {selectedUser.monthly_income && (
+                  {(selectedUser.monthly_income || selectedUser.monthly_income_range) && (
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-neutral-400">Monthly Income</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">${selectedUser.monthly_income.toLocaleString()}</span>
+                      <span className="font-medium text-neutral-900 dark:text-white">
+                        {selectedUser.monthly_income 
+                          ? `$${selectedUser.monthly_income.toLocaleString()}`
+                          : `$${selectedUser.monthly_income_range?.replace('-', ' - $')}/mo`
+                        }
+                      </span>
                     </div>
                   )}
                   {selectedUser.employment_document_url && (
@@ -512,12 +620,15 @@ export default function VerificationPage() {
                         href={selectedUser.employment_document_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
+                        className="block"
                       >
-                        <FileText className="w-4 h-4" />
-                        View Employment Document
-                        <ExternalLink className="w-3 h-3" />
+                        <img 
+                          src={selectedUser.employment_document_url} 
+                          alt="Employment Proof" 
+                          className="w-full h-24 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600 hover:opacity-80 transition-opacity"
+                        />
                       </a>
+                      <p className="text-xs text-neutral-500 mt-1">Employment proof document</p>
                     </div>
                   )}
                 </div>
@@ -541,7 +652,7 @@ export default function VerificationPage() {
                   {selectedUser.address_document_type && (
                     <div className="flex justify-between">
                       <span className="text-neutral-500 dark:text-neutral-400">Proof Type</span>
-                      <span className="font-medium text-neutral-900 dark:text-white">{selectedUser.address_document_type.replace(/_/g, ' ')}</span>
+                      <span className="font-medium text-neutral-900 dark:text-white capitalize">{selectedUser.address_document_type.replace(/_/g, ' ')}</span>
                     </div>
                   )}
                   {selectedUser.address_document_url && (
@@ -550,12 +661,15 @@ export default function VerificationPage() {
                         href={selectedUser.address_document_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 hover:underline"
+                        className="block"
                       >
-                        <FileText className="w-4 h-4" />
-                        View Address Document
-                        <ExternalLink className="w-3 h-3" />
+                        <img 
+                          src={selectedUser.address_document_url} 
+                          alt="Address Proof" 
+                          className="w-full h-24 object-cover rounded-lg border border-neutral-200 dark:border-neutral-600 hover:opacity-80 transition-opacity"
+                        />
                       </a>
+                      <p className="text-xs text-neutral-500 mt-1">Address proof document</p>
                     </div>
                   )}
                 </div>
@@ -597,6 +711,119 @@ export default function VerificationPage() {
                   </div>
                 </div>
               )}
+
+              {/* All Documents Gallery */}
+              <div>
+                <h3 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">All Uploaded Documents</h3>
+                <div className="bg-neutral-50 dark:bg-neutral-700/30 rounded-xl p-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                    {/* ID Front */}
+                    {(selectedUser.id_front_url || selectedUser.id_document_url) && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">ID Front</p>
+                        <a
+                          href={selectedUser.id_front_url || selectedUser.id_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block group"
+                        >
+                          <img 
+                            src={selectedUser.id_front_url || selectedUser.id_document_url} 
+                            alt="ID Front" 
+                            className="w-full h-28 object-cover rounded-lg border-2 border-neutral-200 dark:border-neutral-600 group-hover:border-emerald-500 transition-colors"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    
+                    {/* ID Back */}
+                    {selectedUser.id_back_url && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">ID Back</p>
+                        <a
+                          href={selectedUser.id_back_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block group"
+                        >
+                          <img 
+                            src={selectedUser.id_back_url} 
+                            alt="ID Back" 
+                            className="w-full h-28 object-cover rounded-lg border-2 border-neutral-200 dark:border-neutral-600 group-hover:border-emerald-500 transition-colors"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    
+                    {/* Selfie */}
+                    {selectedUser.selfie_url && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Selfie with ID</p>
+                        <a
+                          href={selectedUser.selfie_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block group"
+                        >
+                          <img 
+                            src={selectedUser.selfie_url} 
+                            alt="Selfie" 
+                            className="w-full h-28 object-cover rounded-lg border-2 border-neutral-200 dark:border-neutral-600 group-hover:border-emerald-500 transition-colors"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    
+                    {/* Employment Document */}
+                    {selectedUser.employment_document_url && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Employment Proof</p>
+                        <a
+                          href={selectedUser.employment_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block group"
+                        >
+                          <img 
+                            src={selectedUser.employment_document_url} 
+                            alt="Employment" 
+                            className="w-full h-28 object-cover rounded-lg border-2 border-neutral-200 dark:border-neutral-600 group-hover:border-emerald-500 transition-colors"
+                          />
+                        </a>
+                      </div>
+                    )}
+                    
+                    {/* Address Document */}
+                    {selectedUser.address_document_url && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Address Proof</p>
+                        <a
+                          href={selectedUser.address_document_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block group"
+                        >
+                          <img 
+                            src={selectedUser.address_document_url} 
+                            alt="Address" 
+                            className="w-full h-28 object-cover rounded-lg border-2 border-neutral-200 dark:border-neutral-600 group-hover:border-emerald-500 transition-colors"
+                          />
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* No documents message */}
+                  {!selectedUser.id_front_url && !selectedUser.id_document_url && !selectedUser.id_back_url && 
+                   !selectedUser.selfie_url && !selectedUser.employment_document_url && !selectedUser.address_document_url && (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-4">
+                      No documents uploaded
+                    </p>
+                  )}
+                  
+                  <p className="text-xs text-neutral-500 mt-3 text-center">Click any image to view full size</p>
+                </div>
+              </div>
 
               {/* Actions */}
               <div className="flex gap-3 pt-4">

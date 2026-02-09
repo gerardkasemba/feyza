@@ -11,7 +11,7 @@ import {
   ArrowLeft, Building2, Percent, CreditCard, Bell, Shield, 
   CheckCircle, AlertCircle, Save, Trash2, Upload, Image as ImageIcon,
   Eye, EyeOff, Pause, Play, Globe, MapPin, Users, DollarSign,
-  Link2, Copy, ExternalLink, Landmark, Loader2, Building
+  Link2, Copy, ExternalLink, Landmark, Loader2, Building, Wallet, Zap
 } from 'lucide-react';
 
 const US_STATES = [
@@ -131,6 +131,16 @@ function BusinessSettingsContent() {
   const [minLoanAmount, setMinLoanAmount] = useState('');
   const [maxLoanAmount, setMaxLoanAmount] = useState('');
   const [firstTimeBorrowerAmount, setFirstTimeBorrowerAmount] = useState('50');
+  const [capitalPool, setCapitalPool] = useState('10000'); // Available capital for auto-matching
+  const [autoMatchEnabled, setAutoMatchEnabled] = useState(false);
+
+  // Payment methods (for manual payments when Dwolla is disabled)
+  const [paypalEmail, setPaypalEmail] = useState('');
+  const [cashappUsername, setCashappUsername] = useState('');
+  const [venmoUsername, setVenmoUsername] = useState('');
+  const [zelleEmail, setZelleEmail] = useState('');
+  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState('');
+  const [savingPaymentMethods, setSavingPaymentMethods] = useState(false);
 
   // Public profile
   const [publicProfileEnabled, setPublicProfileEnabled] = useState(false);
@@ -146,6 +156,10 @@ function BusinessSettingsContent() {
 
   // Bank connection
   const [disconnectingBank, setDisconnectingBank] = useState(false);
+
+  // Payment providers (controlled by admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -178,6 +192,18 @@ function BusinessSettingsContent() {
 
       setBusiness(businessData);
       
+      // Fetch lender preferences for auto-matching settings
+      const { data: lenderPrefs } = await supabase
+        .from('lender_preferences')
+        .select('capital_pool, is_active')
+        .eq('business_id', businessData.id)
+        .single();
+      
+      if (lenderPrefs) {
+        setCapitalPool(lenderPrefs.capital_pool?.toString() || '10000');
+        setAutoMatchEnabled(lenderPrefs.is_active || false);
+      }
+      
       // Populate form
       setBusinessName(businessData.business_name || '');
       setBusinessType(businessData.business_type || '');
@@ -198,6 +224,12 @@ function BusinessSettingsContent() {
       setMaxLoanAmount(businessData.max_loan_amount?.toString() || '');
       setFirstTimeBorrowerAmount(businessData.first_time_borrower_amount?.toString() || '50');
       setPublicProfileEnabled(businessData.public_profile_enabled || false);
+      // Payment methods
+      setPaypalEmail(businessData.paypal_email || '');
+      setCashappUsername(businessData.cashapp_username || '');
+      setVenmoUsername(businessData.venmo_username || '');
+      setZelleEmail(businessData.zelle_email || '');
+      setPreferredPaymentMethod(businessData.preferred_payment_method || '');
       if (businessData.logo_url) {
         setLogoPreview(businessData.logo_url);
       }
@@ -207,6 +239,73 @@ function BusinessSettingsContent() {
 
     fetchData();
   }, [router]);
+
+  // Check if Dwolla (ACH bank transfers) is enabled by admin
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const supabase = createClient();
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      } finally {
+        setLoadingPaymentProviders(false);
+      }
+    };
+
+    checkPaymentProviders();
+
+    // Subscribe to real-time changes
+    const supabase = createClient();
+    const channel = supabase
+      .channel('business_settings_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          checkPaymentProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Save payment methods
+  const handleSavePaymentMethods = async () => {
+    setSavingPaymentMethods(true);
+    setMessage(null);
+    
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('business_profiles')
+        .update({
+          paypal_email: paypalEmail || null,
+          cashapp_username: cashappUsername || null,
+          venmo_username: venmoUsername || null,
+          zelle_email: zelleEmail || null,
+          preferred_payment_method: preferredPaymentMethod || null,
+        })
+        .eq('id', business.id);
+      
+      if (error) throw error;
+      setMessage({ type: 'success', text: 'Payment methods saved successfully!' });
+    } catch (err: any) {
+      console.error('Error saving payment methods:', err);
+      setMessage({ type: 'error', text: err.message || 'Failed to save payment methods' });
+    } finally {
+      setSavingPaymentMethods(false);
+    }
+  };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -322,7 +421,7 @@ function BusinessSettingsContent() {
 
       if (error) throw error;
 
-      // Also update lender_preferences
+      // Also update lender_preferences with capital pool and auto-match settings
       await supabase
         .from('lender_preferences')
         .update({
@@ -331,6 +430,8 @@ function BusinessSettingsContent() {
           min_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
           max_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
           first_time_borrower_limit: firstTimeBorrowerAmount ? parseFloat(firstTimeBorrowerAmount) : 50,
+          capital_pool: capitalPool ? parseFloat(capitalPool) : 10000,
+          is_active: autoMatchEnabled,
         })
         .eq('business_id', business.id);
 
@@ -648,6 +749,50 @@ function BusinessSettingsContent() {
                   <Card>
                     <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-6">Lending Settings</h2>
                     
+                    {/* Auto-Match Settings */}
+                    <div className="mb-6 p-4 bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/20 dark:to-blue-900/20 border border-primary-200 dark:border-primary-800 rounded-xl">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/30 rounded-lg flex items-center justify-center">
+                            <Zap className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-neutral-900 dark:text-white">Auto-Match Borrowers</h3>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">Automatically receive matching loan requests</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setAutoMatchEnabled(!autoMatchEnabled)}
+                          className={`relative w-14 h-8 rounded-full transition-colors ${autoMatchEnabled ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'}`}
+                        >
+                          <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${autoMatchEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                        </button>
+                      </div>
+                      
+                      {autoMatchEnabled && (
+                        <div className="mt-4">
+                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                            Available Capital Pool ($)
+                          </label>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="100"
+                            value={capitalPool}
+                            onChange={(e) => setCapitalPool(e.target.value)}
+                            helperText="Maximum total amount you're willing to have out in active loans. The matching system will only send you loans up to this limit."
+                          />
+                        </div>
+                      )}
+                      
+                      {!autoMatchEnabled && (
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
+                          Enable auto-matching to automatically receive loan requests that match your criteria. You can also receive direct applications via your public profile link.
+                        </p>
+                      )}
+                    </div>
+
                     <div className="grid md:grid-cols-2 gap-4 mb-4">
                       <Input label="Default Interest Rate (%)" type="number" step="0.01" min="0" max="100" value={defaultInterestRate} onChange={(e) => setDefaultInterestRate(e.target.value)} helperText="Annual percentage rate" />
                       <Select label="Interest Type" value={interestType} onChange={(e) => setInterestType(e.target.value)} options={[{ value: 'simple', label: 'Simple Interest' }, { value: 'compound', label: 'Compound Interest' }]} />
@@ -709,54 +854,198 @@ function BusinessSettingsContent() {
               {/* Payments Tab */}
               {activeTab === 'payments' && (
                 <div className="space-y-6">
-                  <Card>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
-                        <Building className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Bank Account</h2>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Connect your bank to send and receive payments</p>
-                      </div>
-                    </div>
-
-                    {user?.bank_connected ? (
-                      <ConnectedBank
-                        bankName={user.bank_name}
-                        accountMask={user.bank_account_mask}
-                        accountType={user.bank_account_type}
-                        onDisconnect={handleDisconnectBank}
-                      />
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
-                          <Building className="w-8 h-8 text-neutral-400" />
+                  {loadingPaymentProviders ? (
+                    <Card className="flex items-center justify-center py-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
+                    </Card>
+                  ) : isDwollaEnabled ? (
+                    <>
+                      {/* Bank Connection Card - Only when Dwolla is enabled */}
+                      <Card>
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                            <Building className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                          </div>
+                          <div>
+                            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Bank Account</h2>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">Connect your bank to send and receive payments</p>
+                          </div>
                         </div>
-                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No Bank Connected</h3>
-                        <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto">
-                          Connect your bank account to receive loan funds and make repayments securely.
-                        </p>
-                        <PlaidLinkButton
-                          onSuccess={handleBankConnected}
-                          onError={(err) => setMessage({ type: 'error', text: err })}
-                          buttonText="Connect Bank Account"
-                        />
-                      </div>
-                    )}
-                  </Card>
 
-                  <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                    <div className="flex items-start gap-3">
-                      <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="font-medium text-blue-800 dark:text-blue-300">Secure & Protected</h4>
-                        <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-                          We use Plaid to securely connect to your bank. We never store your bank login credentials. 
-                          All transfers are processed through Dwolla, a licensed money transmitter.
-                        </p>
-                      </div>
-                    </div>
-                  </Card>
+                        {user?.bank_connected ? (
+                          <ConnectedBank
+                            bankName={user.bank_name}
+                            accountMask={user.bank_account_mask}
+                            accountType={user.bank_account_type}
+                            onDisconnect={handleDisconnectBank}
+                          />
+                        ) : (
+                          <div className="text-center py-8">
+                            <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
+                              <Building className="w-8 h-8 text-neutral-400" />
+                            </div>
+                            <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No Bank Connected</h3>
+                            <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto">
+                              Connect your bank account to receive loan funds and make repayments securely.
+                            </p>
+                            <PlaidLinkButton
+                              onSuccess={handleBankConnected}
+                              onError={(err) => setMessage({ type: 'error', text: err })}
+                              buttonText="Connect Bank Account"
+                            />
+                          </div>
+                        )}
+                      </Card>
+
+                      <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                        <div className="flex items-start gap-3">
+                          <Shield className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium text-blue-800 dark:text-blue-300">Secure & Protected</h4>
+                            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                              We use Plaid to securely connect to your bank. We never store your bank login credentials. 
+                              All transfers are processed through Dwolla, a licensed money transmitter.
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                    </>
+                  ) : (
+                    <>
+                      {/* Manual Payment Methods - When Dwolla is disabled */}
+                      <Card>
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
+                            <Wallet className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                          </div>
+                          <div>
+                            <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Payment Methods</h2>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                              Payments are handled manually via Cash App, Venmo, Zelle, or PayPal
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-4 mb-6">
+                          <div className="flex items-start gap-3">
+                            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <h4 className="font-medium text-green-800 dark:text-green-300">No Bank Connection Required</h4>
+                              <p className="text-sm text-green-700 dark:text-green-400 mt-1">
+                                Add your payment usernames below so borrowers know where to send payments.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Payment Method Inputs */}
+                        <div className="space-y-4 mb-6">
+                          <h3 className="font-medium text-neutral-900 dark:text-white">Your Payment Methods</h3>
+                          
+                          <div className="grid md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                PayPal Email
+                              </label>
+                              <Input 
+                                type="email"
+                                placeholder="your@email.com"
+                                value={paypalEmail}
+                                onChange={(e) => setPaypalEmail(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Cash App Username
+                              </label>
+                              <Input 
+                                placeholder="$YourCashtag"
+                                value={cashappUsername}
+                                onChange={(e) => setCashappUsername(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Venmo Username
+                              </label>
+                              <Input 
+                                placeholder="@YourVenmo"
+                                value={venmoUsername}
+                                onChange={(e) => setVenmoUsername(e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Zelle Email/Phone
+                              </label>
+                              <Input 
+                                placeholder="email@example.com or phone"
+                                value={zelleEmail}
+                                onChange={(e) => setZelleEmail(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                              Preferred Payment Method
+                            </label>
+                            <Select 
+                              value={preferredPaymentMethod}
+                              onChange={(e) => setPreferredPaymentMethod(e.target.value)}
+                              options={[
+                                { value: '', label: 'Select preferred method' },
+                                { value: 'paypal', label: 'PayPal' },
+                                { value: 'cashapp', label: 'Cash App' },
+                                { value: 'venmo', label: 'Venmo' },
+                                { value: 'zelle', label: 'Zelle' },
+                              ]}
+                            />
+                          </div>
+
+                          <div className="flex justify-end">
+                            <Button onClick={handleSavePaymentMethods} loading={savingPaymentMethods}>
+                              <Save className="w-4 h-4 mr-2" />
+                              Save Payment Methods
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-neutral-200 dark:border-neutral-700 pt-6">
+                          <h3 className="font-medium text-neutral-900 dark:text-white mb-4">How Manual Payments Work:</h3>
+                          <div className="grid gap-3">
+                            <div className="flex items-start gap-3 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
+                              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">1</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-neutral-900 dark:text-white">Borrower sends payment</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">When a payment is due, the borrower sends money to your preferred method</p>
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-3 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
+                              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">2</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-neutral-900 dark:text-white">You confirm receipt</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">Once received, you mark the payment as completed in the loan details</p>
+                              </div>
+                            </div>
+                            <div className="flex items-start gap-3 p-3 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
+                              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center flex-shrink-0">
+                                <span className="text-primary-600 dark:text-primary-400 font-semibold text-sm">3</span>
+                              </div>
+                              <div>
+                                <p className="font-medium text-neutral-900 dark:text-white">Loan updates automatically</p>
+                                <p className="text-sm text-neutral-500 dark:text-neutral-400">The system tracks all payments and updates the borrower's trust score</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    </>
+                  )}
                 </div>
               )}
 

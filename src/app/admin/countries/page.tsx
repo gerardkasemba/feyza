@@ -1,388 +1,573 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import {
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card, Button, Badge } from '@/components/ui';
+import { 
   Globe,
-  Search,
-  RefreshCw,
+  Save, 
+  AlertCircle, 
   CheckCircle,
-  XCircle,
+  RefreshCw,
+  ArrowLeft,
   Plus,
-  Edit,
   Trash2,
-  Save,
-  ToggleLeft,
-  ToggleRight,
-  DollarSign,
-  AlertCircle,
+  GripVertical,
+  CreditCard,
+  ChevronDown,
+  ChevronUp,
+  Settings,
+  Smartphone,
+  Banknote,
+  Zap,
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
+import Link from 'next/link';
 
 interface Country {
-  id: string;
   code: string;
   name: string;
-  currency: string;
-  currency_symbol: string;
-  is_active: boolean;
-  dwolla_supported: boolean;
-  paypal_supported: boolean;
-  min_loan_amount: number;
-  max_loan_amount: number;
-  created_at: string;
+  enabled: boolean;
 }
 
-const defaultCountries: Omit<Country, 'id' | 'created_at'>[] = [
-  { code: 'US', name: 'United States', currency: 'USD', currency_symbol: '$', is_active: true, dwolla_supported: true, paypal_supported: true, min_loan_amount: 50, max_loan_amount: 5000 },
-  { code: 'GB', name: 'United Kingdom', currency: 'GBP', currency_symbol: '£', is_active: true, dwolla_supported: false, paypal_supported: true, min_loan_amount: 50, max_loan_amount: 4000 },
-  { code: 'CA', name: 'Canada', currency: 'CAD', currency_symbol: 'C$', is_active: true, dwolla_supported: false, paypal_supported: true, min_loan_amount: 50, max_loan_amount: 5000 },
-  { code: 'AU', name: 'Australia', currency: 'AUD', currency_symbol: 'A$', is_active: false, dwolla_supported: false, paypal_supported: true, min_loan_amount: 50, max_loan_amount: 5000 },
-  { code: 'EU', name: 'European Union', currency: 'EUR', currency_symbol: '€', is_active: false, dwolla_supported: false, paypal_supported: true, min_loan_amount: 50, max_loan_amount: 4000 },
-];
+interface PaymentProvider {
+  id: string;
+  slug: string;
+  name: string;
+  provider_type: string;
+  is_enabled: boolean;
+  supported_countries: string[];
+  icon_name: string;
+  brand_color: string;
+}
 
-export default function CountriesPage() {
-  const [countries, setCountries] = useState<Country[]>([]);
+interface CountryPaymentMethod {
+  id?: string;
+  country_code: string;
+  payment_provider_id: string;
+  is_enabled: boolean;
+  is_default_for_disbursement: boolean;
+  is_default_for_repayment: boolean;
+}
+
+export default function AdminCountriesPage() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [formData, setFormData] = useState({
-    code: '',
-    name: '',
-    currency: '',
-    currency_symbol: '',
-    is_active: true,
-    dwolla_supported: false,
-    paypal_supported: true,
-    min_loan_amount: 50,
-    max_loan_amount: 5000,
-  });
+  const [saving, setSaving] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  
+  const [countries, setCountries] = useState<Country[]>([]);
+  const [newCountry, setNewCountry] = useState({ code: '', name: '' });
+  
+  // Payment methods state
+  const [paymentProviders, setPaymentProviders] = useState<PaymentProvider[]>([]);
+  const [countryPaymentMethods, setCountryPaymentMethods] = useState<Record<string, CountryPaymentMethod[]>>({});
+  const [expandedCountry, setExpandedCountry] = useState<string | null>(null);
+  const [savingPaymentMethods, setSavingPaymentMethods] = useState<string | null>(null);
+
   const supabase = createClient();
 
-  const fetchCountries = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('countries')
-      .select('*')
-      .order('name', { ascending: true });
-
-    if (data && data.length > 0) {
-      setCountries(data);
-    } else {
-      // Use defaults
-      setCountries(defaultCountries.map((c, i) => ({
-        ...c,
-        id: `default-${i}`,
-        created_at: new Date().toISOString(),
-      })));
-    }
-    setLoading(false);
-  };
-
   useEffect(() => {
-    fetchCountries();
-  }, []);
+    async function checkAdminAndFetch() {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        router.push('/auth/signin');
+        return;
+      }
 
-  const resetForm = () => {
-    setFormData({
-      code: '',
-      name: '',
-      currency: '',
-      currency_symbol: '',
-      is_active: true,
-      dwolla_supported: false,
-      paypal_supported: true,
-      min_loan_amount: 50,
-      max_loan_amount: 5000,
-    });
-  };
+      const { data: profile } = await supabase
+        .from('users')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
 
-  const handleEdit = (country: Country) => {
-    setFormData({
-      code: country.code,
-      name: country.name,
-      currency: country.currency,
-      currency_symbol: country.currency_symbol,
-      is_active: country.is_active,
-      dwolla_supported: country.dwolla_supported,
-      paypal_supported: country.paypal_supported,
-      min_loan_amount: country.min_loan_amount,
-      max_loan_amount: country.max_loan_amount,
-    });
-    setEditingId(country.id);
-    setShowAddForm(false);
-  };
+      if (!profile?.is_admin) {
+        router.push('/dashboard');
+        return;
+      }
+
+      setIsAdmin(true);
+
+      try {
+        // Fetch countries
+        const res = await fetch('/api/admin/countries');
+        const data = await res.json();
+        if (data.allCountries) {
+          setCountries(data.allCountries);
+        }
+
+        // Fetch payment providers
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('*')
+          .order('display_order', { ascending: true });
+        
+        if (providers) {
+          setPaymentProviders(providers);
+        }
+
+        // Fetch country payment methods
+        const { data: cpm } = await supabase
+          .from('country_payment_methods')
+          .select('*');
+        
+        if (cpm) {
+          const grouped: Record<string, CountryPaymentMethod[]> = {};
+          cpm.forEach(m => {
+            if (!grouped[m.country_code]) grouped[m.country_code] = [];
+            grouped[m.country_code].push(m);
+          });
+          setCountryPaymentMethods(grouped);
+        }
+      } catch (error) {
+        console.error('Failed to fetch data:', error);
+      }
+
+      setLoading(false);
+    }
+
+    checkAdminAndFetch();
+  }, [router, supabase]);
 
   const handleSave = async () => {
+    setSaving(true);
+    setMessage(null);
+
     try {
-      if (editingId && !editingId.startsWith('default-')) {
-        await supabase.from('countries').update(formData).eq('id', editingId);
+      const res = await fetch('/api/admin/countries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ countries }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Countries saved successfully!' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        await supabase.from('countries').insert(formData);
+        setMessage({ type: 'error', text: data.error || 'Failed to save' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-      await fetchCountries();
-      setEditingId(null);
-      setShowAddForm(false);
-      resetForm();
-    } catch (err) {
-      console.error('Error saving country:', err);
-      alert('Failed to save. The countries table may not exist.');
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || 'Failed to save' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+
+    setSaving(false);
   };
 
-  const toggleActive = async (country: Country) => {
-    if (country.id.startsWith('default-')) {
-      alert('Cannot modify default countries. Create the countries table first.');
+  const toggleCountry = (code: string) => {
+    setCountries(prev => prev.map(c => 
+      c.code === code ? { ...c, enabled: !c.enabled } : c
+    ));
+  };
+
+  const addCountry = () => {
+    if (!newCountry.code || !newCountry.name) {
+      setMessage({ type: 'error', text: 'Please enter both country code and name' });
       return;
     }
-    await supabase.from('countries').update({ is_active: !country.is_active }).eq('id', country.id);
-    await fetchCountries();
+    
+    if (countries.some(c => c.code === newCountry.code.toUpperCase())) {
+      setMessage({ type: 'error', text: 'Country code already exists' });
+      return;
+    }
+    
+    setCountries(prev => [...prev, {
+      code: newCountry.code.toUpperCase(),
+      name: newCountry.name,
+      enabled: true,
+    }]);
+    setNewCountry({ code: '', name: '' });
+    setMessage(null);
   };
 
-  const filteredCountries = countries.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.code.toLowerCase().includes(search.toLowerCase())
-  );
+  const removeCountry = (code: string) => {
+    setCountries(prev => prev.filter(c => c.code !== code));
+  };
+
+  const enableAll = () => {
+    setCountries(prev => prev.map(c => ({ ...c, enabled: true })));
+  };
+
+  const disableAll = () => {
+    setCountries(prev => prev.map(c => ({ ...c, enabled: false })));
+  };
+
+  // Get payment methods that support a country (globally or specifically)
+  const getAvailableProvidersForCountry = (countryCode: string) => {
+    return paymentProviders.filter(p => {
+      if (!p.is_enabled) return false;
+      const supported = p.supported_countries || [];
+      return supported.includes('*') || supported.includes(countryCode);
+    });
+  };
+
+  // Check if a payment method is enabled for a country
+  const isPaymentMethodEnabledForCountry = (countryCode: string, providerId: string): boolean => {
+    const methods = countryPaymentMethods[countryCode] || [];
+    const method = methods.find(m => m.payment_provider_id === providerId);
+    
+    // If we have a specific entry, return its is_enabled value
+    if (method) {
+      return method.is_enabled;
+    }
+    
+    // If no specific entry, check global provider settings
+    const provider = paymentProviders.find(p => p.id === providerId);
+    
+    // If provider doesn't exist or is disabled, return false
+    if (!provider || !provider.is_enabled) {
+      return false;
+    }
+    
+    // Check if provider supports this country
+    const supported = provider.supported_countries || [];
+    return supported.includes('*') || supported.includes(countryCode);
+  };
+
+  // Toggle payment method for a country
+  const togglePaymentMethodForCountry = async (countryCode: string, providerId: string, currentlyEnabled: boolean) => {
+    setSavingPaymentMethods(countryCode);
+    
+    try {
+      const methods = countryPaymentMethods[countryCode] || [];
+      const existingMethod = methods.find(m => m.payment_provider_id === providerId);
+
+      if (existingMethod) {
+        // Update existing
+        const { error } = await supabase
+          .from('country_payment_methods')
+          .update({ is_enabled: !currentlyEnabled })
+          .eq('id', existingMethod.id);
+        
+        if (error) throw error;
+        
+        setCountryPaymentMethods(prev => ({
+          ...prev,
+          [countryCode]: prev[countryCode].map(m => 
+            m.id === existingMethod.id ? { ...m, is_enabled: !currentlyEnabled } : m
+          )
+        }));
+      } else {
+        // Create new entry
+        const { data, error } = await supabase
+          .from('country_payment_methods')
+          .insert({
+            country_code: countryCode,
+            payment_provider_id: providerId,
+            is_enabled: !currentlyEnabled,
+          })
+          .select()
+          .single();
+        
+        if (error) throw error;
+        
+        setCountryPaymentMethods(prev => ({
+          ...prev,
+          [countryCode]: [...(prev[countryCode] || []), data]
+        }));
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: `Failed to update payment method: ${error.message}` });
+    } finally {
+      setSavingPaymentMethods(null);
+    }
+  };
+
+  // Get provider type icon
+  const getProviderIcon = (providerType: string) => {
+    switch (providerType) {
+      case 'automated': return Zap;
+      case 'mobile_money': return Smartphone;
+      case 'cash': return Banknote;
+      default: return CreditCard;
+    }
+  };
 
   if (loading) {
     return (
-      <div className="p-8">
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-neutral-200 dark:bg-neutral-800 rounded w-48" />
-          <div className="h-64 bg-neutral-200 dark:bg-neutral-800 rounded-xl" />
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+        <RefreshCw className="w-8 h-8 animate-spin text-primary-600" />
       </div>
     );
   }
 
+  if (!isAdmin) return null;
+
+  const enabledCount = countries.filter(c => c.enabled).length;
+
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-neutral-900 dark:text-white flex items-center gap-3">
-            <Globe className="w-7 h-7 text-emerald-500" />
-            Countries
-          </h1>
-          <p className="text-neutral-500 dark:text-neutral-400 mt-1">
-            Configure supported countries and currencies
-          </p>
-        </div>
-        <button
-          onClick={() => { resetForm(); setShowAddForm(true); setEditingId(null); }}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors text-sm font-medium"
-        >
-          <Plus className="w-4 h-4" />
-          Add Country
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-        <input
-          type="text"
-          placeholder="Search countries..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-neutral-900 dark:text-white placeholder-neutral-400"
-        />
-      </div>
-
-      {/* Add/Edit Form */}
-      {(showAddForm || editingId) && (
-        <div className="bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 p-6">
-          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
-            {editingId ? 'Edit Country' : 'Add Country'}
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Code</label>
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value.toUpperCase() })}
-                placeholder="US"
-                maxLength={3}
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
+    <main className="min-h-screen bg-neutral-50 dark:bg-neutral-950 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-purple-100 dark:bg-purple-900/30 rounded-xl">
+                <Globe className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-neutral-900 dark:text-white">
+                  Supported Countries
+                </h1>
+                <p className="text-sm text-neutral-500">
+                  Manage lending regions & payment methods
+                </p>
+              </div>
             </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="United States"
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Currency</label>
-              <input
-                type="text"
-                value={formData.currency}
-                onChange={(e) => setFormData({ ...formData, currency: e.target.value.toUpperCase() })}
-                placeholder="USD"
-                maxLength={3}
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Symbol</label>
-              <input
-                type="text"
-                value={formData.currency_symbol}
-                onChange={(e) => setFormData({ ...formData, currency_symbol: e.target.value })}
-                placeholder="$"
-                maxLength={3}
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Min Amount</label>
-              <input
-                type="number"
-                value={formData.min_loan_amount}
-                onChange={(e) => setFormData({ ...formData, min_loan_amount: Number(e.target.value) })}
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">Max Amount</label>
-              <input
-                type="number"
-                value={formData.max_loan_amount}
-                onChange={(e) => setFormData({ ...formData, max_loan_amount: Number(e.target.value) })}
-                className="w-full px-4 py-2 bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 rounded-lg text-neutral-900 dark:text-white"
-              />
-            </div>
-            <div className="flex items-center gap-6 md:col-span-2">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="w-4 h-4 rounded border-neutral-300 text-emerald-500"
-                />
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Active</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.dwolla_supported}
-                  onChange={(e) => setFormData({ ...formData, dwolla_supported: e.target.checked })}
-                  className="w-4 h-4 rounded border-neutral-300 text-emerald-500"
-                />
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">Dwolla</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.paypal_supported}
-                  onChange={(e) => setFormData({ ...formData, paypal_supported: e.target.checked })}
-                  className="w-4 h-4 rounded border-neutral-300 text-emerald-500"
-                />
-                <span className="text-sm text-neutral-700 dark:text-neutral-300">PayPal</span>
-              </label>
-            </div>
-          </div>
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              onClick={() => { setShowAddForm(false); setEditingId(null); resetForm(); }}
-              className="px-4 py-2 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={!formData.code || !formData.name}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
-              Save
-            </button>
+            
+            <Badge variant="info">
+              {enabledCount} of {countries.length} active
+            </Badge>
           </div>
         </div>
-      )}
 
-      {/* Countries Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredCountries.map((country) => (
-          <div
-            key={country.id}
-            className={`bg-white dark:bg-neutral-800 rounded-xl border ${
-              country.is_active
-                ? 'border-neutral-200 dark:border-neutral-700'
-                : 'border-neutral-200 dark:border-neutral-700 opacity-60'
-            } p-5`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-blue-100 dark:bg-blue-500/20 rounded-lg flex items-center justify-center text-lg font-bold text-blue-600 dark:text-blue-400">
-                  {country.code}
-                </div>
-                <div>
-                  <h3 className="font-semibold text-neutral-900 dark:text-white">{country.name}</h3>
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">{country.currency_symbol} {country.currency}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => toggleActive(country)}
-                className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300"
-              >
-                {country.is_active ? (
-                  <ToggleRight className="w-6 h-6 text-emerald-500" />
-                ) : (
-                  <ToggleLeft className="w-6 h-6" />
-                )}
-              </button>
-            </div>
+        {/* Message */}
+        {message && (
+          <div className={`mb-4 p-3 rounded-lg flex items-center gap-2 text-sm ${
+            message.type === 'success' 
+              ? 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300 border border-green-200 dark:border-green-800' 
+              : 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+          }`}>
+            {message.type === 'success' ? (
+              <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            )}
+            {message.text}
+          </div>
+        )}
 
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex justify-between">
-                <span className="text-neutral-500 dark:text-neutral-400">Loan Range</span>
-                <span className="text-neutral-900 dark:text-white">
-                  {country.currency_symbol}{country.min_loan_amount} - {country.currency_symbol}{country.max_loan_amount}
-                </span>
-              </div>
+        <div className="space-y-4">
+          {/* Quick Actions */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium text-neutral-900 dark:text-white">Quick Actions</h3>
               <div className="flex gap-2">
-                {country.dwolla_supported && (
-                  <span className="px-2 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 text-xs rounded-full">
-                    Dwolla
-                  </span>
-                )}
-                {country.paypal_supported && (
-                  <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 text-xs rounded-full">
-                    PayPal
-                  </span>
-                )}
+                <Button variant="outline" size="sm" onClick={enableAll}>
+                  Enable All
+                </Button>
+                <Button variant="outline" size="sm" onClick={disableAll}>
+                  Disable All
+                </Button>
               </div>
             </div>
+          </Card>
 
-            <button
-              onClick={() => handleEdit(country)}
-              className="w-full flex items-center justify-center gap-1 px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-              Edit
-            </button>
-          </div>
-        ))}
-      </div>
+          {/* Add New Country */}
+          <Card className="p-4">
+            <h3 className="font-medium text-neutral-900 dark:text-white mb-3">Add New Country</h3>
+            <div className="flex gap-3">
+              <input
+                type="text"
+                placeholder="Code (e.g. US)"
+                value={newCountry.code}
+                onChange={(e) => setNewCountry(prev => ({ ...prev, code: e.target.value.toUpperCase() }))}
+                maxLength={3}
+                className="w-20 px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm uppercase"
+              />
+              <input
+                type="text"
+                placeholder="Country name"
+                value={newCountry.name}
+                onChange={(e) => setNewCountry(prev => ({ ...prev, name: e.target.value }))}
+                className="flex-1 px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm"
+              />
+              <Button size="sm" onClick={addCountry}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+          </Card>
 
-      {/* Info */}
-      <div className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/30 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm text-blue-800 dark:text-blue-300 font-medium">Payment Provider Support</p>
-            <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
-              Dwolla only supports USD transactions in the United States. PayPal can be used for other countries.
-            </p>
-          </div>
+          {/* Countries List with Payment Methods */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-medium text-neutral-900 dark:text-white">Countries & Payment Methods</h3>
+              <Link href="/admin/payment-providers">
+                <Button variant="ghost" size="sm">
+                  <Settings className="w-4 h-4 mr-1" />
+                  Manage Providers
+                </Button>
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {countries.map((country) => {
+                const isExpanded = expandedCountry === country.code;
+                const availableProviders = getAvailableProvidersForCountry(country.code);
+                const enabledProviders = availableProviders.filter(p => isPaymentMethodEnabledForCountry(country.code, p.id));
+                
+                return (
+                  <div key={country.code} className="border border-neutral-200 dark:border-neutral-700 rounded-xl overflow-hidden">
+                    {/* Country Header */}
+                    <div
+                      className={`flex items-center justify-between p-3 transition-colors ${
+                        country.enabled
+                          ? 'bg-green-50 dark:bg-green-900/20'
+                          : 'bg-neutral-50 dark:bg-neutral-800'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-10 text-sm font-mono font-medium text-neutral-500">
+                          {country.code}
+                        </span>
+                        <span className={`font-medium ${
+                          country.enabled 
+                            ? 'text-neutral-900 dark:text-white' 
+                            : 'text-neutral-500 dark:text-neutral-400'
+                        }`}>
+                          {country.name}
+                        </span>
+                        {country.enabled && (
+                          <Badge variant="secondary" size="sm">
+                            {enabledProviders.length} payment methods
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="flex items-center gap-2">
+                        {/* Expand for payment methods */}
+                        {country.enabled && availableProviders.length > 0 && (
+                          <button
+                            onClick={() => setExpandedCountry(isExpanded ? null : country.code)}
+                            className="p-1.5 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition-colors"
+                            title="Configure payment methods"
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                        )}
+                        
+                        {/* Enable/Disable toggle */}
+                        <button
+                          onClick={() => toggleCountry(country.code)}
+                          className={`relative w-11 h-6 rounded-full transition-colors ${
+                            country.enabled 
+                              ? 'bg-green-500' 
+                              : 'bg-neutral-300 dark:bg-neutral-600'
+                          }`}
+                        >
+                          <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                            country.enabled ? 'translate-x-5' : 'translate-x-0.5'
+                          }`} />
+                        </button>
+                        
+                        {/* Delete */}
+                        <button
+                          onClick={() => removeCountry(country.code)}
+                          className="p-1.5 text-neutral-400 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Payment Methods (Expanded) */}
+                    {isExpanded && country.enabled && (
+                      <div className="p-3 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-700">
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+                          Select which payment methods are available in {country.name}
+                        </p>
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                          {availableProviders.map(provider => {
+                            const isEnabled = isPaymentMethodEnabledForCountry(country.code, provider.id);
+                            const Icon = getProviderIcon(provider.provider_type);
+                            const isSaving = savingPaymentMethods === country.code;
+                            
+                            return (
+                              <button
+                                key={provider.id}
+                                onClick={() => {
+                                  const isEnabled = isPaymentMethodEnabledForCountry(country.code, provider.id);
+                                  togglePaymentMethodForCountry(country.code, provider.id, isEnabled);
+                                }}
+                                disabled={isSaving}
+                                className={`p-3 rounded-lg border-2 text-left transition-all ${
+                                  isEnabled
+                                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                                    : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300'
+                                } ${isSaving ? 'opacity-50' : ''}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div 
+                                    className="w-8 h-8 rounded-lg flex items-center justify-center"
+                                    style={{ backgroundColor: `${provider.brand_color}20` }}
+                                  >
+                                    <Icon className="w-4 h-4" style={{ color: provider.brand_color }} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-medium truncate ${
+                                      isEnabled ? 'text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300'
+                                    }`}>
+                                      {provider.name}
+                                    </p>
+                                    <p className="text-xs text-neutral-500 capitalize">{provider.provider_type.replace('_', ' ')}</p>
+                                  </div>
+                                  {isEnabled && (
+                                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        
+                        {availableProviders.length === 0 && (
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400 text-center py-4">
+                            No payment providers support this country yet.{' '}
+                            <Link href="/admin/payment-providers" className="text-primary-600 hover:underline">
+                              Configure providers
+                            </Link>
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {countries.length === 0 && (
+                <div className="text-center py-8 text-neutral-500">
+                  No countries added yet. Add your first country above.
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Info Box */}
+          <Card className="p-4 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+            <div className="flex gap-3 text-sm">
+              <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0" />
+              <div className="text-blue-800 dark:text-blue-300">
+                <p className="font-medium mb-1">How it works</p>
+                <ul className="list-disc list-inside space-y-1 text-blue-700 dark:text-blue-400">
+                  <li>Enabled countries appear in lender preferences</li>
+                  <li>Click the arrow to expand and configure payment methods per country</li>
+                  <li>Payment methods are shown to users based on their country</li>
+                  <li>Manage global provider settings in <Link href="/admin/payment-providers" className="underline">Payment Methods</Link></li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+
+          {/* Save Button */}
+          <Button onClick={handleSave} disabled={saving} className="w-full">
+            {saving ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                Save Countries
+              </>
+            )}
+          </Button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

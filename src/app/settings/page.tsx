@@ -6,9 +6,10 @@ import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Input } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
 import { PlaidLinkButton, ConnectedBank, BankConnectionRequired } from '@/components/payments/PlaidLink';
+import UserPaymentMethodsSettings from '@/components/settings/UserPaymentMethodsSettings';
 import { 
   User, Bell, Shield, LogOut, Building, CheckCircle, 
-  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2, MapPin
+  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2, MapPin, Smartphone
 } from 'lucide-react';
 
 interface Country {
@@ -61,6 +62,10 @@ function SettingsContent() {
 
   // Bank connection state
   const [disconnectingBank, setDisconnectingBank] = useState(false);
+  
+  // Payment provider state (controlled by admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -114,6 +119,44 @@ function SettingsContent() {
 
     fetchData();
   }, [router]);
+
+  // Check if Dwolla (ACH bank transfers) is enabled by admin
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const supabase = createClient();
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      }
+      setLoadingPaymentProviders(false);
+    };
+
+    checkPaymentProviders();
+
+    // Subscribe to real-time changes
+    const supabase = createClient();
+    const channel = supabase
+      .channel('settings_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          checkPaymentProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Fetch states when country changes
   useEffect(() => {
@@ -645,39 +688,82 @@ function SettingsContent() {
               {/* Bank Account Tab */}
               {activeTab === 'payments' && (
                 <div className="space-y-6">
+                  {/* Bank Account Section - Only show if Dwolla (ACH) is enabled by admin */}
+                  {isDwollaEnabled && (
+                    <Card>
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
+                          <Building className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                        </div>
+                        <div>
+                          <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Bank Account (ACH)</h2>
+                          <p className="text-sm text-neutral-500 dark:text-neutral-400">For automatic transfers (US only)</p>
+                        </div>
+                      </div>
+
+                      {(profile?.country === 'US' || !profile?.country) ? (
+                        <>
+                          {profile?.bank_connected ? (
+                            <ConnectedBank
+                              bankName={profile.bank_name}
+                              accountMask={profile.bank_account_mask}
+                              accountType={profile.bank_account_type}
+                              onDisconnect={handleDisconnectBank}
+                            />
+                          ) : (
+                            <div className="text-center py-8">
+                              <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
+                                <Building className="w-8 h-8 text-neutral-400" />
+                              </div>
+                              <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No Bank Connected</h3>
+                              <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto">
+                                Connect your bank account to receive loan funds and make repayments automatically.
+                              </p>
+                              <PlaidLinkButton
+                                onSuccess={handleBankConnected}
+                                onError={(err) => setMessage({ type: 'error', text: err })}
+                                buttonText="Connect Bank Account"
+                              />
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <div>
+                              <p className="font-medium text-amber-800 dark:text-amber-300">ACH not available in your region</p>
+                              <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+                                Bank connections via ACH are currently only available in the United States. 
+                                Please use the manual payment methods below.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </Card>
+                  )}
+
+                  {/* Manual Payment Methods Section */}
                   <Card>
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
-                        <Building className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                      <div className="w-12 h-12 bg-green-100 dark:bg-green-900/30 rounded-xl flex items-center justify-center">
+                        <Smartphone className="w-6 h-6 text-green-600 dark:text-green-400" />
                       </div>
                       <div>
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Bank Account</h2>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">Connect your bank to send and receive payments</p>
+                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Payment Methods</h2>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                          Add your payment accounts (Cash App, Venmo, Zelle, etc.)
+                        </p>
                       </div>
                     </div>
 
-                    {profile?.bank_connected ? (
-                      <ConnectedBank
-                        bankName={profile.bank_name}
-                        accountMask={profile.bank_account_mask}
-                        accountType={profile.bank_account_type}
-                        onDisconnect={handleDisconnectBank}
+                    {profile?.id && (
+                      <UserPaymentMethodsSettings
+                        userId={profile.id}
+                        userCountry={profile.country || 'US'}
+                        onUpdate={() => setMessage({ type: 'success', text: 'Payment method updated!' })}
                       />
-                    ) : (
-                      <div className="text-center py-8">
-                        <div className="w-16 h-16 mx-auto mb-4 bg-neutral-100 dark:bg-neutral-800 rounded-full flex items-center justify-center">
-                          <Building className="w-8 h-8 text-neutral-400" />
-                        </div>
-                        <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">No Bank Connected</h3>
-                        <p className="text-neutral-500 dark:text-neutral-400 mb-6 max-w-sm mx-auto">
-                          Connect your bank account to receive loan funds and make repayments securely.
-                        </p>
-                        <PlaidLinkButton
-                          onSuccess={handleBankConnected}
-                          onError={(err) => setMessage({ type: 'error', text: err })}
-                          buttonText="Connect Bank Account"
-                        />
-                      </div>
                     )}
                   </Card>
 
@@ -688,7 +774,7 @@ function SettingsContent() {
                         <h4 className="font-medium text-blue-800 dark:text-blue-300">Secure & Protected</h4>
                         <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
                           We use Plaid to securely connect to your bank. We never store your bank login credentials. 
-                          All transfers are processed through Dwolla, a licensed money transmitter.
+                          Your payment details are only shared with lenders/borrowers you transact with.
                         </p>
                       </div>
                     </div>

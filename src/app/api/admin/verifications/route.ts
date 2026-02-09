@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { 
+  sendEmail, 
+  getVerificationApprovedEmail, 
+  getVerificationRejectedEmail,
+  getBusinessVerificationApprovedEmail,
+  getBusinessVerificationRejectedEmail
+} from '@/lib/email';
 
 // GET: Fetch all pending verifications (users and businesses)
 export async function GET(request: NextRequest) {
@@ -26,26 +33,37 @@ export async function GET(request: NextRequest) {
     // Use service role client to bypass RLS
     const serviceClient = await createServiceRoleClient();
 
-    // Fetch pending users (verification_status = 'submitted' means they've submitted for review)
+    // Fetch pending users (verification_status = 'submitted' or 'pending' means they've submitted for review)
     const { data: pendingUsers, error: usersError } = await serviceClient
       .from('users')
       .select(`
         id,
         full_name,
         email,
-        phone,
+        phone_number,
+        date_of_birth,
         verification_status,
         verification_submitted_at,
+        verified_at,
+        reverification_required,
+        verification_count,
         id_type,
         id_number,
+        id_front_url,
+        id_back_url,
         id_document_url,
+        id_expiry,
         id_expiry_date,
+        selfie_url,
+        selfie_verified,
         employment_status,
         employer_name,
+        job_title,
         employer_address,
         employment_start_date,
         employment_document_url,
         monthly_income,
+        monthly_income_range,
         address_line1,
         address_line2,
         city,
@@ -54,10 +72,11 @@ export async function GET(request: NextRequest) {
         country,
         address_document_url,
         address_document_type,
+        ssn_last4,
         created_at
       `)
-      .eq('verification_status', 'submitted')
-      .order('verification_submitted_at', { ascending: true });
+      .in('verification_status', ['submitted', 'pending'])
+      .order('verification_submitted_at', { ascending: true, nullsFirst: false });
 
     if (usersError) {
       console.error('Error fetching pending users:', usersError);
@@ -110,9 +129,7 @@ export async function GET(request: NextRequest) {
         contact_phone,
         website_url,
         location,
-        city,
         state,
-        country,
         ein_tax_id,
         years_in_business,
         verification_status,
@@ -194,14 +211,32 @@ export async function POST(request: NextRequest) {
     const serviceClient = await createServiceRoleClient();
 
     if (type === 'user') {
+      // First get user info for email
+      const { data: userData } = await serviceClient
+        .from('users')
+        .select('email, full_name, reverification_required')
+        .eq('id', id)
+        .single();
+
       const newStatus = action === 'approve' ? 'verified' : 'rejected';
+      const updateData: any = {
+        verification_status: newStatus,
+        verification_reviewed_at: new Date().toISOString(),
+      };
+
+      if (action === 'approve') {
+        updateData.verified_at = new Date().toISOString();
+        updateData.reverification_required = false;
+        updateData.reverification_due_at = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(); // 3 months
+        updateData.selfie_verified = true;
+        updateData.verification_notes = null;
+      } else {
+        updateData.verification_notes = reason || 'Did not meet verification requirements';
+      }
+
       const { error } = await serviceClient
         .from('users')
-        .update({
-          verification_status: newStatus,
-          verification_reviewed_at: new Date().toISOString(),
-          verification_notes: action === 'reject' ? (reason || 'Did not meet verification requirements') : null
-        })
+        .update(updateData)
         .eq('id', id);
 
       if (error) {
@@ -209,8 +244,62 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
+      // Send email notification
+      if (userData?.email) {
+        try {
+          const userName = userData.full_name?.split(' ')[0] || 'there';
+          
+          if (action === 'approve') {
+            const emailContent = getVerificationApprovedEmail({
+              userName,
+              isReverification: userData.reverification_required || false
+            });
+            await sendEmail({
+              to: userData.email,
+              subject: emailContent.subject,
+              html: emailContent.html
+            });
+          } else {
+            const emailContent = getVerificationRejectedEmail({
+              userName,
+              reason: reason || 'The submitted documents did not meet our verification requirements.'
+            });
+            await sendEmail({
+              to: userData.email,
+              subject: emailContent.subject,
+              html: emailContent.html
+            });
+          }
+          console.log(`Verification ${action} email sent to ${userData.email}`);
+        } catch (emailError) {
+          console.error('Failed to send verification email:', emailError);
+          // Don't fail the request if email fails
+        }
+      }
+
       return NextResponse.json({ success: true, type: 'user', id, action });
     } else if (type === 'business') {
+      // First get business and owner info for email
+      const { data: businessData } = await serviceClient
+        .from('business_profiles')
+        .select('business_name, user_id')
+        .eq('id', id)
+        .single();
+
+      let ownerEmail = '';
+      let ownerName = '';
+      
+      if (businessData?.user_id) {
+        const { data: ownerData } = await serviceClient
+          .from('users')
+          .select('email, full_name')
+          .eq('id', businessData.user_id)
+          .single();
+        
+        ownerEmail = ownerData?.email || '';
+        ownerName = ownerData?.full_name?.split(' ')[0] || 'there';
+      }
+
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
       const updateData: any = {
         verification_status: newStatus,
@@ -232,6 +321,38 @@ export async function POST(request: NextRequest) {
       if (error) {
         console.error('Error updating business verification:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      // Send email notification
+      if (ownerEmail && businessData?.business_name) {
+        try {
+          if (action === 'approve') {
+            const emailContent = getBusinessVerificationApprovedEmail({
+              ownerName,
+              businessName: businessData.business_name
+            });
+            await sendEmail({
+              to: ownerEmail,
+              subject: emailContent.subject,
+              html: emailContent.html
+            });
+          } else {
+            const emailContent = getBusinessVerificationRejectedEmail({
+              ownerName,
+              businessName: businessData.business_name,
+              reason: reason || 'The business information provided did not meet our verification requirements.'
+            });
+            await sendEmail({
+              to: ownerEmail,
+              subject: emailContent.subject,
+              html: emailContent.html
+            });
+          }
+          console.log(`Business verification ${action} email sent to ${ownerEmail}`);
+        } catch (emailError) {
+          console.error('Failed to send business verification email:', emailError);
+          // Don't fail the request if email fails
+        }
       }
 
       return NextResponse.json({ success: true, type: 'business', id, action });

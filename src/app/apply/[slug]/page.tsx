@@ -5,20 +5,26 @@ import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import GuestLoanRequestForm from '@/components/loans/GuestLoanRequestForm';
 import { Card } from '@/components/ui';
-import { Building2, Loader2, AlertCircle } from 'lucide-react';
+import { Building2, Loader2, AlertCircle, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
 
 interface BusinessLender {
   id: string;
   business_name: string;
-  business_slug: string;
+  slug: string;
   logo_url?: string;
   description?: string;
+  tagline?: string;
   is_verified: boolean;
-  is_active: boolean;
+  verification_status: string;
+  default_interest_rate: number;
+  interest_type: string;
+  first_time_borrower_amount: number;
+  min_loan_amount: number | null;
+  max_loan_amount: number | null;
 }
 
-export default function ApplyPage() {
+export default function ApplyWithSlugPage() {
   const params = useParams();
   const slug = params?.slug as string;
   const supabase = createClient();
@@ -36,15 +42,29 @@ export default function ApplyPage() {
 
       try {
         const { data, error: fetchError } = await supabase
-          .from('users')
-          .select('id, business_name, business_slug, logo_url, description, is_verified, is_active')
-          .eq('business_slug', slug)
-          .eq('is_business', true)
+          .from('business_profiles')
+          .select(`
+            id, 
+            business_name, 
+            slug, 
+            logo_url, 
+            description, 
+            tagline,
+            is_verified, 
+            verification_status,
+            default_interest_rate,
+            interest_type,
+            first_time_borrower_amount,
+            min_loan_amount,
+            max_loan_amount
+          `)
+          .eq('slug', slug)
           .single();
 
         if (fetchError || !data) {
+          console.error('Business fetch error:', fetchError);
           setError('Business lender not found');
-        } else if (!data.is_active) {
+        } else if (data.verification_status !== 'approved') {
           setError('This lender is not currently accepting applications');
         } else {
           setBusiness(data);
@@ -79,8 +99,8 @@ export default function ApplyPage() {
           <p className="text-neutral-500 dark:text-neutral-400 mb-6">
             The lender you're looking for may not exist or is no longer accepting applications.
           </p>
-          <Link href="/" className="text-primary-600 hover:text-primary-700 font-medium">
-            ← Go to homepage
+          <Link href="/apply" className="text-primary-600 hover:text-primary-700 font-medium">
+            ← Apply without a specific lender
           </Link>
         </Card>
       </div>
@@ -102,8 +122,15 @@ export default function ApplyPage() {
                 </div>
               )}
               <div>
-                <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{business.business_name}</h1>
-                <p className="text-neutral-500 dark:text-neutral-400">Apply for a loan</p>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">{business.business_name}</h1>
+                  {business.is_verified && (
+                    <CheckCircle className="w-5 h-5 text-green-500" />
+                  )}
+                </div>
+                <p className="text-neutral-500 dark:text-neutral-400">
+                  {business.tagline || 'Apply for a loan'}
+                </p>
               </div>
             </div>
           ) : (
@@ -115,12 +142,47 @@ export default function ApplyPage() {
         </div>
       </div>
 
+      {/* Lender Info Card */}
+      {business && (
+        <div className="max-w-3xl mx-auto px-4 pt-6">
+          <Card className="p-4 bg-primary-50 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800">
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div>
+                <span className="text-primary-600 dark:text-primary-400">Interest Rate:</span>
+                <span className="ml-1 font-medium text-neutral-900 dark:text-white">
+                  {business.default_interest_rate}% {business.interest_type}
+                </span>
+              </div>
+              <div>
+                <span className="text-primary-600 dark:text-primary-400">First-Time Limit:</span>
+                <span className="ml-1 font-medium text-neutral-900 dark:text-white">
+                  ${business.first_time_borrower_amount?.toLocaleString() || '50'}
+                </span>
+              </div>
+              {business.max_loan_amount && (
+                <div>
+                  <span className="text-primary-600 dark:text-primary-400">Max Loan:</span>
+                  <span className="ml-1 font-medium text-neutral-900 dark:text-white">
+                    ${business.max_loan_amount.toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Form */}
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-3xl mx-auto px-4 py-6">
         <Card className="p-6 md:p-8">
           <GuestLoanRequestForm 
-            businessSlug={business?.business_slug || null}
+            businessSlug={business?.slug || null}
             businessLenderId={business?.id || null}
+            businessName={business?.business_name || null}
+            businessInterestRate={business?.default_interest_rate || null}
+            businessInterestType={business?.interest_type as 'simple' | 'compound' | null || null}
+            businessFirstTimeLimit={business?.first_time_borrower_amount || null}
+            businessMaxLoanAmount={business?.max_loan_amount || null}
           />
         </Card>
       </div>

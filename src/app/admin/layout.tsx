@@ -43,6 +43,7 @@ const navItems = [
   { href: '/admin/cron', label: 'Cron Jobs', icon: Clock },
   { href: '/admin/countries', label: 'Countries', icon: Globe },
   { href: '/admin/states', label: 'States / Regions', icon: MapPin },
+  { href: '/admin/payment-providers', label: 'Payment Methods', icon: CreditCard },
   { href: '/admin/platform-fee', label: 'Platform Fees', icon: Percent },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];

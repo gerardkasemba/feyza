@@ -41,17 +41,22 @@ export default async function BusinessPage() {
   }
 
   // Fetch all data in parallel for better performance
-  const [profileResult, businessProfileResult] = await Promise.all([
+  const [profileResult, businessProfileResult, paymentProvidersResult] = await Promise.all([
     supabase.from('users').select('*').eq('id', user.id).single(),
     supabase
       .from('business_profiles')
       .select('*, slug, public_profile_enabled, verification_status, logo_url, lending_terms, lending_terms_updated_at')
       .eq('user_id', user.id)
       .single(),
+    supabase
+      .from('payment_providers')
+      .select('slug')
+      .eq('is_enabled', true),
   ]);
 
   const profile = profileResult.data;
   const businessProfile = businessProfileResult.data;
+  const isDwollaEnabled = (paymentProvidersResult.data || []).some((p: any) => p.slug === 'dwolla');
 
   // If no business profile, redirect to setup
   if (!businessProfile) {
@@ -112,7 +117,8 @@ export default async function BusinessPage() {
   const hasLenderPrefs = !!prefsResult.data;
 
   // Check if profile is incomplete
-  const isProfileIncomplete = !businessProfile.profile_completed || !profile?.bank_connected;
+  // Only require bank connection if Dwolla is enabled
+  const isProfileIncomplete = !businessProfile.profile_completed || (isDwollaEnabled && !profile?.bank_connected);
 
   const userProfile = profile || {
     id: user.id,
@@ -144,13 +150,13 @@ export default async function BusinessPage() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">Complete Your Business Profile</h3>
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
-                      {!profile?.bank_connected 
+                      {isDwollaEnabled && !profile?.bank_connected 
                         ? 'Connect your bank account via Plaid to receive loan repayments from borrowers.'
                         : 'Please complete your business profile to start receiving loan requests.'}
                     </p>
                     <Link href="/business/settings?tab=payments">
                       <Button size="sm">
-                        {!profile?.bank_connected ? (
+                        {isDwollaEnabled && !profile?.bank_connected ? (
                           <>
                             <CreditCard className="w-4 h-4 mr-2" />
                             Connect Bank Account

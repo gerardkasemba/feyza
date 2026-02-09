@@ -9,8 +9,9 @@ import { LoanRequestForm, LoanRequestFormData } from '@/components/loans/LoanReq
 import { createClient } from '@/lib/supabase/client';
 import { BusinessProfile } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
-import { ArrowLeft, Building2, CheckCircle, Building, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowLeft, Building2, CheckCircle, Building, AlertCircle, Loader2, Smartphone, Camera, RefreshCw } from 'lucide-react';
 import { usePlaidLink } from 'react-plaid-link';
+import { ConnectedPaymentDisplay } from '@/components/payments';
 
 interface BankInfo {
   dwolla_customer_url?: string;
@@ -36,8 +37,12 @@ function NewLoanContent() {
   const [bankInfo, setBankInfo] = useState<BankInfo | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [connectingBank, setConnectingBank] = useState(false);
+  
+  // Payment provider state (controlled by admin)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
 
   const [verificationRequired, setVerificationRequired] = useState(false);
+  const [needsReverification, setNeedsReverification] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -81,6 +86,17 @@ function NewLoanContent() {
         });
       }
 
+      // Check if user needs re-verification (every 3 months)
+      if (userData.verification_status === 'verified' && userData.verified_at) {
+        const verifiedAt = new Date(userData.verified_at);
+        const threeMonthsAgo = new Date();
+        threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        
+        if (verifiedAt < threeMonthsAgo || userData.reverification_required) {
+          setNeedsReverification(true);
+        }
+      }
+
       // Fetch available business lenders
       const { data: businessData } = await supabase
         .from('business_profiles')
@@ -117,6 +133,43 @@ function NewLoanContent() {
 
     fetchData();
   }, [router, lenderSlug]);
+
+  // Check if Dwolla (ACH bank transfers) is enabled by admin
+  useEffect(() => {
+    const checkPaymentProviders = async () => {
+      try {
+        const supabase = createClient();
+        const { data: providers } = await supabase
+          .from('payment_providers')
+          .select('slug')
+          .eq('is_enabled', true);
+        
+        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
+        setIsDwollaEnabled(dwollaEnabled);
+      } catch (err) {
+        console.error('Failed to check payment providers:', err);
+      }
+    };
+
+    checkPaymentProviders();
+
+    // Subscribe to real-time changes
+    const supabase = createClient();
+    const channel = supabase
+      .channel('loans_new_payment_providers')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'payment_providers' },
+        () => {
+          checkPaymentProviders();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   // Get Plaid link token for bank connection
   const fetchLinkToken = useCallback(async () => {
@@ -308,9 +361,6 @@ function NewLoanContent() {
       lender_type: data.lenderType,
       business_lender_id: targetLenderId,
       loan_type_id: data.loanTypeId || null,
-      // Borrower location for matching
-      country: user.country || null,
-      state: user.state || null,
       // Use invited user's email if found by username
       invite_email: data.lenderType === 'personal' 
         ? (invitedLenderInfo?.email || data.inviteEmail || null) 
@@ -531,8 +581,51 @@ function NewLoanContent() {
             </div>
           )}
 
+          {/* Re-verification Required Block - Takes Priority */}
+          {needsReverification && (
+            <Card className="mb-6 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-xl">
+                  <Camera className="w-6 h-6 text-red-600 dark:text-red-400" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h3 className="font-semibold text-red-900 dark:text-red-300">Re-verification Required</h3>
+                    <span className="px-2 py-0.5 bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 text-xs font-semibold rounded-full">
+                      Account Restricted
+                    </span>
+                  </div>
+                  <p className="text-sm text-red-800 dark:text-red-400 mb-4">
+                    Your verification has expired. For your security, we require a new selfie every 3 months. 
+                    Please complete re-verification to continue requesting loans.
+                  </p>
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
+                      <CheckCircle className="w-4 h-4 text-red-500" />
+                      <span>Only takes 1 minute</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
+                      <CheckCircle className="w-4 h-4 text-red-500" />
+                      <span>Just a new selfie needed</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
+                      <CheckCircle className="w-4 h-4 text-red-500" />
+                      <span>Protects your account security</span>
+                    </div>
+                  </div>
+                  <Link href="/verify">
+                    <Button className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white">
+                      <Camera className="w-4 h-4 mr-2" />
+                      Complete Re-verification
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Verification Required Block */}
-          {verificationRequired && preferredLender && (
+          {verificationRequired && preferredLender && !needsReverification && (
             <Card className="mb-6 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
               <div className="flex items-start gap-4">
                 <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
@@ -568,67 +661,90 @@ function NewLoanContent() {
             </Card>
           )}
 
-          {/* Show form only if verification not required OR not a direct business loan */}
-          {(!verificationRequired || !preferredLender) && (
+          {/* Show form only if verification not required OR not a direct business loan, AND not needing re-verification */}
+          {!needsReverification && (!verificationRequired || !preferredLender) && (
             <>
-              {/* Bank Connection Card for ACH */}
+              {/* Bank Connection Card for ACH - Only show if Dwolla is enabled */}
+              {isDwollaEnabled && (
+                <Card className="mb-6">
+                  <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
+                    <Building className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                    Bank Account (ACH)
+                  </h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
+                    Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
+                  </p>
+
+                  {bankConnected && bankInfo ? (
+                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                            <Building className="w-5 h-5 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
+                              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                            </div>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400">Account ••••{bankInfo.account_mask}</p>
+                          </div>
+                        </div>
+                        <Badge variant="success">Connected</Badge>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                      <div className="flex items-start gap-3 mb-4">
+                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-amber-800 dark:text-amber-300">Bank not connected</p>
+                          <p className="text-sm text-amber-700 dark:text-amber-400">
+                            Connect your bank to receive loan funds instantly when approved.
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={handleConnectBank}
+                        disabled={connectingBank || !plaidReady}
+                        className="w-full"
+                      >
+                        {connectingBank ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Connecting...
+                          </>
+                        ) : (
+                          <>
+                            <Building className="w-4 h-4 mr-2" />
+                            Connect Bank Account
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* Manual Payment Methods Card */}
               <Card className="mb-6">
                 <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
-                  <Building className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                  Your Bank Account
+                  <Smartphone className="w-5 h-5 text-green-600 dark:text-green-400" />
+                  Payment Methods
                 </h3>
                 <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                  Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
+                  Add your Cash App, Venmo, Zelle, or PayPal so lenders know where to send your funds.
                 </p>
 
-                {bankConnected && bankInfo ? (
-                  <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                          <Building className="w-5 h-5 text-green-600 dark:text-green-400" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
-                            <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                          </div>
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400">Account ••••{bankInfo.account_mask}</p>
-                        </div>
-                      </div>
-                      <Badge variant="success">Connected</Badge>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-                    <div className="flex items-start gap-3 mb-4">
-                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-medium text-amber-800 dark:text-amber-300">Bank not connected</p>
-                        <p className="text-sm text-amber-700 dark:text-amber-400">
-                          Connect your bank to receive loan funds instantly when approved.
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={handleConnectBank}
-                      disabled={connectingBank || !plaidReady}
-                      className="w-full"
-                    >
-                      {connectingBank ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Connecting...
-                        </>
-                      ) : (
-                        <>
-                          <Building className="w-4 h-4 mr-2" />
-                          Connect Bank Account
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
+                <ConnectedPaymentDisplay
+                  userId={user?.id}
+                  userCountry={user?.country || 'US'}
+                  bankConnected={bankConnected}
+                  bankName={bankInfo?.bank_name}
+                  bankAccountMask={bankInfo?.account_mask}
+                  showTitle={false}
+                  showAddPrompt={true}
+                />
               </Card>
 
               <Card>

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer } from '@/lib/dwolla';
-import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
+import { sendEmail } from '@/lib/email';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
-// POST: Lender signs agreement and initiates ACH transfer to borrower
+// POST: Lender signs agreement and funds the loan
+// Supports both ACH (Dwolla) and manual payment methods
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -13,7 +14,7 @@ export async function POST(
   try {
     const { id: loanId } = await params;
     const body = await request.json();
-    const { agreementAccepted } = body;
+    const { agreementAccepted, manualPayment, paymentMethod, transactionRef, receiptUrl } = body;
 
     if (!agreementAccepted) {
       return NextResponse.json({ error: 'Agreement must be accepted' }, { status: 400 });
@@ -28,15 +29,62 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get user profile with Dwolla info
+    // Get user profile
     const { data: lenderProfile } = await supabase
       .from('users')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    if (!lenderProfile?.dwolla_funding_source_url) {
-      return NextResponse.json({ error: 'Please connect your bank account first' }, { status: 400 });
+    // Check if Dwolla is enabled
+    let isDwollaEnabled = false;
+    try {
+      // First, check if Dwolla row exists at all
+      const { data: allProviders, error: listError } = await serviceSupabase
+        .from('payment_providers')
+        .select('slug, is_enabled')
+        .limit(10);
+      
+      console.log('[Fund] All payment providers:', allProviders?.map(p => `${p.slug}:${p.is_enabled}`));
+      
+      if (listError) {
+        console.error('[Fund] Error listing providers:', listError.message);
+      }
+
+      // Query Dwolla provider status
+      const { data: dwollaProvider, error: dwollaError } = await serviceSupabase
+        .from('payment_providers')
+        .select('slug, is_enabled, is_available_for_disbursement, supported_countries')
+        .eq('slug', 'dwolla')
+        .maybeSingle(); // Use maybeSingle to not throw if not found
+      
+      if (dwollaError) {
+        console.log('[Fund] Dwolla query error:', dwollaError.message);
+      } else if (!dwollaProvider) {
+        console.log('[Fund] ❌ Dwolla provider NOT FOUND in database!');
+      } else {
+        console.log('[Fund] Dwolla provider status:', {
+          is_enabled: dwollaProvider.is_enabled,
+          is_available_for_disbursement: dwollaProvider.is_available_for_disbursement,
+          supported_countries: dwollaProvider.supported_countries,
+        });
+        
+        isDwollaEnabled = dwollaProvider.is_enabled === true && 
+                          dwollaProvider.is_available_for_disbursement === true;
+      }
+    } catch (e: any) {
+      console.error('[Fund] Error checking Dwolla:', e.message);
+      isDwollaEnabled = false;
+    }
+
+    console.log('[Fund] Payment mode:', isDwollaEnabled ? 'ACH (Dwolla)' : 'Manual');
+    console.log('[Fund] Request body manualPayment flag:', body.manualPayment);
+
+    // For ACH payments, require bank connection
+    if (isDwollaEnabled && !manualPayment) {
+      if (!lenderProfile?.dwolla_funding_source_url) {
+        return NextResponse.json({ error: 'Please connect your bank account first' }, { status: 400 });
+      }
     }
 
     // Get the loan with all details
@@ -44,7 +92,7 @@ export async function POST(
       .from('loans')
       .select(`
         *,
-        borrower:users!borrower_id(id, email, full_name, dwolla_funding_source_url, dwolla_customer_url, bank_name, bank_account_mask),
+        borrower:users!borrower_id(id, email, full_name, dwolla_funding_source_url, dwolla_customer_url, bank_name, bank_account_mask, phone),
         business_lender:business_profiles!business_lender_id(id, business_name, contact_email, user_id)
       `)
       .eq('id', loanId)
@@ -70,7 +118,157 @@ export async function POST(
       return NextResponse.json({ error: 'Loan has already been funded' }, { status: 400 });
     }
 
-    // Get borrower's Dwolla info - check multiple sources
+    const lenderName = lenderProfile?.full_name || loan.business_lender?.business_name || 'Your lender';
+    const borrowerName = loan.borrower?.full_name || 'the borrower';
+    const borrowerEmail = loan.borrower?.email;
+
+    // === MANUAL PAYMENT FLOW ===
+    if (!isDwollaEnabled || manualPayment) {
+      console.log('[Fund] Processing manual payment:', { paymentMethod, transactionRef, receiptUrl });
+
+      // Update loan - mark as funded manually
+      const { error: updateError } = await serviceSupabase
+        .from('loans')
+        .update({
+          funds_sent: true,
+          funds_sent_at: new Date().toISOString(),
+          funds_sent_method: paymentMethod || 'manual',
+          funds_sent_reference: transactionRef || null,
+          disbursement_receipt_url: receiptUrl || null,
+          lender_signed: true,
+          lender_signed_at: new Date().toISOString(),
+          disbursement_status: 'pending_confirmation', // Borrower needs to confirm receipt
+          status: 'active', // Activate the loan
+        })
+        .eq('id', loanId);
+
+      if (updateError) {
+        console.error('[Fund] Loan update error:', updateError);
+        return NextResponse.json({ error: 'Failed to update loan' }, { status: 500 });
+      }
+
+      // Create notification for borrower
+      await serviceSupabase.from('notifications').insert({
+        user_id: loan.borrower_id,
+        loan_id: loanId,
+        type: 'funds_sent',
+        title: '💵 Funds Sent!',
+        message: `${lenderName} has sent you $${loan.amount.toLocaleString()} via ${paymentMethod || 'external transfer'}. Please confirm when you receive it.`,
+        is_read: false,
+      });
+
+      // Create notification for lender
+      await serviceSupabase.from('notifications').insert({
+        user_id: user.id,
+        loan_id: loanId,
+        type: 'funds_sent',
+        title: '✅ Loan Funded',
+        message: `You've confirmed sending $${loan.amount.toLocaleString()} to ${borrowerName}. The loan is now active.`,
+        is_read: false,
+      });
+
+      // Send email to borrower
+      if (borrowerEmail) {
+        await sendEmail({
+          to: borrowerEmail,
+          subject: `${lenderName} has sent you $${loan.amount.toLocaleString()}!`,
+          html: `
+          <!DOCTYPE html>
+          <html lang="en">
+            <body style="
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              max-width: 600px;
+              margin: 0 auto;
+              padding: 20px;
+              background-color: #f9fafb;
+            ">
+              <div style="
+                background: white;
+                border-radius: 16px;
+                overflow: hidden;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+              ">
+                <div style="
+                  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                  padding: 30px;
+                  text-align: center;
+                ">
+                  <h1 style="color: white; margin: 0; font-size: 26px; font-weight: 700;">
+                    💵 Funds Sent!
+                  </h1>
+                </div>
+
+                <div style="background: #f0fdf4; padding: 30px; border: 1px solid #bbf7d0;">
+                  <p style="font-size: 18px; margin-top: 0;">
+                    Hi ${borrowerName}! 👋
+                  </p>
+
+                  <p>
+                    <strong>${lenderName}</strong> has sent you funds for your loan.
+                  </p>
+
+                  <div style="
+                    background: white;
+                    padding: 20px;
+                    border-radius: 12px;
+                    margin: 24px 0;
+                    text-align: center;
+                    border: 1px solid #bbf7d0;
+                  ">
+                    <p style="color: #6b7280; margin: 0; font-size: 14px;">Amount Sent</p>
+                    <p style="font-size: 32px; font-weight: bold; color: #059669; margin: 6px 0;">
+                      $${loan.amount.toLocaleString()}
+                    </p>
+                    <p style="color: #6b7280; margin: 0; font-size: 14px;">
+                      via ${paymentMethod || 'External Transfer'}
+                    </p>
+                  </div>
+
+                  <div style="
+                    background: #fef3c7;
+                    border: 1px solid #fcd34d;
+                    border-radius: 8px;
+                    padding: 16px;
+                    margin: 20px 0;
+                  ">
+                    <p style="margin: 0; color: #92400e; font-size: 14px;">
+                      <strong>📅 Repayment Reminder</strong><br/>
+                      Your first payment of <strong>$${(loan.repayment_amount || 0).toLocaleString()}</strong>
+                      is due on <strong>${loan.start_date ? new Date(loan.start_date).toLocaleDateString() : 'the agreed date'}</strong>.
+                    </p>
+                  </div>
+
+                  <a href="${APP_URL}/loans/${loanId}" style="
+                    display: block;
+                    background: linear-gradient(to right, #059669, #047857);
+                    color: white;
+                    text-decoration: none;
+                    padding: 16px 32px;
+                    border-radius: 8px;
+                    font-weight: 600;
+                    text-align: center;
+                    margin: 28px 0 10px;
+                  ">
+                    View Loan Details →
+                  </a>
+                </div>
+              </div>
+            </body>
+          </html>
+          `,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Loan funded successfully',
+        method: 'manual',
+        paymentMethod: paymentMethod || 'manual',
+      });
+    }
+
+    // === ACH PAYMENT FLOW (Dwolla) ===
+    // Get borrower's Dwolla info
     const borrowerDwollaFundingSource = 
       loan.borrower_dwolla_funding_source_url ||
       loan.borrower?.dwolla_funding_source_url;
@@ -84,11 +282,11 @@ export async function POST(
     console.log('[Fund] Initiating ACH transfer:', {
       loanId,
       amount: loan.amount,
-      lenderFundingSource: lenderProfile.dwolla_funding_source_url,
+      lenderFundingSource: lenderProfile?.dwolla_funding_source_url,
       borrowerFundingSource: borrowerDwollaFundingSource,
     });
 
-    // IDEMPOTENCY CHECK: Check if a disbursement transfer already exists for this loan
+    // IDEMPOTENCY CHECK: Check if a disbursement transfer already exists
     const { data: existingDisbursement } = await serviceSupabase
       .from('transfers')
       .select('id, dwolla_transfer_id, status')
@@ -98,7 +296,7 @@ export async function POST(
       .single();
     
     if (existingDisbursement) {
-      console.log(`[Fund] Disbursement already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
+      console.log(`[Fund] Disbursement already exists for loan ${loanId}`);
       return NextResponse.json({
         success: true,
         message: 'Disbursement already processed',
@@ -114,7 +312,7 @@ export async function POST(
 
     try {
       const result = await createFacilitatedTransfer({
-        sourceFundingSourceUrl: lenderProfile.dwolla_funding_source_url,
+        sourceFundingSourceUrl: lenderProfile!.dwolla_funding_source_url,
         destinationFundingSourceUrl: borrowerDwollaFundingSource,
         amount: loan.amount,
         currency: 'USD',
@@ -136,12 +334,9 @@ export async function POST(
       }, { status: 500 });
     }
 
-    // Record only ONE transfer in database (the final transfer ID)
-    // Note: Dwolla facilitated transfers create 2 internal transfers (source→master, master→destination)
-    // but from the user's perspective, this is one single transfer
+    // Record transfer in database
     const mainTransferId = transferIds[transferIds.length - 1];
     if (mainTransferId) {
-      // Use upsert to prevent duplicates (in case of race conditions)
       await serviceSupabase
         .from('transfers')
         .upsert({
@@ -158,8 +353,8 @@ export async function POST(
         });
     }
 
-    // Update loan - mark as funded and lender signed
-    const { error: updateError } = await serviceSupabase
+    // Update loan
+    await serviceSupabase
       .from('loans')
       .update({
         funds_sent: true,
@@ -169,27 +364,17 @@ export async function POST(
         lender_signed_at: new Date().toISOString(),
         disbursement_status: 'processing',
         disbursement_transfer_id: transferIds[transferIds.length - 1],
-        // Update lender info if not already set
-        lender_dwolla_customer_url: lenderProfile.dwolla_customer_url,
-        lender_dwolla_customer_id: lenderProfile.dwolla_customer_id,
-        lender_dwolla_funding_source_url: lenderProfile.dwolla_funding_source_url,
-        lender_dwolla_funding_source_id: lenderProfile.dwolla_funding_source_id,
-        lender_bank_name: lenderProfile.bank_name,
-        lender_bank_account_mask: lenderProfile.bank_account_mask,
+        lender_dwolla_customer_url: lenderProfile?.dwolla_customer_url,
+        lender_dwolla_customer_id: lenderProfile?.dwolla_customer_id,
+        lender_dwolla_funding_source_url: lenderProfile?.dwolla_funding_source_url,
+        lender_dwolla_funding_source_id: lenderProfile?.dwolla_funding_source_id,
+        lender_bank_name: lenderProfile?.bank_name,
+        lender_bank_account_mask: lenderProfile?.bank_account_mask,
         lender_bank_connected: true,
       })
       .eq('id', loanId);
 
-    if (updateError) {
-      console.error('[Fund] Loan update error:', updateError);
-      // Transfer already initiated, so don't fail completely
-    }
-
-    const lenderName = lenderProfile.full_name || loan.business_lender?.business_name || 'Your lender';
-    const borrowerName = loan.borrower?.full_name || 'the borrower';
-    const borrowerEmail = loan.borrower?.email;
-
-    // Create notification for borrower
+    // Create notifications
     await serviceSupabase.from('notifications').insert({
       user_id: loan.borrower_id,
       loan_id: loanId,
@@ -199,7 +384,6 @@ export async function POST(
       is_read: false,
     });
 
-    // Create notification for lender
     await serviceSupabase.from('notifications').insert({
       user_id: user.id,
       loan_id: loanId,
@@ -224,62 +408,26 @@ export async function POST(
             padding: 20px;
             background-color: #f9fafb;
           ">
-
-            <!-- ===== CARD ===== -->
             <div style="
               background: white;
               border-radius: 16px;
               overflow: hidden;
               box-shadow: 0 10px 25px rgba(0,0,0,0.05);
             ">
-
-              <!-- ===== HEADER ===== -->
               <div style="
                 background: linear-gradient(135deg, #059669 0%, #047857 100%);
                 padding: 30px;
                 text-align: center;
               ">
-
-                <!-- Logo (email-safe centered) -->
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td align="center" style="padding-bottom: 15px;">
-                      <img
-                        src="https://feyza.app/feyza.png"
-                        alt="Feyza Logo"
-                        height="40"
-                        style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
-                      />
-                    </td>
-                  </tr>
-                </table>
-
-                <h1 style="
-                  color: white;
-                  margin: 0;
-                  font-size: 26px;
-                  font-weight: 700;
-                ">
+                <h1 style="color: white; margin: 0; font-size: 26px; font-weight: 700;">
                   💵 Funds on the Way!
                 </h1>
               </div>
 
-              <!-- ===== CONTENT ===== -->
-              <div style="
-                background: #f0fdf4;
-                padding: 30px;
-                border: 1px solid #bbf7d0;
-              ">
+              <div style="background: #f0fdf4; padding: 30px; border: 1px solid #bbf7d0;">
+                <p style="font-size: 18px; margin-top: 0;">Hi ${borrowerName}! 👋</p>
+                <p><strong>${lenderName}</strong> has initiated a bank transfer for your loan.</p>
 
-                <p style="font-size: 18px; margin-top: 0;">
-                  Hi ${borrowerName}! 👋
-                </p>
-
-                <p>
-                  <strong>${lenderName}</strong> has initiated a bank transfer for your loan.
-                </p>
-
-                <!-- Amount Card -->
                 <div style="
                   background: white;
                   padding: 20px;
@@ -288,23 +436,13 @@ export async function POST(
                   text-align: center;
                   border: 1px solid #bbf7d0;
                 ">
-                  <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                    Amount Being Transferred
-                  </p>
-                  <p style="
-                    font-size: 32px;
-                    font-weight: bold;
-                    color: #059669;
-                    margin: 6px 0;
-                  ">
+                  <p style="color: #6b7280; margin: 0; font-size: 14px;">Amount Being Transferred</p>
+                  <p style="font-size: 32px; font-weight: bold; color: #059669; margin: 6px 0;">
                     $${loan.amount.toLocaleString()}
                   </p>
-                  <p style="color: #6b7280; margin: 0; font-size: 14px;">
-                    via ACH Bank Transfer
-                  </p>
+                  <p style="color: #6b7280; margin: 0; font-size: 14px;">via ACH Bank Transfer</p>
                 </div>
 
-                <!-- Timing Info -->
                 <div style="
                   background: #ecfdf5;
                   border: 1px solid #bbf7d0;
@@ -318,7 +456,6 @@ export async function POST(
                   </p>
                 </div>
 
-                <!-- Repayment Reminder -->
                 <div style="
                   background: #fef3c7;
                   border: 1px solid #fcd34d;
@@ -329,41 +466,25 @@ export async function POST(
                   <p style="margin: 0; color: #92400e; font-size: 14px;">
                     <strong>📅 Repayment Reminder</strong><br/>
                     Your first payment of <strong>$${(loan.repayment_amount || 0).toLocaleString()}</strong>
-                    is due on <strong>${new Date(loan.start_date).toLocaleDateString()}</strong>.
+                    is due on <strong>${loan.start_date ? new Date(loan.start_date).toLocaleDateString() : 'the agreed date'}</strong>.
                   </p>
                 </div>
 
-                <!-- CTA -->
-                <a
-                  href="${APP_URL}/loans/${loanId}"
-                  style="
-                    display: block;
-                    background: linear-gradient(to right, #059669, #047857);
-                    color: white;
-                    text-decoration: none;
-                    padding: 16px 32px;
-                    border-radius: 8px;
-                    font-weight: 600;
-                    text-align: center;
-                    margin: 28px 0 10px;
-                  "
-                >
+                <a href="${APP_URL}/loans/${loanId}" style="
+                  display: block;
+                  background: linear-gradient(to right, #059669, #047857);
+                  color: white;
+                  text-decoration: none;
+                  padding: 16px 32px;
+                  border-radius: 8px;
+                  font-weight: 600;
+                  text-align: center;
+                  margin: 28px 0 10px;
+                ">
                   View Loan Details →
                 </a>
-
-                <!-- Footer -->
-                <p style="
-                  text-align: center;
-                  color: #6b7280;
-                  font-size: 12px;
-                  margin-top: 30px;
-                ">
-                  This is an automated message from Feyza.
-                </p>
-
               </div>
             </div>
-
           </body>
         </html>
         `,
@@ -373,6 +494,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Transfer initiated successfully',
+      method: 'ach',
       transferIds,
     });
 

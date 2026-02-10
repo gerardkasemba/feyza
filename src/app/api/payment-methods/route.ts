@@ -10,6 +10,7 @@ export async function GET(request: NextRequest) {
     const country = searchParams.get('country') || 'US';
     const transactionType = searchParams.get('type'); // 'disbursement' or 'repayment'
     const providerType = searchParams.get('provider_type'); // 'automated', 'manual', 'mobile_money', 'cash'
+    const debug = searchParams.get('debug') === 'true';
 
     // Build query
     let query = supabase
@@ -32,13 +33,34 @@ export async function GET(request: NextRequest) {
 
     const { data: providers, error } = await query;
 
-    if (error) throw error;
+    if (error) {
+      console.error('[PaymentMethods] Query error:', error);
+      throw error;
+    }
+
+    // Debug: Log all providers before country filtering
+    if (debug) {
+      console.log('[PaymentMethods] Before country filter:', providers?.map(p => ({
+        slug: p.slug,
+        is_enabled: p.is_enabled,
+        is_available_for_disbursement: p.is_available_for_disbursement,
+        supported_countries: p.supported_countries,
+      })));
+    }
 
     // Filter by country support
     const filteredProviders = (providers || []).filter(provider => {
       const countries = provider.supported_countries || [];
-      return countries.includes('*') || countries.includes(country);
+      const matches = countries.includes('*') || countries.includes(country);
+      if (debug && !matches) {
+        console.log(`[PaymentMethods] ${provider.slug} filtered out - supported_countries:`, countries, 'requested:', country);
+      }
+      return matches;
     });
+
+    // Debug: Check if Dwolla is in results
+    const hasDwolla = filteredProviders.some(p => p.slug === 'dwolla');
+    console.log(`[PaymentMethods] country=${country}, type=${transactionType}, providers=${filteredProviders.length}, hasDwolla=${hasDwolla}`);
 
     // Format response
     const formatted = filteredProviders.map(p => ({
@@ -73,6 +95,13 @@ export async function GET(request: NextRequest) {
       providers: formatted,
       country,
       transactionType,
+      ...(debug && { 
+        debug: {
+          rawCount: providers?.length || 0,
+          filteredCount: filteredProviders.length,
+          hasDwolla,
+        }
+      }),
     });
   } catch (error: any) {
     console.error('Error fetching payment methods:', error);

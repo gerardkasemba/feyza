@@ -12,6 +12,10 @@ import {
   PayFrequency,
   ComfortLevel,
   formatPayFrequency,
+  calculateDurationFee,
+  getFrequencyWeeks,
+  getDurationFeeExplanation,
+  DURATION_FEE_TIERS,
 } from '@/lib/smartSchedule';
 import { 
   Building2, Users, ChevronRight, ChevronLeft, Info, 
@@ -120,12 +124,8 @@ interface BankInfo {
 interface GuestLoanRequestFormProps {
   businessSlug?: string | null;
   businessLenderId?: string | null;
-  // Business-specific settings (passed from parent when doing direct application)
-  businessName?: string | null;
-  businessInterestRate?: number | null;
-  businessInterestType?: 'simple' | 'compound' | null;
-  businessFirstTimeLimit?: number | null;
-  businessMaxLoanAmount?: number | null;
+  presetMaxAmount?: number;
+  skipToStep?: number;
 }
 
 const ID_TYPES = [
@@ -164,15 +164,7 @@ const COUNTRIES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-export default function GuestLoanRequestForm({ 
-  businessSlug, 
-  businessLenderId,
-  businessName,
-  businessInterestRate,
-  businessInterestType,
-  businessFirstTimeLimit,
-  businessMaxLoanAmount,
-}: GuestLoanRequestFormProps = {}) {
+export default function GuestLoanRequestForm({ businessSlug, businessLenderId, presetMaxAmount, skipToStep }: GuestLoanRequestFormProps = {}) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -182,41 +174,9 @@ export default function GuestLoanRequestForm({
   const [user, setUser] = useState<any>(null);
   const [initialLoading, setInitialLoading] = useState(true);
 
-  // Determine if this is a direct application to a specific business
-  const isDirectBusinessApplication = !!(businessSlug || businessLenderId);
-
-  // Form state - start at step 3 if direct business application (skip lender type and lender selection)
-  const [step, setStep] = useState(isDirectBusinessApplication ? 3 : 1);
-  const [lenderType, setLenderType] = useState<'business' | 'personal' | null>(isDirectBusinessApplication ? 'business' : null);
-  
-  // Sync state when businessLenderId prop changes (e.g., after parent component loads business data)
-  useEffect(() => {
-    if (businessLenderId) {
-      setStep(3); // Skip to loan details
-      setLenderType('business');
-    }
-  }, [businessLenderId]);
-
-  // Store business settings in state for direct applications
-  const [directBusinessConfig, setDirectBusinessConfig] = useState<{
-    interestRate: number;
-    interestType: 'simple' | 'compound';
-    firstTimeLimit: number;
-    maxAmount: number | null;
-  } | null>(null);
-
-  // Set business config when props are available
-  useEffect(() => {
-    if (isDirectBusinessApplication && (businessInterestRate !== null || businessInterestType !== null)) {
-      setDirectBusinessConfig({
-        interestRate: businessInterestRate ?? 10,
-        interestType: businessInterestType ?? 'simple',
-        firstTimeLimit: businessFirstTimeLimit ?? 50,
-        maxAmount: businessMaxLoanAmount ?? null,
-      });
-    }
-  }, [isDirectBusinessApplication, businessInterestRate, businessInterestType, businessFirstTimeLimit, businessMaxLoanAmount]);
-
+  // Form state - start at skipToStep if provided (for returning borrowers with business relationships)
+  const [step, setStep] = useState(skipToStep || 1);
+  const [lenderType, setLenderType] = useState<'business' | 'personal' | null>(businessSlug || businessLenderId ? 'business' : null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -322,30 +282,28 @@ export default function GuestLoanRequestForm({
     }
   }, [selectedStartDate, setValue]);
 
-  // Set interest rate from business config when available
-  useEffect(() => {
-    if (directBusinessConfig && isDirectBusinessApplication) {
-      setValue('interestRate', directBusinessConfig.interestRate);
-      setValue('interestType', directBusinessConfig.interestType);
-    }
-  }, [directBusinessConfig, isDirectBusinessApplication, setValue]);
-
-  // Calculate totals - use business config if direct application
+  // Calculate totals
   const freqType = repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-  const effectiveInterestRate = isDirectBusinessApplication && directBusinessConfig 
-    ? directBusinessConfig.interestRate 
-    : interestRate;
-  const effectiveInterestType = isDirectBusinessApplication && directBusinessConfig 
-    ? directBusinessConfig.interestType 
-    : (interestType || 'simple') as 'simple' | 'compound';
-  const intType = effectiveInterestType;
+  const intType = (interestType || 'simple') as 'simple' | 'compound';
   const termMonths = calculateLoanTermMonths(totalInstallments || 1, freqType);
-  const totalInterest = calculateTotalInterest(amount, effectiveInterestRate, termMonths, intType);
-  const totalAmount = amount + totalInterest;
+  const totalInterest = calculateTotalInterest(amount, interestRate, termMonths, intType);
+  
+  // Calculate duration fee for current selection
+  const currentDurationFee = useMemo(() => {
+    if (!amount || amount <= 0 || !totalInstallments || totalInstallments <= 0) return null;
+    const freqWeeks = getFrequencyWeeks(repaymentFrequency);
+    return calculateDurationFee(amount, freqWeeks, totalInstallments);
+  }, [amount, totalInstallments, repaymentFrequency]);
+  
+  const totalAmount = amount + totalInterest + (currentDurationFee?.feeAmount || 0);
   const repaymentAmount = totalInstallments > 0 ? totalAmount / totalInstallments : 0;
 
-  // Smart schedule presets
-  const repaymentPresets = useMemo(() => getRepaymentPresets(amount), [amount]);
+  // Smart schedule presets with duration fees
+  const repaymentPresets = useMemo(() => {
+    if (!amount || amount <= 0) return [];
+    const presets = getRepaymentPresets(amount, interestRate, true); // Pass true for includeDurationFees
+    return presets;
+  }, [amount, interestRate]);
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
 
   // Income-based schedule
@@ -486,12 +444,9 @@ export default function GuestLoanRequestForm({
           setLoadingFinancialProfile(false);
         }
 
-        // Fetch loan types (business-specific if direct application)
+        // Fetch loan types
         try {
-          const loanTypesUrl = businessLenderId 
-            ? `/api/loan-types?business_id=${businessLenderId}`
-            : '/api/loan-types';
-          const ltRes = await fetch(loanTypesUrl);
+          const ltRes = await fetch('/api/loan-types');
           if (ltRes.ok) {
             const ltData = await ltRes.json();
             setLoanTypes(ltData.loanTypes || []);
@@ -518,36 +473,54 @@ export default function GuestLoanRequestForm({
     init();
   }, [supabase]);
 
-  // Real-time subscription for payment provider changes
+  // Listen for auth state changes (login/logout)
   useEffect(() => {
-    const checkProviders = async () => {
-      try {
-        const ppRes = await fetch('/api/payment-methods?country=US&type=disbursement');
-        if (ppRes.ok) {
-          const ppData = await ppRes.json();
-          const dwollaEnabled = (ppData.providers || []).some((p: any) => p.slug === 'dwolla');
-          setIsDwollaEnabled(dwollaEnabled);
-        }
-      } catch (e) { console.error('Failed to fetch payment providers:', e); }
-    };
-
-    // Subscribe to real-time changes
-    const channel = supabase
-      .channel('guest_loan_payment_providers')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'payment_providers' },
-        () => {
-          console.log('[GuestLoanRequestForm] Payment provider changed, refreshing...');
-          checkProviders();
-        }
-      )
-      .subscribe();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[GuestLoanForm] Auth state changed:', event);
+      
+      if (event === 'SIGNED_OUT' || !session) {
+        // User logged out - reset to guest state
+        console.log('[GuestLoanForm] User signed out, resetting to guest state');
+        setIsLoggedIn(false);
+        setUserId(null);
+        setUser(null);
+        setGuestFullName('');
+        setGuestEmail('');
+        setGuestPhone('');
+        setGuestPassword('');
+        setGuestConfirmPassword('');
+        setBankConnected(false);
+        setBankInfo(null);
+        setBorrowingLimit(null);
+        setBusinessEligibility(null);
+        setFinancialProfile(null);
+        setLenderType(businessSlug || businessLenderId ? 'business' : null);
+        setStep(1);
+        setStepError(null);
+        setSubmitError(null);
+        setAgreementAccepted(false);
+        setLoadingLimit(false);
+        setLoadingFinancialProfile(false);
+        // Reset form values
+        setValue('amount', 0);
+        setValue('totalInstallments', 0);
+        setValue('startDate', '');
+        setValue('inviteEmail', '');
+        setValue('invitePhone', '');
+        setValue('inviteUsername', '');
+        setValue('purpose', '');
+      } else if (event === 'SIGNED_IN' && session?.user) {
+        // User logged in - reload the page to refresh all data
+        // This is simpler than trying to re-fetch everything
+        console.log('[GuestLoanForm] User signed in, reloading...');
+        window.location.reload();
+      }
+    });
 
     return () => {
-      supabase.removeChannel(channel);
+      subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, businessSlug, businessLenderId, setValue]);
 
   // Update form when preset selected
   useEffect(() => {
@@ -713,24 +686,14 @@ export default function GuestLoanRequestForm({
   // Logged-in: 5 steps
   // Guest personal: 6 steps (add account creation)
   // Guest business: 9 steps (add account + 3 verification steps)
-  // For direct business applications, we skip steps 1 and 2, so reduce total by 2
   const totalSteps = useMemo(() => {
-    let steps: number;
-    if (isLoggedIn) steps = 5;
-    else if (lenderType === 'personal') steps = 6;
-    else if (lenderType === 'business') steps = 9;
-    else steps = 5;
-    
-    // If direct business application, we skip steps 1 and 2
-    if (isDirectBusinessApplication) {
-      steps = steps - 2;
-    }
-    return steps;
-  }, [isLoggedIn, lenderType, isDirectBusinessApplication]);
+    if (isLoggedIn) return 5;
+    if (lenderType === 'personal') return 6;
+    if (lenderType === 'business') return 9;
+    return 5;
+  }, [isLoggedIn, lenderType]);
 
-  // Calculate display step (adjusted for direct applications)
-  const displayStep = isDirectBusinessApplication ? step - 2 : step;
-  const progressPercent = (displayStep / totalSteps) * 100;
+  const progressPercent = (step / totalSteps) * 100;
 
   // Validation functions
   const validateStep1 = (): boolean => {
@@ -910,15 +873,14 @@ export default function GuestLoanRequestForm({
       const data = getValues();
       const inviteToken = lenderType === 'personal' ? generateInviteToken() : null;
       const frequency = data.repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-      // Use effective interest values for direct business applications
-      const intTypeCalc = effectiveInterestType;
+      const intTypeCalc = (interestType || 'simple') as 'simple' | 'compound';
       const schedule = calculateRepaymentSchedule({
         amount: data.amount,
         repaymentAmount: repaymentAmount,
         totalInstallments: data.totalInstallments,
         startDate: data.startDate,
         frequency: frequency,
-        interestRate: effectiveInterestRate,
+        interestRate: interestRate,
         interestType: intTypeCalc,
       });
 
@@ -939,9 +901,11 @@ export default function GuestLoanRequestForm({
           amount: data.amount,
           currency: data.currency,
           purpose: data.purpose || loanTypes.find((lt: LoanTypeOption) => lt.id === selectedLoanTypeId)?.name,
-          interest_rate: effectiveInterestRate,
-          interest_type: effectiveInterestType,
+          interest_rate: interestRate,
+          interest_type: interestType,
           total_interest: Math.round(totalInterest * 100) / 100,
+          duration_fee_percent: currentDurationFee?.feePercent || 0,
+          duration_fee_amount: currentDurationFee?.feeAmount || 0,
           total_amount: Math.round(totalAmount * 100) / 100,
           repayment_frequency: data.repaymentFrequency,
           repayment_amount: Math.round(repaymentAmount * 100) / 100,
@@ -951,10 +915,7 @@ export default function GuestLoanRequestForm({
           borrower_signed: true,
           borrower_signed_at: new Date().toISOString(),
           status: 'pending',
-          // If direct application to a business, mark as 'direct' (no matching needed)
-          // If personal loan, mark as 'manual' (invite-based)
-          // Otherwise mark as 'pending' (needs auto-matching)
-          match_status: businessLenderId ? 'direct' : (lenderType === 'personal' ? 'manual' : 'pending'),
+          match_status: lenderType === 'business' ? 'pending' : 'manual',
           amount_paid: 0,
           amount_remaining: Math.round(totalAmount * 100) / 100,
           borrower_name: user?.full_name,
@@ -1073,6 +1034,9 @@ export default function GuestLoanRequestForm({
           }).eq('id', newUserId);
 
           // Step 3: Create the loan
+          const guestTotalAmount = data.amount + (currentDurationFee?.feeAmount || 0);
+          const guestRepaymentAmount = data.totalInstallments > 0 ? guestTotalAmount / data.totalInstallments : data.amount;
+          
           const loanData: any = {
             borrower_id: newUserId,
             lender_type: 'personal',
@@ -1087,9 +1051,11 @@ export default function GuestLoanRequestForm({
             interest_rate: 0,
             interest_type: 'simple',
             total_interest: 0,
-            total_amount: data.amount,
+            duration_fee_percent: currentDurationFee?.feePercent || 0,
+            duration_fee_amount: currentDurationFee?.feeAmount || 0,
+            total_amount: Math.round(guestTotalAmount * 100) / 100,
             repayment_frequency: data.repaymentFrequency,
-            repayment_amount: Math.round(repaymentAmount * 100) / 100,
+            repayment_amount: Math.round(guestRepaymentAmount * 100) / 100,
             total_installments: data.totalInstallments,
             start_date: data.startDate,
             disbursement_method: 'bank_transfer',
@@ -1098,7 +1064,7 @@ export default function GuestLoanRequestForm({
             status: 'pending',
             match_status: 'manual',
             amount_paid: 0,
-            amount_remaining: data.amount,
+            amount_remaining: Math.round(guestTotalAmount * 100) / 100,
             borrower_name: guestFullName,
             auto_pay_enabled: true,
           };
@@ -1246,7 +1212,7 @@ export default function GuestLoanRequestForm({
       {/* Progress Bar */}
       <div className="mb-6">
         <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
-          <span>Step {displayStep} of {totalSteps}</span>
+          <span>Step {step} of {totalSteps}</span>
           <span>{Math.round(progressPercent)}% complete</span>
         </div>
         <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
@@ -1355,10 +1321,12 @@ export default function GuestLoanRequestForm({
           <div className="grid md:grid-cols-2 gap-4">
             <Card
               hover
-              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${isLoggedIn && (isDwollaEnabled && !bankConnected || user?.verification_status !== 'verified') ? 'opacity-50' : ''}`}
+              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${isLoggedIn && requiresBankConnection && (!bankConnected || user?.verification_status !== 'verified') ? 'opacity-50' : ''}`}
               onClick={() => {
-                // Allow selection if: not logged in, OR (bank connected or Dwolla disabled) AND verified
-                if (!isLoggedIn || ((!isDwollaEnabled || bankConnected) && user?.verification_status === 'verified')) {
+                // Guests can always select business lender
+                // Logged-in users need bank connection (if Dwolla enabled) and verification
+                const canSelectBusiness = !isLoggedIn || !requiresBankConnection || (bankConnected && user?.verification_status === 'verified');
+                if (canSelectBusiness) {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -1374,9 +1342,14 @@ export default function GuestLoanRequestForm({
                   <Zap className="w-4 h-4 text-yellow-500" />
                 </div>
                 <p className="text-sm text-neutral-500">We'll instantly match you with the best lender</p>
-                {isLoggedIn && user?.verification_status !== 'verified' && (
+                {isLoggedIn && requiresBankConnection && user?.verification_status !== 'verified' && (
                   <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
                     <Shield className="w-3 h-3" /> Requires verification
+                  </p>
+                )}
+                {isLoggedIn && requiresBankConnection && !bankConnected && user?.verification_status === 'verified' && (
+                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
+                    <Building2 className="w-3 h-3" /> Requires bank connection
                   </p>
                 )}
               </div>
@@ -1403,7 +1376,14 @@ export default function GuestLoanRequestForm({
           </div>
 
           <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || (isLoggedIn && requiresBankConnection && !bankConnected)}>
+            <Button 
+              type="button" 
+              onClick={() => goToNextStep(2)} 
+              disabled={
+                !lenderType || 
+                (isLoggedIn && lenderType === 'business' && requiresBankConnection && (!bankConnected || user?.verification_status !== 'verified'))
+              }
+            >
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -1630,8 +1610,8 @@ export default function GuestLoanRequestForm({
       {/* STEP 3: Loan Details */}
       {step === 3 && (
         <div className="space-y-4 animate-fade-in">
-          {/* Only show back button if not a direct business application */}
-          {!isDirectBusinessApplication && (
+          {/* Only show back button if we didn't skip directly to step 3 */}
+          {!skipToStep && (
             <button type="button" onClick={() => { setStep(2); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
@@ -1640,38 +1620,27 @@ export default function GuestLoanRequestForm({
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Details</h2>
             <p className="text-neutral-500">Specify the amount and repayment terms</p>
-          </div>
-
-          {/* First-time borrower notice for guests - only show if NOT direct application */}
-          {!isLoggedIn && lenderType === 'business' && !isDirectBusinessApplication && (
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-medium text-amber-800 dark:text-amber-300">You're applying as a first-time borrower</p>
-                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                    First-time borrowers have lower borrowing limits. After completing your first loan successfully, you'll unlock higher amounts.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => router.push('/sign-in?redirect=/loans/new')}
-                    className="mt-2 text-sm font-medium text-amber-800 dark:text-amber-300 underline hover:no-underline"
-                  >
-                    Already have an account? Sign in for higher limits →
-                  </button>
-                </div>
+            {businessLenderId && presetMaxAmount && (
+              <div className="mt-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                <p className="text-sm text-green-700 dark:text-green-300">
+                  ✓ Requesting from your trusted business lender • Max: <strong>{formatCurrency(presetMaxAmount)}</strong>
+                </p>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <Input label="Principal Amount *" type="number" placeholder="1000" min="1" {...register('amount', { valueAsNumber: true })} />
-              {isLoggedIn && borrowingLimit && lenderType === 'personal' && (
-                <p className="text-xs mt-1 text-neutral-500">Available: {formatCurrency(borrowingLimit.availableAmount || 0)}</p>
+              <Input label="Principal Amount *" type="number" placeholder="1000" min="1" max={presetMaxAmount || undefined} {...register('amount', { valueAsNumber: true })} />
+              {/* Show preset max for business lenders from URL */}
+              {presetMaxAmount && businessLenderId && (
+                <p className="text-xs mt-1 text-green-600 dark:text-green-400">
+                  Your limit with this lender: {formatCurrency(presetMaxAmount)}
+                </p>
               )}
-              {!isLoggedIn && lenderType === 'business' && amount > 0 && (
-                <p className="text-xs mt-1 text-neutral-500">First-time borrower limit applies</p>
+              {/* Show personal borrowing limit */}
+              {isLoggedIn && borrowingLimit && lenderType === 'personal' && !presetMaxAmount && (
+                <p className="text-xs mt-1 text-neutral-500">Available: {formatCurrency(borrowingLimit.availableAmount || 0)}</p>
               )}
             </div>
             <Select label="Currency *" options={currencyOptions} {...register('currency')} />
@@ -1736,34 +1705,75 @@ export default function GuestLoanRequestForm({
                       </div>
                     </div>
                   ) : repaymentPresets.length > 0 ? (
-                    <div className="grid gap-3">
-                      {repaymentPresets.map((preset, index) => (
-                        <button
-                          key={index}
-                          type="button"
-                          onClick={() => setSelectedPresetIndex(index)}
-                          className={`w-full p-4 rounded-xl border-2 text-left transition-all ${selectedPresetIndex === index ? 'border-primary-500 bg-primary-50' : 'border-neutral-200 hover:border-neutral-300'}`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedPresetIndex === index ? 'bg-primary-100' : 'bg-neutral-100'}`}>
-                                <CalendarIcon className={`w-5 h-5 ${selectedPresetIndex === index ? 'text-primary-600' : 'text-neutral-500'}`} />
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <p className="font-medium">{preset.label}</p>
-                                  {preset.recommended && <span className="px-2 py-0.5 text-xs bg-primary-100 text-primary-700 rounded-full">Recommended</span>}
+                    <div className="space-y-3">
+                      <div className="grid gap-3">
+                        {repaymentPresets.map((preset, index) => (
+                          <button
+                            key={index}
+                            type="button"
+                            onClick={() => setSelectedPresetIndex(index)}
+                            className={`w-full p-4 rounded-xl border-2 text-left transition-all ${selectedPresetIndex === index ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'}`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedPresetIndex === index ? 'bg-primary-100 dark:bg-primary-800' : 'bg-neutral-100 dark:bg-neutral-800'}`}>
+                                  <CalendarIcon className={`w-5 h-5 ${selectedPresetIndex === index ? 'text-primary-600' : 'text-neutral-500'}`} />
                                 </div>
-                                <p className="text-sm text-neutral-500">{preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'}</p>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
+                                    {preset.recommended && <span className="px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-800 text-primary-700 dark:text-primary-300 rounded-full">Recommended</span>}
+                                    {(preset.durationFeePercent || 0) === 0 && (
+                                      <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 rounded-full">No Fee!</span>
+                                    )}
+                                  </div>
+                                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                    {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'}
+                                    {(preset.durationFeePercent || 0) > 0 && (
+                                      <span className="text-amber-600 dark:text-amber-400 ml-2">
+                                        +{preset.durationFeePercent}% fee
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-neutral-900 dark:text-white">{formatCurrency(preset.paymentAmount)}</p>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400">per payment</p>
                               </div>
                             </div>
-                            <div className="text-right">
-                              <p className="font-bold">{formatCurrency(preset.paymentAmount)}</p>
-                              <p className="text-xs text-neutral-500">per payment</p>
+                          </button>
+                        ))}
+                      </div>
+                      
+                      {/* Duration Fee Explanation */}
+                      {selectedPreset && (selectedPreset.durationFeePercent || 0) > 0 && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm">
+                              <p className="font-medium text-amber-800 dark:text-amber-300">
+                                Duration Fee: +{formatCurrency(selectedPreset.durationFee || 0)} ({selectedPreset.durationFeePercent}%)
+                              </p>
+                              <p className="text-amber-700 dark:text-amber-400 mt-1">
+                                Longer repayment periods have small fees. Pay faster to save!
+                              </p>
                             </div>
                           </div>
-                        </button>
-                      ))}
+                        </div>
+                      )}
+                      
+                      {/* No Fee Celebration */}
+                      {selectedPreset && (selectedPreset.durationFeePercent || 0) === 0 && (
+                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="w-4 h-4 text-green-600" />
+                            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                              Great choice! No duration fee for paying within 4 weeks.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="p-4 bg-neutral-50 rounded-xl text-center text-neutral-500">Enter an amount to see options</div>
@@ -1792,15 +1802,52 @@ export default function GuestLoanRequestForm({
 
           {amount > 0 && totalInstallments > 0 && (
             <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-              <h4 className="font-semibold mb-2">Loan Summary</h4>
+              <h4 className="font-semibold mb-2 text-neutral-900 dark:text-white">Loan Summary</h4>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <span className="text-neutral-500">Principal:</span>
-                <span className="text-right font-medium">{formatCurrency(amount)}</span>
-                <span className="text-neutral-500 font-medium">Total to Repay:</span>
-                <span className="text-right font-bold text-primary-600">{formatCurrency(totalAmount)}</span>
-                <span className="text-neutral-500">Per Installment:</span>
-                <span className="text-right font-medium">{formatCurrency(repaymentAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Principal:</span>
+                <span className="text-right font-medium text-neutral-900 dark:text-white">{formatCurrency(amount)}</span>
+                
+                {totalInterest > 0 && (
+                  <>
+                    <span className="text-neutral-500 dark:text-neutral-400">Interest:</span>
+                    <span className="text-right font-medium text-neutral-900 dark:text-white">{formatCurrency(totalInterest)}</span>
+                  </>
+                )}
+                
+                {currentDurationFee && currentDurationFee.feeAmount > 0 && (
+                  <>
+                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      Duration Fee ({currentDurationFee.feePercent}%):
+                    </span>
+                    <span className="text-right font-medium text-amber-600 dark:text-amber-400">+{formatCurrency(currentDurationFee.feeAmount)}</span>
+                  </>
+                )}
+                
+                {currentDurationFee && currentDurationFee.feeAmount === 0 && (
+                  <>
+                    <span className="text-green-600 dark:text-green-400 flex items-center gap-1">
+                      <CheckCircle className="w-3 h-3" />
+                      Duration Fee:
+                    </span>
+                    <span className="text-right font-medium text-green-600 dark:text-green-400">$0 (No fee!)</span>
+                  </>
+                )}
+                
+                <span className="text-neutral-500 dark:text-neutral-400 font-medium pt-2 border-t border-neutral-200 dark:border-neutral-700">Total to Repay:</span>
+                <span className="text-right font-bold text-primary-600 dark:text-primary-400 pt-2 border-t border-neutral-200 dark:border-neutral-700">{formatCurrency(totalAmount)}</span>
+                <span className="text-neutral-500 dark:text-neutral-400">Per Installment:</span>
+                <span className="text-right font-medium text-neutral-900 dark:text-white">{formatCurrency(repaymentAmount)}</span>
               </div>
+              
+              {/* Savings tip */}
+              {currentDurationFee && currentDurationFee.feePercent > 0 && (
+                <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    💡 <span className="font-medium">Tip:</span> Pay within 4 weeks to avoid the duration fee and save {formatCurrency(currentDurationFee.feeAmount)}!
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

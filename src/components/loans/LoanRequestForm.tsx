@@ -299,6 +299,10 @@ const incomeBasedSchedule = useMemo(() => {
     const monthlyEquivalent = paymentAmount * multiplier;
     const percentOfDisposable = Math.round((monthlyEquivalent / disposable) * 100);
     
+    // Calculate duration fee (0% for payments within 4 weeks, otherwise small fee)
+    const durationFeePercent = numberOfPayments > 4 ? Math.min(numberOfPayments * 0.5, 10) : 0;
+    const durationFee = Math.ceil((amount * durationFeePercent) / 100);
+    
     return {
       amount: paymentAmount,
       frequency: financialProfile.payFrequency,
@@ -306,6 +310,8 @@ const incomeBasedSchedule = useMemo(() => {
       numberOfPayments,
       weeksToPayoff: numberOfPayments * weeksPerPayment,
       totalRepayment: paymentAmount * numberOfPayments,
+      durationFeePercent,
+      durationFee,
       description: level === 'comfortable' ? 'Easy on your budget' : 
                    level === 'balanced' ? 'Recommended' : 'Fastest payoff',
     };
@@ -1591,16 +1597,26 @@ const incomeBasedSchedule = useMemo(() => {
                                     {level === 'aggressive' && <Zap className={`w-5 h-5 ${isSelected ? 'text-green-600 dark:text-green-400' : 'text-neutral-500 dark:text-neutral-400'}`} />}
                                   </div>
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <p className="font-medium text-neutral-900 dark:text-white capitalize">{level}</p>
                                       {level === 'balanced' && (
                                         <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 rounded-full">
                                           Recommended
                                         </span>
                                       )}
+                                      {(suggestion.durationFeePercent || 0) === 0 && (
+                                        <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 rounded-full">
+                                          No Fee!
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
                                       {suggestion.numberOfPayments} {frequencyLabel} payments • {suggestion.percentOfDisposable}% of disposable
+                                      {(suggestion.durationFeePercent || 0) > 0 && (
+                                        <span className="text-amber-600 dark:text-amber-400 ml-2">
+                                          +{suggestion.durationFeePercent}% fee
+                                        </span>
+                                      )}
                                     </p>
                                   </div>
                                 </div>
@@ -1618,6 +1634,37 @@ const incomeBasedSchedule = useMemo(() => {
                         })}
                       </div>
 
+                      {/* Duration Fee Explanation for income-based schedule */}
+                      {incomeBasedSchedule.suggestions[selectedComfortLevel] && 
+                       (incomeBasedSchedule.suggestions[selectedComfortLevel].durationFeePercent || 0) > 0 && (
+                        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                            <div className="text-sm">
+                              <p className="font-medium text-amber-800 dark:text-amber-300">
+                                Duration Fee: +{formatCurrency(incomeBasedSchedule.suggestions[selectedComfortLevel].durationFee || 0)} ({incomeBasedSchedule.suggestions[selectedComfortLevel].durationFeePercent}%)
+                              </p>
+                              <p className="text-amber-700 dark:text-amber-400 mt-1">
+                                Longer repayment periods have small fees. Pay faster to save!
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* No Fee Celebration for income-based schedule */}
+                      {incomeBasedSchedule.suggestions[selectedComfortLevel] && 
+                       (incomeBasedSchedule.suggestions[selectedComfortLevel].durationFeePercent || 0) === 0 && (
+                        <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Check className="w-4 h-4 text-green-600" />
+                            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                              Great choice! No duration fee for paying within 4 weeks.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Selected Schedule Summary */}
                       <div className="p-3 bg-green-50 dark:bg-green-900/30 rounded-lg flex items-center gap-2 text-green-700 dark:text-green-300 text-sm">
                         <Wallet className="w-4 h-4" />
@@ -1625,6 +1672,11 @@ const incomeBasedSchedule = useMemo(() => {
                           You'll pay {formatCurrency(incomeBasedSchedule.suggestions[selectedComfortLevel].amount)}{' '}
                           {formatPayFrequency(incomeBasedSchedule.payFrequency).toLowerCase()} for{' '}
                           {incomeBasedSchedule.suggestions[selectedComfortLevel].numberOfPayments} payments
+                          {(incomeBasedSchedule.suggestions[selectedComfortLevel].durationFeePercent || 0) > 0 && (
+                            <span className="text-amber-600 dark:text-amber-400 ml-1">
+                              (+{formatCurrency(incomeBasedSchedule.suggestions[selectedComfortLevel].durationFee || 0)} fee)
+                            </span>
+                          )}
                         </span>
                       </div>
                     </div>
@@ -1681,16 +1733,26 @@ const incomeBasedSchedule = useMemo(() => {
                                     }`} />
                                   </div>
                                   <div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
                                       <p className="font-medium text-neutral-900 dark:text-white">{preset.label}</p>
                                       {preset.recommended && (
                                         <span className="px-2 py-0.5 text-xs bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300 rounded-full">
                                           Recommended
                                         </span>
                                       )}
+                                      {(preset.durationFeePercent || 0) === 0 && (
+                                        <span className="px-2 py-0.5 text-xs bg-green-100 dark:bg-green-800 text-green-700 dark:text-green-300 rounded-full">
+                                          No Fee!
+                                        </span>
+                                      )}
                                     </div>
                                     <p className="text-sm text-neutral-500 dark:text-neutral-400">
                                       {preset.frequency === 'weekly' ? 'Weekly' : preset.frequency === 'biweekly' ? 'Bi-weekly' : 'Monthly'} payments
+                                      {(preset.durationFeePercent || 0) > 0 && (
+                                        <span className="text-amber-600 dark:text-amber-400 ml-2">
+                                          +{preset.durationFeePercent}% fee
+                                        </span>
+                                      )}
                                     </p>
                                   </div>
                                 </div>
@@ -1705,6 +1767,35 @@ const incomeBasedSchedule = useMemo(() => {
                           ))}
                         </div>
 
+                        {/* Duration Fee Explanation */}
+                        {selectedPreset && (selectedPreset.durationFeePercent || 0) > 0 && (
+                          <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <Info className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                              <div className="text-sm">
+                                <p className="font-medium text-amber-800 dark:text-amber-300">
+                                  Duration Fee: +{formatCurrency(selectedPreset.durationFee || 0)} ({selectedPreset.durationFeePercent}%)
+                                </p>
+                                <p className="text-amber-700 dark:text-amber-400 mt-1">
+                                  Longer repayment periods have small fees. Pay faster to save!
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* No Fee Celebration */}
+                        {selectedPreset && (selectedPreset.durationFeePercent || 0) === 0 && (
+                          <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <Check className="w-4 h-4 text-green-600" />
+                              <p className="text-sm font-medium text-green-800 dark:text-green-300">
+                                Great choice! No duration fee for paying within 4 weeks.
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
                         {selectedPreset && (
                           <div className="p-3 bg-primary-50 dark:bg-primary-900/30 rounded-lg flex items-center gap-2 text-primary-700 dark:text-primary-300 text-sm">
                             <Clock className="w-4 h-4" />
@@ -1712,6 +1803,11 @@ const incomeBasedSchedule = useMemo(() => {
                               You'll pay {formatCurrency(selectedPreset.paymentAmount)}{' '}
                               {selectedPreset.frequency} for {selectedPreset.installments}{' '}
                               {selectedPreset.installments === 1 ? 'payment' : 'payments'}
+                              {(selectedPreset.durationFeePercent || 0) > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400 ml-1">
+                                  (+{formatCurrency(selectedPreset.durationFee || 0)} fee)
+                                </span>
+                              )}
                             </span>
                           </div>
                         )}

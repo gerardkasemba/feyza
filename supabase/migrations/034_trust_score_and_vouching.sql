@@ -432,21 +432,49 @@ CREATE POLICY "Vouchers can update their vouches"
   TO authenticated
   USING (voucher_id = auth.uid());
 
--- Vouch requests: involved parties only
+-- Vouch requests: involved parties only + token-based access
+-- Note: Token-based access is handled by service_role in API,
+-- but we add a permissive policy for flexibility
+
+-- Drop existing policies first (if re-running)
+DROP POLICY IF EXISTS "Users can view their vouch requests" ON vouch_requests;
+DROP POLICY IF EXISTS "Users can create vouch requests" ON vouch_requests;
+DROP POLICY IF EXISTS "Users can update their vouch requests" ON vouch_requests;
+DROP POLICY IF EXISTS "Anyone can view vouch requests by token" ON vouch_requests;
+
+-- Policy 1: Authenticated users can view requests involving them
 CREATE POLICY "Users can view their vouch requests"
   ON vouch_requests FOR SELECT
   TO authenticated
-  USING (requester_id = auth.uid() OR requested_user_id = auth.uid());
+  USING (
+    requester_id = auth.uid() 
+    OR requested_user_id = auth.uid()
+  );
 
+-- Policy 2: Anyone (even unauthenticated) can view by token
+-- This allows the /vouch/accept page to work for non-users
+CREATE POLICY "Anyone can view vouch requests by token"
+  ON vouch_requests FOR SELECT
+  TO anon, authenticated
+  USING (
+    invite_token IS NOT NULL 
+    AND status = 'pending'
+  );
+
+-- Policy 3: Authenticated users can create requests
 CREATE POLICY "Users can create vouch requests"
   ON vouch_requests FOR INSERT
   TO authenticated
   WITH CHECK (requester_id = auth.uid());
 
+-- Policy 4: Both parties can update (accept/decline)
 CREATE POLICY "Users can update their vouch requests"
   ON vouch_requests FOR UPDATE
   TO authenticated
-  USING (requester_id = auth.uid() OR requested_user_id = auth.uid());
+  USING (
+    requester_id = auth.uid() 
+    OR requested_user_id = auth.uid()
+  );
 
 -- ============================================
 -- SEED TRUST SCORES FOR EXISTING USERS

@@ -1,6 +1,5 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { cookies } from 'next/headers'
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({
@@ -16,14 +15,19 @@ export async function updateSession(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
-            response.cookies.set(name, value, options)
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({
+            request,
           })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
         },
       },
     }
   )
+
+  const pathname = request.nextUrl.pathname;
 
   try {
     // Get user with session refresh
@@ -31,7 +35,10 @@ export async function updateSession(request: NextRequest) {
     
     // Handle refresh token errors specifically
     if (userError) {
-      console.error('Auth error in middleware:', userError.message)
+      // Only log for page requests, not for static assets or API debug calls
+      if (!pathname.includes('_next') && !pathname.includes('.') && !pathname.startsWith('/api/debug')) {
+        console.error('[Middleware] Auth error:', userError.message, 'Path:', pathname)
+      }
       
       // Clear invalid auth cookies
       response.cookies.delete('sb-access-token')
@@ -44,12 +51,13 @@ export async function updateSession(request: NextRequest) {
         '/notifications', '/admin', '/profile', '/payments'
       ]
       const isProtectedPath = protectedPaths.some(path => 
-        request.nextUrl.pathname.startsWith(path)
+        pathname.startsWith(path)
       )
       
       if (isProtectedPath) {
+        console.log('[Middleware] Redirecting to signin (protected path, no auth):', pathname)
         const url = new URL('/auth/signin', request.url)
-        url.searchParams.set('redirect', request.nextUrl.pathname)
+        url.searchParams.set('redirect', pathname)
         return NextResponse.redirect(url)
       }
       
@@ -62,12 +70,13 @@ export async function updateSession(request: NextRequest) {
       '/notifications', '/admin', '/profile', '/payments'
     ]
     const isProtectedPath = protectedPaths.some(path => 
-      request.nextUrl.pathname.startsWith(path)
+      pathname.startsWith(path)
     )
 
     if (!user && isProtectedPath) {
+      console.log('[Middleware] No user, redirecting to signin:', pathname)
       const url = new URL('/auth/signin', request.url)
-      url.searchParams.set('redirect', request.nextUrl.pathname)
+      url.searchParams.set('redirect', pathname)
       return NextResponse.redirect(url)
     }
 
@@ -77,15 +86,20 @@ export async function updateSession(request: NextRequest) {
       '/auth/forgot-password', '/auth/reset-password'
     ]
     const isAuthPath = authPaths.some(path => 
-      request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(path)
+      pathname === path || pathname.startsWith(path)
     )
 
     if (user && isAuthPath) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
+    // Log successful auth for fund page specifically
+    if (pathname.includes('/fund')) {
+      console.log('[Middleware] ✅ Auth OK for fund page, user:', user?.id)
+    }
+
   } catch (error) {
-    console.error('Unexpected error in middleware:', error)
+    console.error('[Middleware] Unexpected error:', error)
     // Don't crash on middleware errors
   }
 

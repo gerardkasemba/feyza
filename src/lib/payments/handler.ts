@@ -18,7 +18,6 @@ export interface PaymentCompletedParams {
   dueDate?: string;
   paidDate?: string;
   paymentMethod: 'manual' | 'dwolla' | 'paypal' | 'stripe' | 'auto';
-  
 }
 
 export interface PaymentResult {
@@ -77,6 +76,47 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
     trustScoreUpdated = true;
     console.log(`[PaymentHandler] ✅ Trust score updated for borrower ${borrowerId}`);
 
+    // Update user payment stats
+    try {
+      const { data: userStats } = await supabase
+        .from('users')
+        .select('total_payments_made, auto_payments_count, manual_payments_count, payments_on_time, payments_early, payments_late, borrowing_tier, loans_at_current_tier, total_loans_completed')
+        .eq('id', borrowerId)
+        .single();
+
+      const isAutoPay = paymentMethod === 'dwolla' || paymentMethod === 'auto';
+      const updateData: any = {
+        total_payments_made: (userStats?.total_payments_made || 0) + 1,
+      };
+
+      // Track auto vs manual
+      if (isAutoPay) {
+        updateData.auto_payments_count = (userStats?.auto_payments_count || 0) + 1;
+      } else {
+        updateData.manual_payments_count = (userStats?.manual_payments_count || 0) + 1;
+      }
+
+      // Track payment timing
+      if (daysFromDue <= 0) {
+        if (daysFromDue < -2) {
+          updateData.payments_early = (userStats?.payments_early || 0) + 1;
+        } else {
+          updateData.payments_on_time = (userStats?.payments_on_time || 0) + 1;
+        }
+      } else {
+        updateData.payments_late = (userStats?.payments_late || 0) + 1;
+      }
+
+      await supabase
+        .from('users')
+        .update(updateData)
+        .eq('id', borrowerId);
+
+      console.log(`[PaymentHandler] ✅ User payment stats updated:`, updateData);
+    } catch (statsError) {
+      console.error(`[PaymentHandler] Failed to update user stats:`, statsError);
+    }
+
     // Check if loan is now completed
     const { data: loan } = await supabase
       .from('loans')
@@ -108,6 +148,41 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
         // Record loan completion for trust score
         await trustService.onLoanCompleted(borrowerId, loanId, loan.amount);
         console.log(`[PaymentHandler] ✅ Loan completion recorded for trust score`);
+
+        // Update borrowing tier
+        try {
+          const { data: userStats } = await supabase
+            .from('users')
+            .select('borrowing_tier, loans_at_current_tier, total_loans_completed')
+            .eq('id', borrowerId)
+            .single();
+
+          const currentTier = userStats?.borrowing_tier || 1;
+          const loansAtTier = (userStats?.loans_at_current_tier || 0) + 1;
+          const totalCompleted = (userStats?.total_loans_completed || 0) + 1;
+
+          const tierUpdate: any = {
+            total_loans_completed: totalCompleted,
+          };
+
+          // Upgrade tier after 3 loans at current tier (up to tier 6)
+          if (loansAtTier >= 3 && currentTier < 6) {
+            tierUpdate.borrowing_tier = currentTier + 1;
+            tierUpdate.loans_at_current_tier = 0;
+            console.log(`[PaymentHandler] 🎖️ User ${borrowerId} upgraded to tier ${currentTier + 1}`);
+          } else {
+            tierUpdate.loans_at_current_tier = loansAtTier;
+          }
+
+          await supabase
+            .from('users')
+            .update(tierUpdate)
+            .eq('id', borrowerId);
+
+          console.log(`[PaymentHandler] ✅ Borrowing tier updated:`, tierUpdate);
+        } catch (tierError) {
+          console.error(`[PaymentHandler] Failed to update borrowing tier:`, tierError);
+        }
       }
     }
 
@@ -155,16 +230,14 @@ export async function onPaymentFailed(params: {
   try {
     const trustService = new TrustScoreService(supabase);
 
-    await trustService.recordEvent(borrowerId, {
-      event_type: 'payment_failed',
-      score_impact: -5,
-      title: 'Payment failed',
-      description: reason || 'Payment failed',
-      loan_id: loanId,
-      payment_id: scheduleId,
-      metadata: { reason },
-    });
-
+  await trustService.recordEvent(borrowerId, {
+    event_type: 'payment_failed',
+    score_impact: -5,
+    title: 'Payment Failed',
+    description: reason || 'Payment failed',
+    loan_id: loanId,
+    payment_id: scheduleId,
+  });
 
     console.log(`[PaymentHandler] ✅ Failed payment recorded`);
   } catch (error) {
@@ -191,7 +264,7 @@ export async function onPaymentMissed(params: {
 
     // Penalty increases with days overdue
     let scoreChange = -5;
-    let eventType: 'payment_late' | 'payment_missed' = 'payment_late';
+    let eventType = 'payment_late';
 
     if (daysOverdue > 30) {
       scoreChange = -15;
@@ -205,13 +278,13 @@ export async function onPaymentMissed(params: {
     }
 
     await trustService.recordEvent(borrowerId, {
-      event_type: eventType,          // 'payment_late' | 'payment_missed'
-      score_impact: scoreChange,      // negative number
-      title: eventType === 'payment_missed' ? 'Payment missed' : 'Payment late',
+      event_type: daysOverdue > 30 ? 'payment_missed' : 'payment_late',
+      score_impact: scoreChange,
+      title: daysOverdue > 30 ? 'Payment Missed' : 'Late Payment',
       description: `Payment ${daysOverdue} days overdue`,
       loan_id: loanId,
       payment_id: scheduleId,
-      metadata: { daysOverdue },
+      metadata: { days_overdue: daysOverdue },
     });
 
     console.log(`[PaymentHandler] ✅ Missed payment recorded (${scoreChange} pts)`);

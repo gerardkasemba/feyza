@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getTransfer } from '@/lib/dwolla';
-import { onPaymentCompleted, onPaymentFailed } from '@/lib/payments';
 
 // POST: Sync transfer status from Dwolla API
 // This can be called manually or periodically to ensure status is up to date
@@ -117,54 +116,6 @@ export async function POST(request: NextRequest) {
                   disbursement_status: 'failed',
                 })
                 .eq('id', transfer.loan.id);
-            }
-          }
-
-          // Handle repayment completion - update trust score!
-          if (transfer.type === 'repayment' && transfer.loan) {
-            if (ourStatus === 'completed') {
-              console.log(`[Sync Status] Processing repayment completion for loan ${transfer.loan.id}`);
-              
-              // Find the associated payment schedule item
-              const { data: payment } = await supabase
-                .from('payment_schedule')
-                .select('id, amount, due_date')
-                .eq('transfer_id', transfer.id)
-                .single();
-              
-              // Update Trust Score
-              if (transfer.loan.borrower_id) {
-                try {
-                  await onPaymentCompleted({
-                    supabase,
-                    loanId: transfer.loan.id,
-                    borrowerId: transfer.loan.borrower_id,
-                    paymentId: payment?.id,
-                    scheduleId: payment?.id,
-                    amount: payment?.amount || transfer.amount,
-                    dueDate: payment?.due_date,
-                    paymentMethod: 'dwolla',
-                  });
-                  console.log(`[Sync Status] ✅ Trust score updated for borrower ${transfer.loan.borrower_id}`);
-                } catch (trustError) {
-                  console.error(`[Sync Status] Trust score update failed:`, trustError);
-                }
-              }
-            } else if (ourStatus === 'failed') {
-              // Record failed payment for trust score
-              if (transfer.loan.borrower_id) {
-                try {
-                  await onPaymentFailed({
-                    supabase,
-                    borrowerId: transfer.loan.borrower_id,
-                    loanId: transfer.loan.id,
-                    reason: 'Dwolla transfer failed',
-                  });
-                  console.log(`[Sync Status] Trust score penalty recorded for failed payment`);
-                } catch (trustError) {
-                  console.error(`[Sync Status] Trust score penalty failed:`, trustError);
-                }
-              }
             }
           }
 
@@ -298,52 +249,6 @@ export async function GET(request: NextRequest) {
                 }
               } else if (wasAlreadyCompleted) {
                 console.log(`[Sync Status GET] Skipping stats update - disbursement already completed for loan ${loanId}`);
-              }
-            }
-
-            // Handle repayment completion - update trust score!
-            if (transfer.type === 'repayment' && newStatus === 'completed') {
-              console.log(`[Sync Status GET] Processing repayment completion for transfer ${transfer.id}`);
-              
-              // Find the associated payment schedule item
-              const { data: payment } = await supabase
-                .from('payment_schedule')
-                .select('id, amount, due_date')
-                .eq('transfer_id', transfer.id)
-                .single();
-              
-              // Update Trust Score
-              if (loanBefore?.borrower_id) {
-                try {
-                  await onPaymentCompleted({
-                    supabase,
-                    loanId,
-                    borrowerId: loanBefore.borrower_id,
-                    paymentId: payment?.id,
-                    scheduleId: payment?.id,
-                    amount: payment?.amount || transfer.amount,
-                    dueDate: payment?.due_date,
-                    paymentMethod: 'dwolla',
-                  });
-                  console.log(`[Sync Status GET] ✅ Trust score updated for borrower ${loanBefore.borrower_id}`);
-                } catch (trustError) {
-                  console.error(`[Sync Status GET] Trust score update failed:`, trustError);
-                }
-              }
-            } else if (transfer.type === 'repayment' && newStatus === 'failed') {
-              // Record failed payment for trust score
-              if (loanBefore?.borrower_id) {
-                try {
-                  await onPaymentFailed({
-                    supabase,
-                    borrowerId: loanBefore.borrower_id,
-                    loanId,
-                    reason: 'Dwolla transfer failed',
-                  });
-                  console.log(`[Sync Status GET] Trust score penalty recorded for failed payment`);
-                } catch (trustError) {
-                  console.error(`[Sync Status GET] Trust score penalty failed:`, trustError);
-                }
               }
             }
             

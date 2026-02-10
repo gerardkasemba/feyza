@@ -16,7 +16,10 @@ import {
   Zap,
   UserPlus,
   ExternalLink,
-  Info
+  Info,
+  X,
+  Trash2,
+  User
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -75,7 +78,7 @@ interface TrustScoreBadgeProps {
   showLabel?: boolean;
 }
 
-function TrustScoreBadge({ score, grade, size = 'md', showLabel = true }: TrustScoreBadgeProps) {
+export function TrustScoreBadge({ score, grade, size = 'md', showLabel = true }: TrustScoreBadgeProps) {
   const getGradeColor = (grade: string) => {
     if (grade.startsWith('A')) return 'from-emerald-500 to-green-600';
     if (grade.startsWith('B')) return 'from-blue-500 to-indigo-600';
@@ -114,13 +117,28 @@ interface TrustScoreCardProps {
   showDetails?: boolean;
   showVouches?: boolean;
   className?: string;
+  currentUserId?: string; // The logged-in user's ID
+  onVouchRevoked?: () => void; // Callback when vouch is revoked
 }
 
-function TrustScoreCard({ userId, showDetails = true, showVouches = true, className = '' }: TrustScoreCardProps) {
+export function TrustScoreCard({ userId, showDetails = true, showVouches = true, className = '', currentUserId, onVouchRevoked }: TrustScoreCardProps) {
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<TrustScoreData | null>(null);
   const [vouches, setVouches] = useState<Vouch[]>([]);
   const [events, setEvents] = useState<TrustScoreEvent[]>([]);
+  const [myVouchForThisUser, setMyVouchForThisUser] = useState<string | null>(null);
+  const [revokingVouch, setRevokingVouch] = useState(false);
+  const [paymentStats, setPaymentStats] = useState<{
+    totalPayments: number;
+    onTime: number;
+    early: number;
+    late: number;
+    missed: number;
+    autoPayments: number;
+    manualPayments: number;
+    autoPayEnabled: boolean;
+    bankConnected: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const fetchScore = async () => {
@@ -135,6 +153,25 @@ function TrustScoreCard({ userId, showDetails = true, showVouches = true, classN
           setScoreData(data.score);
           setVouches(data.topVouches || []);
           setEvents(data.recentEvents || []);
+          setPaymentStats(data.paymentStats || null);
+        }
+
+        // Check if current user has vouched for this user
+        if (currentUserId && userId && currentUserId !== userId) {
+          try {
+            const vouchResponse = await fetch('/api/vouches?type=given');
+            if (vouchResponse.ok) {
+              const vouchData = await vouchResponse.json();
+              const myVouch = (vouchData.vouches || []).find(
+                (v: any) => v.vouchee_id === userId
+              );
+              if (myVouch) {
+                setMyVouchForThisUser(myVouch.id);
+              }
+            }
+          } catch (err) {
+            console.error('Error checking vouch status:', err);
+          }
         }
       } catch (error) {
         console.error('Error fetching trust score:', error);
@@ -144,7 +181,45 @@ function TrustScoreCard({ userId, showDetails = true, showVouches = true, classN
     };
 
     fetchScore();
-  }, [userId]);
+  }, [userId, currentUserId]);
+
+  // Check if viewing own profile
+  const isOwnProfile = currentUserId && (!userId || userId === currentUserId);
+
+  // Handler to revoke a vouch
+  const handleRevokeVouch = async () => {
+    if (!myVouchForThisUser) return;
+    
+    setRevokingVouch(true);
+    try {
+      const response = await fetch('/api/vouches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'revoke',
+          vouchId: myVouchForThisUser,
+          reason: 'User revoked vouch',
+        }),
+      });
+
+      if (response.ok) {
+        setMyVouchForThisUser(null);
+        onVouchRevoked?.();
+        // Refresh the score data
+        const params = userId ? `?userId=${userId}` : '';
+        const scoreResponse = await fetch(`/api/trust-score${params}`);
+        const data = await scoreResponse.json();
+        if (data.score) {
+          setScoreData(data.score);
+          setVouches(data.topVouches || []);
+        }
+      }
+    } catch (error) {
+      console.error('Error revoking vouch:', error);
+    } finally {
+      setRevokingVouch(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -189,8 +264,11 @@ function TrustScoreCard({ userId, showDetails = true, showVouches = true, classN
           size="lg" 
         />
         <div className="flex-1">
-          <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-1">
+          <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-1 flex items-center gap-2">
             {scoreData.score_label}
+            {isOwnProfile && (
+              <span className="text-sm font-normal text-neutral-500 dark:text-neutral-400">(You)</span>
+            )}
           </h3>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
             {scoreData.completed_loans} loans completed • {scoreData.current_streak} payment streak
@@ -205,6 +283,80 @@ function TrustScoreCard({ userId, showDetails = true, showVouches = true, classN
           )}
         </div>
       </div>
+
+      {/* Show "You vouched" indicator if current user has vouched for this profile */}
+      {myVouchForThisUser && (
+        <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                You've vouched for this person
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleRevokeVouch}
+              disabled={revokingVouch}
+              className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              {revokingVouch ? (
+                <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1" />
+                  Remove
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Method Stats */}
+      {paymentStats && paymentStats.totalPayments > 0 && (
+        <div className="mb-6 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
+          <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-2 mb-3">
+            <Zap className="w-4 h-4 text-amber-500" />
+            Payment Methods
+          </h4>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="p-3 bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700">
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-2 h-2 rounded-full ${paymentStats.autoPayEnabled ? 'bg-green-500' : 'bg-neutral-300'}`} />
+                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Auto-Pay</span>
+              </div>
+              <p className="text-lg font-bold text-neutral-900 dark:text-white">
+                {paymentStats.autoPayments}
+              </p>
+              <p className="text-xs text-neutral-500">
+                {paymentStats.autoPayEnabled ? 'Enabled' : 'Not enabled'}
+              </p>
+            </div>
+            <div className="p-3 bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Manual</span>
+              </div>
+              <p className="text-lg font-bold text-neutral-900 dark:text-white">
+                {paymentStats.manualPayments}
+              </p>
+              <p className="text-xs text-neutral-500">
+                Cash App, Venmo, etc.
+              </p>
+            </div>
+          </div>
+          {/* Payment timing breakdown */}
+          <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-green-600 dark:text-green-400">✓ On-time: {paymentStats.onTime}</span>
+              <span className="text-blue-600 dark:text-blue-400">⚡ Early: {paymentStats.early}</span>
+              <span className="text-amber-600 dark:text-amber-400">⏰ Late: {paymentStats.late}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Score Breakdown */}
       {showDetails && (
@@ -298,7 +450,7 @@ interface MiniTrustScoreProps {
   className?: string;
 }
 
-function MiniTrustScore({ userId, className = '' }: MiniTrustScoreProps) {
+export function MiniTrustScore({ userId, className = '' }: MiniTrustScoreProps) {
   const [score, setScore] = useState<{ score: number; grade: string } | null>(null);
 
   useEffect(() => {
@@ -337,7 +489,7 @@ interface VouchButtonProps {
   className?: string;
 }
 
-function VouchButton({ targetUserId, targetName, onVouchComplete, className = '' }: VouchButtonProps) {
+export function VouchButton({ targetUserId, targetName, onVouchComplete, className = '' }: VouchButtonProps) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -477,4 +629,4 @@ function VouchButton({ targetUserId, targetName, onVouchComplete, className = ''
 }
 
 // Export all components
-export { TrustScoreBadge, TrustScoreCard, MiniTrustScore, VouchButton };
+// export { TrustScoreBadge, TrustScoreCard, MiniTrustScore, VouchButton };

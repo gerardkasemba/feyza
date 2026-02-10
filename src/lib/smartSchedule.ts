@@ -4,7 +4,145 @@
  * Two modes:
  * 1. Simple presets (for guest borrowers and quick selection)
  * 2. Income-based personalized suggestions (for logged-in users with financial profiles)
+ * 
+ * Duration Fee System:
+ * - Longer repayment periods incur additional fees
+ * - Encourages faster repayment while allowing flexibility
  */
+
+// ==========================================
+// DURATION-BASED FEE STRUCTURE
+// The longer the loan term, the higher the fee
+// ==========================================
+
+export interface DurationFee {
+  minWeeks: number;
+  maxWeeks: number;
+  feePercent: number;
+  label: string;
+  description: string;
+}
+
+// Fee tiers based on loan duration
+export const DURATION_FEE_TIERS: DurationFee[] = [
+  { minWeeks: 0, maxWeeks: 4, feePercent: 0, label: 'No Fee', description: 'Repay within 4 weeks' },
+  { minWeeks: 5, maxWeeks: 8, feePercent: 2, label: '2% Fee', description: '5-8 weeks' },
+  { minWeeks: 9, maxWeeks: 12, feePercent: 4, label: '4% Fee', description: '9-12 weeks (2-3 months)' },
+  { minWeeks: 13, maxWeeks: 24, feePercent: 6, label: '6% Fee', description: '3-6 months' },
+  { minWeeks: 25, maxWeeks: 52, feePercent: 8, label: '8% Fee', description: '6-12 months' },
+  { minWeeks: 53, maxWeeks: Infinity, feePercent: 10, label: '10% Fee', description: 'Over 12 months' },
+];
+
+/**
+ * Calculate the duration fee based on repayment period
+ */
+export function calculateDurationFee(
+  principal: number,
+  frequencyWeeks: number, // weeks per payment (1=weekly, 2=biweekly, 4=monthly)
+  numberOfPayments: number
+): { feePercent: number; feeAmount: number; totalWeeks: number; tier: DurationFee } {
+  const totalWeeks = frequencyWeeks * numberOfPayments;
+  
+  // Find the applicable fee tier
+  const tier = DURATION_FEE_TIERS.find(t => totalWeeks >= t.minWeeks && totalWeeks <= t.maxWeeks) 
+    || DURATION_FEE_TIERS[DURATION_FEE_TIERS.length - 1];
+  
+  const feeAmount = Math.ceil(principal * (tier.feePercent / 100));
+  
+  return {
+    feePercent: tier.feePercent,
+    feeAmount,
+    totalWeeks,
+    tier,
+  };
+}
+
+/**
+ * Get frequency in weeks
+ */
+export function getFrequencyWeeks(frequency: string): number {
+  switch (frequency) {
+    case 'weekly': return 1;
+    case 'biweekly': return 2;
+    case 'semimonthly': return 2;
+    case 'monthly': return 4;
+    default: return 4;
+  }
+}
+
+/**
+ * Calculate total loan cost including duration fee
+ */
+export function calculateTotalWithDurationFee(
+  principal: number,
+  interestRate: number,
+  interestType: 'simple' | 'compound',
+  frequency: string,
+  numberOfPayments: number
+): {
+  principal: number;
+  interestAmount: number;
+  durationFee: number;
+  durationFeePercent: number;
+  totalAmount: number;
+  paymentAmount: number;
+  totalWeeks: number;
+  feeTier: DurationFee;
+  savings?: { fasterPayments: number; savedAmount: number };
+} {
+  // Calculate interest
+  let interestAmount = 0;
+  if (interestRate > 0) {
+    if (interestType === 'simple') {
+      const termMonths = (getFrequencyWeeks(frequency) * numberOfPayments) / 4;
+      interestAmount = Math.ceil(principal * (interestRate / 100) * (termMonths / 12));
+    } else {
+      // Compound interest (simplified)
+      const termMonths = (getFrequencyWeeks(frequency) * numberOfPayments) / 4;
+      interestAmount = Math.ceil(principal * Math.pow(1 + interestRate / 100 / 12, termMonths) - principal);
+    }
+  }
+  
+  // Calculate duration fee
+  const { feePercent, feeAmount, totalWeeks, tier } = calculateDurationFee(
+    principal,
+    getFrequencyWeeks(frequency),
+    numberOfPayments
+  );
+  
+  const totalAmount = principal + interestAmount + feeAmount;
+  const paymentAmount = Math.ceil(totalAmount / numberOfPayments);
+  
+  // Calculate potential savings if they pay faster
+  let savings;
+  if (feePercent > 0) {
+    // Find next lower tier
+    const currentTierIndex = DURATION_FEE_TIERS.findIndex(t => t === tier);
+    if (currentTierIndex > 0) {
+      const lowerTier = DURATION_FEE_TIERS[currentTierIndex - 1];
+      const fasterWeeks = lowerTier.maxWeeks;
+      const fasterPayments = Math.ceil(fasterWeeks / getFrequencyWeeks(frequency));
+      const lowerFee = Math.ceil(principal * (lowerTier.feePercent / 100));
+      const savedAmount = feeAmount - lowerFee;
+      
+      if (savedAmount > 0 && fasterPayments >= 1) {
+        savings = { fasterPayments, savedAmount };
+      }
+    }
+  }
+  
+  return {
+    principal,
+    interestAmount,
+    durationFee: feeAmount,
+    durationFeePercent: feePercent,
+    totalAmount,
+    paymentAmount,
+    totalWeeks,
+    feeTier: tier,
+    savings,
+  };
+}
 
 // ==========================================
 // SIMPLE PRESETS (Guest Borrowers & Quick Selection)
@@ -15,55 +153,80 @@ export interface RepaymentPreset {
   installments: number;
   label: string;
   paymentAmount: number;
+  durationFee?: number;
+  durationFeePercent?: number;
+  totalAmount?: number;
+  totalWeeks?: number;
   recommended?: boolean;
 }
 
 /**
- * Get repayment presets based on loan amount
- * Prevents unrealistic schedules like $50 loan over 24 months
+ * Get repayment presets based on loan amount (with optional duration fees)
  */
-export function getRepaymentPresets(amount: number): RepaymentPreset[] {
+export function getRepaymentPresets(amount: number, interestRate: number = 0, includeDurationFees: boolean = false): RepaymentPreset[] {
   if (!amount || amount <= 0) return [];
   
-  const presets: Omit<RepaymentPreset, 'paymentAmount'>[] = [];
+  const basePresets: { frequency: 'weekly' | 'biweekly' | 'monthly'; installments: number; label: string; recommended?: boolean }[] = [];
   
   if (amount <= 100) {
     // Small loans: 1-4 weeks
-    presets.push({ frequency: 'weekly', installments: 1, label: 'Pay in full (1 week)' });
-    presets.push({ frequency: 'weekly', installments: 2, label: '2 weekly payments', recommended: true });
+    basePresets.push({ frequency: 'weekly', installments: 1, label: 'Pay in full (1 week)' });
+    basePresets.push({ frequency: 'weekly', installments: 2, label: '2 weekly payments', recommended: true });
     if (amount >= 50) {
-      presets.push({ frequency: 'weekly', installments: 4, label: '4 weekly payments' });
+      basePresets.push({ frequency: 'weekly', installments: 4, label: '4 weekly payments' });
     }
   } else if (amount <= 500) {
     // Medium-small loans: 2-8 weeks or 1-3 months
-    presets.push({ frequency: 'weekly', installments: 2, label: '2 weekly payments' });
-    presets.push({ frequency: 'weekly', installments: 4, label: '4 weekly payments', recommended: true });
-    presets.push({ frequency: 'biweekly', installments: 4, label: '4 bi-weekly payments' });
+    basePresets.push({ frequency: 'weekly', installments: 2, label: '2 weekly payments' });
+    basePresets.push({ frequency: 'weekly', installments: 4, label: '4 weekly payments', recommended: true });
+    basePresets.push({ frequency: 'biweekly', installments: 4, label: '4 bi-weekly payments' });
     if (amount >= 200) {
-      presets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments' });
+      basePresets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments' });
     }
   } else if (amount <= 2000) {
     // Medium loans: 1-6 months
-    presets.push({ frequency: 'biweekly', installments: 4, label: '4 bi-weekly payments' });
-    presets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments', recommended: true });
-    presets.push({ frequency: 'monthly', installments: 4, label: '4 monthly payments' });
-    presets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments' });
+    basePresets.push({ frequency: 'biweekly', installments: 4, label: '4 bi-weekly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments', recommended: true });
+    basePresets.push({ frequency: 'monthly', installments: 4, label: '4 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments' });
   } else if (amount <= 10000) {
     // Larger loans: 3-12 months
-    presets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments' });
-    presets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments', recommended: true });
-    presets.push({ frequency: 'monthly', installments: 9, label: '9 monthly payments' });
-    presets.push({ frequency: 'monthly', installments: 12, label: '12 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 3, label: '3 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments', recommended: true });
+    basePresets.push({ frequency: 'monthly', installments: 9, label: '9 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 12, label: '12 monthly payments' });
   } else {
     // Large loans: 6-24 months
-    presets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments' });
-    presets.push({ frequency: 'monthly', installments: 12, label: '12 monthly payments', recommended: true });
-    presets.push({ frequency: 'monthly', installments: 18, label: '18 monthly payments' });
-    presets.push({ frequency: 'monthly', installments: 24, label: '24 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 6, label: '6 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 12, label: '12 monthly payments', recommended: true });
+    basePresets.push({ frequency: 'monthly', installments: 18, label: '18 monthly payments' });
+    basePresets.push({ frequency: 'monthly', installments: 24, label: '24 monthly payments' });
   }
   
-  // Calculate payment amount for each preset
-  return presets.map(preset => ({
+  // Calculate with or without duration fees
+  if (includeDurationFees) {
+    return basePresets.map(preset => {
+      const result = calculateTotalWithDurationFee(
+        amount,
+        interestRate,
+        'simple',
+        preset.frequency,
+        preset.installments
+      );
+      
+      return {
+        ...preset,
+        paymentAmount: result.paymentAmount,
+        durationFee: result.durationFee,
+        durationFeePercent: result.durationFeePercent,
+        totalAmount: result.totalAmount,
+        totalWeeks: result.totalWeeks,
+      };
+    });
+  }
+  
+  // Without duration fees (original behavior)
+  return basePresets.map(preset => ({
     ...preset,
     paymentAmount: Math.ceil(amount / preset.installments),
   }));
@@ -158,6 +321,8 @@ export interface PaymentSuggestion {
   numberOfPayments: number;
   weeksToPayoff: number;
   totalRepayment: number;
+  durationFee?: number;
+  durationFeePercent?: number;
   description: string;
 }
 
@@ -226,14 +391,15 @@ export function calculateDisposableIncome(monthlyIncome: number, monthlyExpenses
 }
 
 /**
- * Calculate payment amount for a given comfort level
+ * Calculate payment amount for a given comfort level (with duration fees)
  */
 function calculatePaymentForComfort(
   disposableIncome: number,
   comfortLevel: ComfortLevel,
   payFrequency: PayFrequency,
   loanAmount: number,
-  interestRate: number = 0
+  interestRate: number = 0,
+  includeDurationFees: boolean = false
 ): PaymentSuggestion {
   const monthlyPayment = disposableIncome * COMFORT_PERCENTAGES[comfortLevel];
   
@@ -259,6 +425,15 @@ function calculatePaymentForComfort(
                           payFrequency === 'semimonthly' ? 2 : 4;
   const weeksToPayoff = numberOfPayments * weeksPerPayment;
   
+  // Calculate duration fee if enabled
+  let durationFee = 0;
+  let durationFeePercent = 0;
+  if (includeDurationFees) {
+    const feeResult = calculateDurationFee(loanAmount, weeksPerPayment, numberOfPayments);
+    durationFee = feeResult.feeAmount;
+    durationFeePercent = feeResult.feePercent;
+  }
+  
   const descriptions: Record<ComfortLevel, string> = {
     comfortable: 'Easy on your budget, longer payoff time',
     balanced: 'Recommended balance of comfort and speed',
@@ -271,7 +446,9 @@ function calculatePaymentForComfort(
     percentOfDisposable: Math.round((paymentAmount * FREQUENCY_MULTIPLIERS[payFrequency] / disposableIncome) * 100),
     numberOfPayments,
     weeksToPayoff,
-    totalRepayment: paymentAmount * numberOfPayments,
+    totalRepayment: paymentAmount * numberOfPayments + durationFee,
+    durationFee,
+    durationFeePercent,
     description: descriptions[comfortLevel],
   };
 }
@@ -328,7 +505,8 @@ export function getNextPayDate(profile: FinancialProfile): Date {
 export function calculateSmartSchedule(
   profile: FinancialProfile,
   loanAmount: number,
-  interestRate: number = 0
+  interestRate: number = 0,
+  includeDurationFees: boolean = false
 ): SmartScheduleResult {
   const monthlyIncome = calculateMonthlyIncome(profile.payAmount, profile.payFrequency);
   const monthlyExpenses = calculateMonthlyExpenses(profile);
@@ -342,9 +520,9 @@ export function calculateSmartSchedule(
   }
   
   const suggestions = {
-    comfortable: calculatePaymentForComfort(disposableIncome, 'comfortable', profile.payFrequency, loanAmount, interestRate),
-    balanced: calculatePaymentForComfort(disposableIncome, 'balanced', profile.payFrequency, loanAmount, interestRate),
-    aggressive: calculatePaymentForComfort(disposableIncome, 'aggressive', profile.payFrequency, loanAmount, interestRate),
+    comfortable: calculatePaymentForComfort(disposableIncome, 'comfortable', profile.payFrequency, loanAmount, interestRate, includeDurationFees),
+    balanced: calculatePaymentForComfort(disposableIncome, 'balanced', profile.payFrequency, loanAmount, interestRate, includeDurationFees),
+    aggressive: calculatePaymentForComfort(disposableIncome, 'aggressive', profile.payFrequency, loanAmount, interestRate, includeDurationFees),
   };
   
   const recommended = suggestions[profile.comfortLevel || 'balanced'];
@@ -412,4 +590,15 @@ export function isPaymentSafe(
     percentage,
     message: 'This payment is within a comfortable range for your budget.',
   };
+}
+
+/**
+ * Get duration fee explanation for UI
+ */
+export function getDurationFeeExplanation(totalWeeks: number): string {
+  const tier = DURATION_FEE_TIERS.find(t => totalWeeks >= t.minWeeks && totalWeeks <= t.maxWeeks);
+  if (!tier || tier.feePercent === 0) {
+    return 'No extra fees for repaying within 4 weeks!';
+  }
+  return `A ${tier.feePercent}% fee applies for ${tier.description.toLowerCase()}. Pay faster to reduce fees!`;
 }

@@ -188,12 +188,12 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
           <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 mb-4">
             Borrow from a business lender to start building trust
           </p>
-          {/* <Link href="/marketplace">
+          <Link href="/marketplace">
             <Button size="sm" variant="outline">
               <Plus className="w-4 h-4 mr-1" />
               Browse Lenders
             </Button>
-          </Link> */}
+          </Link>
         </div>
       ) : (
         <>

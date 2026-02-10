@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Alert';
 import { LoanTimeline } from '@/components/loans';
 import { PaymentRetryBadge } from '@/components/payments/PaymentRetryBadge';
 import { BorrowerRatingCard } from '@/components/borrower/BorrowerRating';
-import { TrustScoreCard, VouchButton } from '@/components/trust-score';
+import { TrustScoreCard } from '@/components/trust-score';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatDate, getLoanProgress } from '@/lib/utils';
 import { downloadICalFile } from '@/lib/calendar';
@@ -41,6 +41,8 @@ import {
   Lock,
   User,
   Info,
+  Award,
+  UserPlus,
 } from 'lucide-react';
 
 // Import react-icons for emoji replacements (keep for emoji)
@@ -175,6 +177,10 @@ export default function LoanDetailPage() {
 
   // Cancel loan confirmation dialog
   const [showCancelDialog, setShowCancelDialog] = useState(false);
+  
+  // Ref to prevent duplicate polling fetches
+  const isFetchingTransferStatus = React.useRef(false);
+  const lastFetchTime = React.useRef(0);
 
   // Platform fee hook
   const { settings: feeSettings, loading: feeLoading, calculateFee } = usePlatformFee();
@@ -185,6 +191,12 @@ export default function LoanDetailPage() {
   // Borrower rating state
   const [borrowerRatingData, setBorrowerRatingData] = useState<any>(null);
   const [loadingBorrowerRating, setLoadingBorrowerRating] = useState(false);
+
+  // Lender vouch for borrower state
+  const [hasVouchedForBorrower, setHasVouchedForBorrower] = useState(false);
+  const [vouchingForBorrower, setVouchingForBorrower] = useState(false);
+  const [showVouchModal, setShowVouchModal] = useState(false);
+  const [vouchMessage, setVouchMessage] = useState('');
 
   const loanId = params.id as string;
   const supabase = createClient();
@@ -423,20 +435,55 @@ export default function LoanDetailPage() {
   }, [isLender, loan?.borrower_id, fetchBorrowerRating]);
 
   /* -------------------------------------------
+     Check if lender has already vouched for borrower
+  -------------------------------------------- */
+  useEffect(() => {
+    const checkExistingVouch = async () => {
+      if (!isLender || !loan?.borrower_id || !user?.id) return;
+      
+      try {
+        // Get vouches given by this user
+        const response = await fetch(`/api/vouches?type=given`);
+        if (response.ok) {
+          const data = await response.json();
+          const hasVouched = (data.vouches || []).some(
+            (v: any) => v.vouchee_id === loan.borrower_id
+          );
+          setHasVouchedForBorrower(hasVouched);
+        }
+      } catch (err) {
+        console.error('Error checking existing vouch:', err);
+      }
+    };
+
+    if (loan?.status === 'completed') {
+      checkExistingVouch();
+    }
+  }, [isLender, loan?.borrower_id, loan?.status, user?.id]);
+
+  /* -------------------------------------------
      Check if Dwolla (ACH) is enabled by admin
   -------------------------------------------- */
   useEffect(() => {
     const checkPaymentProviders = async () => {
       try {
-        const { data: providers } = await supabase
-          .from('payment_providers')
-          .select('slug')
-          .eq('is_enabled', true);
-        
-        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
-        setIsDwollaEnabled(dwollaEnabled);
+        // Use the API endpoint which properly checks:
+        // - is_enabled = true
+        // - is_available_for_repayment = true (for type=repayment)
+        // - supported_countries includes user's country
+        const response = await fetch('/api/payment-methods?country=US&type=repayment');
+        if (response.ok) {
+          const data = await response.json();
+          const dwollaEnabled = (data.providers || []).some((p: any) => p.slug === 'dwolla' && p.isAutomated);
+          console.log('[LoanDetail] Dwolla enabled for repayment:', dwollaEnabled, 'Providers:', data.providers?.map((p: any) => p.slug));
+          setIsDwollaEnabled(dwollaEnabled);
+        } else {
+          console.error('[LoanDetail] Failed to fetch payment providers:', response.status);
+          setIsDwollaEnabled(false);
+        }
       } catch (err) {
-        console.error('Failed to check payment providers:', err);
+        console.error('[LoanDetail] Failed to check payment providers:', err);
+        setIsDwollaEnabled(false);
       }
     };
 
@@ -543,11 +590,18 @@ export default function LoanDetailPage() {
             showToast({ type: 'error', title: 'Transfer Failed', message: 'The transfer failed. Please check details.' });
           }
 
-          setTransferStatusLoading(true);
-          fetch(`/api/dwolla/sync-status?loanId=${loanId}`)
-            .then((res) => res.json())
-            .then((data) => setTransferStatus(data))
-            .finally(() => setTransferStatusLoading(false));
+          // Only fetch sync-status if not already fetching
+          if (!isFetchingTransferStatus.current) {
+            setTransferStatusLoading(true);
+            isFetchingTransferStatus.current = true;
+            fetch(`/api/dwolla/sync-status?loanId=${loanId}`)
+              .then((res) => res.json())
+              .then((data) => setTransferStatus(data))
+              .finally(() => {
+                setTransferStatusLoading(false);
+                isFetchingTransferStatus.current = false;
+              });
+          }
         }
       )
       .subscribe();
@@ -563,6 +617,19 @@ export default function LoanDetailPage() {
   -------------------------------------------- */
   const fetchTransferStatus = useCallback(async () => {
     if (!loanId) return;
+    
+    // Prevent duplicate fetches
+    if (isFetchingTransferStatus.current) {
+      console.log('[Transfer Status] Skipping - fetch already in progress');
+      return;
+    }
+    
+    // Throttle: minimum 10 seconds between fetches
+    const now = Date.now();
+    if (now - lastFetchTime.current < 10000) {
+      console.log('[Transfer Status] Skipping - throttled');
+      return;
+    }
 
     // If Dwolla is not enabled, handle manual payment status differently
     if (!isDwollaEnabled) {
@@ -586,6 +653,9 @@ export default function LoanDetailPage() {
       }
       return;
     }
+    
+    isFetchingTransferStatus.current = true;
+    lastFetchTime.current = now;
 
     try {
       const response = await fetch(`/api/dwolla/sync-status?loan_id=${loanId}`);
@@ -673,8 +743,10 @@ export default function LoanDetailPage() {
       }
     } catch (error) {
       console.error('Error fetching transfer status:', error);
+    } finally {
+      isFetchingTransferStatus.current = false;
     }
-  }, [loanId, loan, isDwollaEnabled]);
+  }, [loanId, loan?.funds_sent, loan?.funds_sent_method, isDwollaEnabled]);
 
   // Poll for transfer status when funds are being transferred
   useEffect(() => {
@@ -701,20 +773,29 @@ export default function LoanDetailPage() {
     }
 
     // Only poll if disbursement is in progress (Dwolla only)
+    // Don't poll if already completed or not yet started
+    const disbursementStatus = (loan as any).disbursement_status;
     const shouldPoll =
       loan.status === 'active' &&
-      (((loan as any).disbursement_status === 'processing') ||
-        (((loan as any).disbursement_status !== 'completed' && !loan.funds_sent)));
+      isDwollaEnabled &&
+      disbursementStatus === 'processing' &&
+      !loan.funds_sent;
 
-    // Initial fetch
-    fetchTransferStatus();
-
-    // Set up polling every 30 seconds if disbursement is in progress
-    if (shouldPoll) {
-      const interval = setInterval(fetchTransferStatus, 30000);
-      return () => clearInterval(interval);
+    // Only do initial fetch if we should be polling
+    if (shouldPoll || disbursementStatus === 'processing') {
+      fetchTransferStatus();
     }
-  }, [loan?.id, loan?.status, (loan as any)?.disbursement_status, fetchTransferStatus, isDwollaEnabled, loan?.funds_sent]);
+
+    // Set up polling every 60 seconds (reduced from 30) if disbursement is in progress
+    if (shouldPoll) {
+      console.log('[Transfer Status] Starting polling for loan', loan.id);
+      const interval = setInterval(fetchTransferStatus, 60000); // 60 seconds
+      return () => {
+        console.log('[Transfer Status] Stopping polling for loan', loan.id);
+        clearInterval(interval);
+      };
+    }
+  }, [loan?.id, loan?.status, (loan as any)?.disbursement_status, isDwollaEnabled, loan?.funds_sent]);
 
   /* -------------------------------------------
      Actions (full functionality kept)
@@ -1079,6 +1160,48 @@ export default function LoanDetailPage() {
       showToast({ type: 'error', title: 'Error', message: 'Failed to confirm funds sent' });
     } finally {
       setFundsSending(false);
+    }
+  };
+
+  /* -------------------------------------------
+     Vouch for borrower (lender only, on completed loans)
+  -------------------------------------------- */
+  const handleVouchForBorrower = async () => {
+    if (!loan?.borrower_id || !user?.id) return;
+    
+    setVouchingForBorrower(true);
+    try {
+      const response = await fetch('/api/vouches', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'vouch',
+          voucheeId: loan.borrower_id,
+          vouch_type: 'character',
+          relationship: 'lender', // Special relationship type with higher weight
+          known_years: 1,
+          message: vouchMessage || `I lent to this borrower and they successfully repaid the loan.`,
+        }),
+      });
+
+      if (response.ok) {
+        setHasVouchedForBorrower(true);
+        setShowVouchModal(false);
+        setVouchMessage('');
+        showToast({ 
+          type: 'success', 
+          title: 'Vouch Created!', 
+          message: `You've vouched for ${(loan.borrower as any)?.full_name || 'this borrower'}. This helps build their trust score.` 
+        });
+      } else {
+        const data = await response.json();
+        showToast({ type: 'error', title: 'Error', message: data.error || 'Failed to create vouch' });
+      }
+    } catch (error) {
+      console.error('Error creating vouch:', error);
+      showToast({ type: 'error', title: 'Error', message: 'Failed to create vouch' });
+    } finally {
+      setVouchingForBorrower(false);
     }
   };
 
@@ -1766,23 +1889,17 @@ export default function LoanDetailPage() {
 
                 {/* Borrower Rating Section for Lender */}
                 {isLender && loan?.borrower_id && (
-                  <div className="space-y-4">
+                  <div className="space-y-4 mb-4">
                     {/* Trust Score Card */}
-                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
+                    <div className="mb-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-neutral-900 dark:text-white">Borrower Trust Score</h3>
-                        {loan.status === 'completed' && (
-                          <VouchButton 
-                            targetUserId={loan.borrower_id} 
-                            targetName={loan.borrower?.full_name || 'Borrower'}
-                          />
-                        )}
                       </div>
                       <TrustScoreCard userId={loan.borrower_id} showDetails={true} showVouches={true} />
                     </div>
 
                     {/* Legacy Borrower Rating (Payment History) */}
-                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
+                    <div className="mb-4 p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-neutral-900 dark:text-white">Payment History</h3>
                         {loadingBorrowerRating && <div className="text-xs text-neutral-500">Loading...</div>}
@@ -1871,7 +1988,7 @@ export default function LoanDetailPage() {
                     </div>
 
                     {/* Borrower's Own Trust Score */}
-                    <div className="bg-white dark:bg-neutral-900">
+                    <div className="mb-4">
                       <h3 className="font-semibold text-neutral-900 dark:text-white mb-3">Your Trust Score</h3>
                       <TrustScoreCard showDetails={true} showVouches={true} className='mb-4'/>
                     </div>
@@ -2812,6 +2929,43 @@ export default function LoanDetailPage() {
                       <p className="text-sm">{borrowerRatingData.recommendation}</p>
                     </div>
                   )}
+
+                  {/* Vouch for Borrower - only on completed loans */}
+                  {loan.status === 'completed' && (
+                    <div className="p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-800/50">
+                          <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-neutral-900 dark:text-white">Build Trust Together</h3>
+                          <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                            Your vouch as a lender carries significant weight
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {hasVouchedForBorrower ? (
+                        <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                          <CheckCircle className="w-5 h-5" />
+                          <span className="text-sm font-medium">You've vouched for this borrower</span>
+                        </div>
+                      ) : (
+                        <>
+                          <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+                            This loan was repaid successfully. Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'this borrower'} to boost their trust score and help them access better loan terms in the future.
+                          </p>
+                          <Button
+                            onClick={() => setShowVouchModal(true)}
+                            className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                          >
+                            <Award className="w-4 h-4 mr-2" />
+                            Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'Borrower'}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">No borrower information available</div>
@@ -3270,6 +3424,90 @@ export default function LoanDetailPage() {
                   )}
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Vouch for borrower modal */}
+      {showVouchModal && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-neutral-900 rounded-2xl max-w-md w-full p-6 my-8">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                <Award className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
+                Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'Borrower'}
+              </h2>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4">
+              <p className="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                As a lender, your vouch carries extra weight. You're confirming this borrower successfully repaid their loan.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-full bg-purple-200 dark:bg-purple-700 flex items-center justify-center">
+                    <User className="w-5 h-5 text-purple-700 dark:text-purple-200" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-neutral-900 dark:text-white">
+                      {(loan.borrower as any)?.full_name || 'Unknown'}
+                    </p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Relationship: Lender (highest trust weight)
+                    </p>
+                  </div>
+                </div>
+                <p className="text-sm text-neutral-600 dark:text-neutral-300">
+                  Loan amount: {formatCurrency(loan.amount, loan.currency)} • Successfully repaid
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                  Add a message (optional)
+                </label>
+                <textarea
+                  value={vouchMessage}
+                  onChange={(e) => setVouchMessage(e.target.value)}
+                  placeholder="Share your experience lending to this borrower..."
+                  rows={3}
+                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="outline"
+                onClick={() => setShowVouchModal(false)}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleVouchForBorrower}
+                disabled={vouchingForBorrower}
+                className="flex-1 bg-purple-600 hover:bg-purple-700"
+              >
+                {vouchingForBorrower ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Award className="w-4 h-4 mr-2" />
+                    Create Vouch
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>

@@ -51,10 +51,38 @@ export async function GET(request: NextRequest) {
       .order('vouch_strength', { ascending: false })
       .limit(5);
 
+    // Get user payment stats (auto-pay vs manual)
+    const { data: userProfile } = await serviceClient
+      .from('users')
+      .select(`
+        total_payments_made,
+        payments_on_time,
+        payments_early,
+        payments_late,
+        payments_missed,
+        auto_payments_count,
+        manual_payments_count,
+        auto_pay_enabled,
+        dwolla_funding_source_url
+      `)
+      .eq('id', userId)
+      .single();
+
     return NextResponse.json({
       score,
       recentEvents: events,
       topVouches: vouches || [],
+      paymentStats: userProfile ? {
+        totalPayments: userProfile.total_payments_made || 0,
+        onTime: userProfile.payments_on_time || 0,
+        early: userProfile.payments_early || 0,
+        late: userProfile.payments_late || 0,
+        missed: userProfile.payments_missed || 0,
+        autoPayments: userProfile.auto_payments_count || 0,
+        manualPayments: userProfile.manual_payments_count || 0,
+        autoPayEnabled: userProfile.auto_pay_enabled || false,
+        bankConnected: !!userProfile.dwolla_funding_source_url,
+      } : null,
     });
   } catch (error: any) {
     console.error('Error fetching trust score:', error);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentReceivedLenderEmail, getPaymentProcessedBorrowerEmail } from '@/lib/email';
+import { TrustScoreService } from '@/lib/trust-score';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -268,6 +269,35 @@ export async function POST(request: NextRequest) {
         data: { loan_id: loanId, payment_id: paymentId, amount: payment.amount },
         is_read: false,
       });
+    }
+
+    // Update Trust Score
+    try {
+      const trustService = new TrustScoreService(serviceClient);
+      
+      // Calculate days from due date
+      const dueDate = new Date(payment.due_date);
+      const paidDate = new Date();
+      const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Record payment event
+      await trustService.onPaymentMade(
+        user.id,
+        loanId,
+        paymentId,
+        Number(payment.amount),
+        daysDiff
+      );
+
+      // If loan completed, record that too
+      if (isComplete) {
+        await trustService.onLoanCompleted(user.id, loanId, Number(loan.amount));
+      }
+
+      console.log('[Manual Payment] Trust score updated for user:', user.id);
+    } catch (trustError) {
+      console.error('[Manual Payment] Failed to update trust score:', trustError);
+      // Don't fail the payment if trust score update fails
     }
 
     return NextResponse.json({ 

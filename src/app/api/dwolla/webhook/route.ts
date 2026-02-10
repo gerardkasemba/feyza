@@ -3,6 +3,7 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature } from '@/lib/dwolla';
 import { sendEmail, getDisbursementFailedEmail, getFundsArrivedEmail, getPaymentReceivedLenderEmail } from '@/lib/email';
 import { format } from 'date-fns';
+import { onPaymentCompleted, onPaymentFailed } from "@/lib/payments";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -206,9 +207,28 @@ async function handleTransferCompleted(supabase: any, transfer: any, loan: any) 
     // Find the associated payment schedule item
     const { data: payment } = await supabase
       .from('payment_schedule')
-      .select('id, amount')
+      .select('id, amount, due_date')
       .eq('transfer_id', transfer.id)
       .single();
+    
+    // Update Trust Score
+    if (loan.borrower_id) {
+      try {
+        await onPaymentCompleted({
+          supabase,
+          loanId: loan.id,
+          borrowerId: loan.borrower_id,
+          paymentId: payment?.id,
+          scheduleId: payment?.id,
+          amount: payment?.amount || transfer.amount,
+          dueDate: payment?.due_date,
+          paymentMethod: 'dwolla',
+        });
+        console.log(`[Dwolla Webhook] ✅ Trust score updated for borrower`);
+      } catch (trustError) {
+        console.error(`[Dwolla Webhook] Trust score update failed:`, trustError);
+      }
+    }
     
     // Send payment received email to lender
     await sendRepaymentReceivedEmail(loan, transfer, payment, supabase);
@@ -244,6 +264,21 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
         });
       } catch (e) {
         console.error('[Dwolla Webhook] Failed to send failure email:', e);
+      }
+    }
+  } else if (transfer.type === 'repayment') {
+    // Record failed payment for trust score
+    if (loan.borrower_id) {
+      try {
+        await onPaymentFailed({
+          supabase,
+          borrowerId: loan.borrower_id,
+          loanId: loan.id,
+          reason: 'Dwolla transfer failed',
+        });
+        console.log(`[Dwolla Webhook] Trust score penalty recorded for failed payment`);
+      } catch (trustError) {
+        console.error(`[Dwolla Webhook] Failed to record trust score penalty:`, trustError);
       }
     }
   }

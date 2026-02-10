@@ -73,7 +73,7 @@ export default function HomePage() {
               </div>
 
               {/* Guest access - compact */}
-              <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
+              {/* <div className="bg-neutral-100 dark:bg-neutral-800/50 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700">
                 <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-3">
                   Already using Feyza?
                 </p>
@@ -97,7 +97,7 @@ export default function HomePage() {
                     </Button>
                   </Link>
                 </div>
-              </div>
+              </div> */}
             </div>
 
             {/* Right: Loan Request Form */}
@@ -672,6 +672,132 @@ export default function HomePage() {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* TRUST SCORE & RELATIONSHIPS SECTION */}
+      <section className="py-24 bg-white dark:bg-neutral-950">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <span className="inline-flex items-center gap-2 px-4 py-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded-full text-sm font-medium mb-4">
+              <Shield className="w-4 h-4" />
+              Build Your Trust
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4">
+              Two ways to build credibility
+            </h2>
+            <p className="text-xl text-neutral-600 dark:text-neutral-300 max-w-2xl mx-auto">
+              Feyza helps you build trust with lenders through two complementary systems
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-7xl mx-auto">
+            {/* Trust Score Card */}
+            <div className="bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/20 dark:to-neutral-900 p-8 rounded-2xl border border-purple-200 dark:border-purple-800">
+              <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/50 rounded-2xl flex items-center justify-center mb-6">
+                <Shield className="w-8 h-8 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-3">
+                Trust Score
+              </h3>
+              <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+                Your universal credibility score (0-100) visible to <strong>all lenders</strong> on Feyza.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <CheckCircle className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Payment History</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">On-time payments boost your score</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Users className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Social Vouches</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">Friends & family vouch for your trustworthiness</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <BadgeCheck className="w-5 h-5 text-purple-600 dark:text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Verification Status</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">ID verification adds credibility</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-purple-200 dark:border-purple-800">
+                <p className="text-sm text-purple-700 dark:text-purple-300">
+                  <strong>When you apply for a new loan</strong>, lenders see your Trust Score to evaluate your application.
+                </p>
+              </div>
+            </div>
+
+            {/* Business Relationships Card */}
+            <div className="bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/20 dark:to-neutral-900 p-8 rounded-2xl border border-blue-200 dark:border-blue-800">
+              <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/50 rounded-2xl flex items-center justify-center mb-6">
+                <Building2 className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-3">
+                Business Relationships
+              </h3>
+              <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+                Private trust history with <strong>each specific business</strong> lender you work with.
+              </p>
+              
+              <div className="space-y-4">
+                <div className="flex items-start gap-3">
+                  <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Start Small</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">First-time loans have lower limits</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <ArrowRight className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Graduate to More</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">Complete 3 loans to unlock higher amounts</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Lock className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
+                  <div>
+                    <p className="font-medium text-neutral-900 dark:text-white">Private History</p>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">Your relationship with each business is private</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-blue-200 dark:border-blue-800">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  <strong>Request directly</strong> from businesses you have built trust with for faster approvals and higher limits.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom CTA */}
+          <div className="text-center mt-12">
+            <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+              Start building your trust today
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+              <Link href="/auth/signup">
+                <Button>
+                  Create Account
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
+              <Link href="/borrower/request">
+                <Button variant="outline">
+                  Request a Loan
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

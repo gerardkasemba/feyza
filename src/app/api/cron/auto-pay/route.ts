@@ -8,6 +8,7 @@ import {
   getPaymentProcessedBorrowerEmail,
   getPaymentReceivedGuestLenderEmail 
 } from '@/lib/email';
+import { onPaymentCompleted, onPaymentMissed } from '@/lib/payments';
 import { format } from 'date-fns';
 
 // Next.js 16 route configuration for cron jobs
@@ -234,6 +235,25 @@ export async function GET(request: NextRequest) {
           console.error(`[Auto-Pay] Error updating loan ${loan.id}:`, loanUpdateError);
         }
 
+        // Update Trust Score
+        if (loan.borrower_id) {
+          try {
+            await onPaymentCompleted({
+              supabase,
+              loanId: loan.id,
+              borrowerId: loan.borrower_id,
+              paymentId: paymentRecord?.id,
+              scheduleId: payment.id,
+              amount: payment.amount,
+              dueDate: payment.due_date,
+              paymentMethod: 'auto',
+            });
+            console.log(`[Auto-Pay] ✅ Trust score updated for borrower`);
+          } catch (trustError) {
+            console.error(`[Auto-Pay] Trust score update failed:`, trustError);
+          }
+        }
+
         // Update borrower stats
         await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
@@ -289,6 +309,27 @@ async function handleMissedPayment(
       notes: `Payment failed: ${reason}`,
     })
     .eq('id', payment.id);
+
+  // Calculate days overdue
+  const dueDate = new Date(payment.due_date);
+  const now = new Date();
+  const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Update Trust Score for missed payment
+  if (loan.borrower_id) {
+    try {
+      await onPaymentMissed({
+        supabase,
+        borrowerId: loan.borrower_id,
+        loanId: loan.id,
+        scheduleId: payment.id,
+        daysOverdue: Math.max(0, daysOverdue),
+      });
+      console.log(`[Auto-Pay] Trust score penalty applied for missed payment`);
+    } catch (trustError) {
+      console.error(`[Auto-Pay] Trust score update failed:`, trustError);
+    }
+  }
 
   // Update borrower's missed payment count
   if (loan.borrower_id) {

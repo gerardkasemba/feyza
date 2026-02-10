@@ -1,19 +1,22 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { TutorialProvider, TutorialAutoStart } from '@/components/tutorial';
+import { HelpCircle } from 'lucide-react';
 
 interface DashboardClientProps {
   userId: string;
   children: React.ReactNode;
+  tutorialId?: string;
 }
 
 /**
- * Client-side wrapper for dashboard that handles real-time updates
+ * Client-side wrapper for dashboard that handles real-time updates and tutorial
  * Wraps server-rendered content and refreshes when data changes
  */
-export function DashboardClient({ userId, children }: DashboardClientProps) {
+export function DashboardClient({ userId, children, tutorialId = 'dashboard' }: DashboardClientProps) {
   const router = useRouter();
   const lastRefreshRef = useRef<number>(Date.now());
   const supabase = createClient();
@@ -91,7 +94,45 @@ export function DashboardClient({ userId, children }: DashboardClientProps) {
     };
   }, [userId, supabase, refreshData]);
 
-  return <>{children}</>;
+  return (
+    <TutorialProvider>
+      {children}
+      <TutorialAutoStart tutorialId={tutorialId} />
+      <TutorialHelpButton tutorialId={tutorialId} />
+    </TutorialProvider>
+  );
+}
+
+// Floating help button
+function TutorialHelpButton({ tutorialId }: { tutorialId: string }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  const handleClick = () => {
+    // Reset and start tutorial
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`tutorial_${tutorialId}_completed`);
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-40">
+      <button
+        onClick={handleClick}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className="w-12 h-12 bg-primary-600 hover:bg-primary-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110"
+        title="Start Tutorial"
+      >
+        <HelpCircle className="w-6 h-6" />
+      </button>
+      {showTooltip && (
+        <div className="absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-neutral-800 text-white text-sm rounded-lg whitespace-nowrap">
+          Restart Tutorial
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**

@@ -27,7 +27,6 @@ import {
   LucideIcon,
   Moon,
   Sun,
-  Monitor,
   TrendingUp,
   Info,
   CreditCard as PayIcon,
@@ -298,7 +297,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
   const isActionItem = (item: MenuItem): item is ActionItem => 'onClick' in item;
   const isDividerItem = (item: MenuItem): item is DividerItem => 'type' in item && item.type === 'divider';
 
-  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor;
+  const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Sun;
 
   if (loading && !initialUser) {
     return (
@@ -469,7 +468,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
 
                   {/* My Loans Dropdown for Guests */}
                   <div className="relative" ref={guestLoansDropdownRef}>
-                    <button 
+                    {/* <button 
                       onClick={() => setGuestLoansDropdownOpen(!guestLoansDropdownOpen)} 
                       className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
                         guestLoansDropdownOpen || pathname?.startsWith('/borrower/access') 
@@ -479,7 +478,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
                       <FileText className="w-4 h-4" />
                       <span className="hidden lg:inline">My Loans</span>
                       <ChevronDown className={cn("w-3 h-3 transition-transform", guestLoansDropdownOpen && "rotate-180")} />
-                    </button>
+                    </button> */}
 
                     {guestLoansDropdownOpen && (
                       <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 py-2 animate-fade-in z-50">

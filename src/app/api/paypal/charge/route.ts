@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { onPaymentCompleted } from '@/lib/payments';
 
 const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
@@ -200,6 +201,25 @@ export async function POST(request: NextRequest) {
         status: isCompleted ? 'completed' : loan.status,
       })
       .eq('id', loan.id);
+
+    // Update Trust Score
+    if (loan.borrower_id) {
+      try {
+        await onPaymentCompleted({
+          supabase,
+          loanId: loan.id,
+          borrowerId: loan.borrower_id,
+          paymentId: payment?.id,
+          scheduleId: scheduleId,
+          amount: scheduleItem.amount,
+          dueDate: scheduleItem.due_date,
+          paymentMethod: 'paypal',
+        });
+        console.log('[PayPal] ✅ Trust score updated');
+      } catch (trustError) {
+        console.error('[PayPal] Trust score update failed:', trustError);
+      }
+    }
 
     // Send confirmation emails
     // To borrower

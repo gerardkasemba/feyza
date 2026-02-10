@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { StatsCard, BorrowerTrustCard, IncomeProfileCard, DashboardClient } from '@/components/dashboard';
+import { TrustScoreCard, VouchRequestCard } from '@/components/trust-score';
 import { DashboardBorrowingLimit } from '@/components/dashboard/DashboardBorrowingLimit';
 import { LoanCard } from '@/components/loans';
 import { PaymentSetupBanner } from '@/components/payments';
@@ -498,11 +499,24 @@ export default async function DashboardPage() {
           {/* Borrowing Limit, Trust Level & Income Profile Row */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <DashboardBorrowingLimit />
-            <BorrowerTrustCard userId={userProfile.id} />
+            <div data-tutorial="trust-score">
+              <TrustScoreCard showDetails={false} showVouches={true} className="lg:col-span-1" />
+            </div>
             <IncomeProfileCard />
           </div>
 
+          {/* Business Trust Card (for business lender relationships) */}
+          <div className="grid md:grid-cols-2 gap-4 mb-8">
+            <div data-tutorial="business-trust">
+              <BorrowerTrustCard userId={userProfile.id} />
+            </div>
+            <div data-tutorial="vouch-request">
+              <VouchRequestCard compact={true} />
+            </div>
+          </div>
+
           {/* Loans Tabs */}
+          <div data-tutorial="loans-tabs">
           <Tabs defaultValue="borrowed" className="mb-8">
             <TabsList className="mb-6">
               <TabsTrigger value="borrowed" className="relative">
@@ -620,6 +634,7 @@ export default async function DashboardPage() {
               )}
             </TabsContent>
           </Tabs>
+          </div>
 
           {/* Quick Actions */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -1,36 +1,33 @@
 'use client';
 
-import { useEffect, useCallback, useRef, ReactNode } from 'react';
+import { useEffect, useCallback, useRef, ReactNode, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { TutorialProvider, TutorialAutoStart } from '@/components/tutorial';
+import { HelpCircle } from 'lucide-react';
 
 interface RealtimePageWrapperProps {
   userId: string;
   children: ReactNode;
-  /** Which subscriptions to enable */
   subscriptions?: {
     loans?: boolean;
     notifications?: boolean;
   };
-  /** Debounce time in ms before refreshing (default 1500ms) */
   debounceMs?: number;
+  tutorialId?: string;
 }
 
-/**
- * Generic wrapper that adds real-time subscriptions to any page
- * Automatically refreshes server data when changes are detected
- */
 export function RealtimePageWrapper({ 
   userId, 
   children, 
   subscriptions = { loans: true, notifications: true },
   debounceMs = 1500,
+  tutorialId,
 }: RealtimePageWrapperProps) {
   const router = useRouter();
   const lastRefreshRef = useRef<number>(Date.now());
   const supabase = createClient();
 
-  // Debounced refresh function
   const refreshData = useCallback(() => {
     const now = Date.now();
     if (now - lastRefreshRef.current > debounceMs) {
@@ -44,7 +41,6 @@ export function RealtimePageWrapper({
 
     const channels: any[] = [];
 
-    // Loan subscriptions
     if (subscriptions.loans) {
       const borrowerChannel = supabase
         .channel(`realtime-borrower-${userId}`)
@@ -67,7 +63,6 @@ export function RealtimePageWrapper({
       channels.push(lenderChannel);
     }
 
-    // Notification subscriptions
     if (subscriptions.notifications) {
       const notificationChannel = supabase
         .channel(`realtime-notifications-${userId}`)
@@ -85,12 +80,49 @@ export function RealtimePageWrapper({
     };
   }, [userId, subscriptions.loans, subscriptions.notifications, supabase, refreshData]);
 
+  if (tutorialId) {
+    return (
+      <TutorialProvider>
+        {children}
+        <TutorialAutoStart tutorialId={tutorialId} />
+        <TutorialHelpButton tutorialId={tutorialId} />
+      </TutorialProvider>
+    );
+  }
+
   return <>{children}</>;
 }
 
-/**
- * Loans page specific wrapper
- */
+function TutorialHelpButton({ tutorialId }: { tutorialId: string }) {
+  const [showTooltip, setShowTooltip] = useState(false);
+  
+  const handleClick = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`tutorial_${tutorialId}_completed`);
+      window.location.reload();
+    }
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-40">
+      <button
+        onClick={handleClick}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className="w-12 h-12 bg-primary-600 hover:bg-primary-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all hover:scale-110"
+        title="Start Tutorial"
+      >
+        <HelpCircle className="w-6 h-6" />
+      </button>
+      {showTooltip && (
+        <div className="absolute bottom-full right-0 mb-2 px-3 py-1.5 bg-neutral-800 text-white text-sm rounded-lg whitespace-nowrap">
+          Restart Tutorial
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LoansPageClient({ userId, children }: { userId: string; children: ReactNode }) {
   return (
     <RealtimePageWrapper 
@@ -103,24 +135,19 @@ export function LoansPageClient({ userId, children }: { userId: string; children
   );
 }
 
-/**
- * Business dashboard specific wrapper
- */
 export function BusinessDashboardClient({ userId, children }: { userId: string; children: ReactNode }) {
   return (
     <RealtimePageWrapper 
       userId={userId} 
       subscriptions={{ loans: true, notifications: true }}
       debounceMs={1000}
+      tutorialId="business"
     >
       {children}
     </RealtimePageWrapper>
   );
 }
 
-/**
- * Admin dashboard specific wrapper
- */
 export function AdminDashboardClient({ userId, children }: { userId: string; children: ReactNode }) {
   return (
     <RealtimePageWrapper 

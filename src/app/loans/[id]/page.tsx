@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Alert';
 import { LoanTimeline } from '@/components/loans';
 import { PaymentRetryBadge } from '@/components/payments/PaymentRetryBadge';
 import { BorrowerRatingCard } from '@/components/borrower/BorrowerRating';
+import { TrustScoreCard, VouchButton } from '@/components/trust-score';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency, formatDate, getLoanProgress } from '@/lib/utils';
 import { downloadICalFile } from '@/lib/calendar';
@@ -1765,11 +1766,27 @@ export default function LoanDetailPage() {
 
                 {/* Borrower Rating Section for Lender */}
                 {isLender && loan?.borrower_id && (
-                  <div className="mb-6 p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-neutral-900 dark:text-white">Borrower Information</h3>
-                      {loadingBorrowerRating && <div className="text-xs text-neutral-500">Loading...</div>}
+                  <div className="space-y-4">
+                    {/* Trust Score Card */}
+                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Borrower Trust Score</h3>
+                        {loan.status === 'completed' && (
+                          <VouchButton 
+                            targetUserId={loan.borrower_id} 
+                            targetName={loan.borrower?.full_name || 'Borrower'}
+                          />
+                        )}
+                      </div>
+                      <TrustScoreCard userId={loan.borrower_id} showDetails={true} showVouches={true} />
                     </div>
+
+                    {/* Legacy Borrower Rating (Payment History) */}
+                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Payment History</h3>
+                        {loadingBorrowerRating && <div className="text-xs text-neutral-500">Loading...</div>}
+                      </div>
 
                     {borrowerRatingData ? (
                       <BorrowerRatingCard
@@ -1808,46 +1825,55 @@ export default function LoanDetailPage() {
                         <strong>Recommendation:</strong> {borrowerRatingData.recommendation}
                       </div>
                     )}
+                    </div>
                   </div>
                 )}
 
                 {/* Borrower Status Section for Borrower */}
                 {isBorrower && (
-                  <div className="mb-6 p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-blue-50 dark:bg-blue-900/20">
-                    <div className="flex items-center gap-2 mb-3">
-                      <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                      <h3 className="font-semibold text-neutral-900 dark:text-white">Your Status</h3>
+                  <div className="space-y-4">
+                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-blue-50 dark:bg-blue-900/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <User className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Your Status</h3>
+                      </div>
+
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-600 dark:text-neutral-400">Loan Status:</span>
+                          <Badge variant={statusColor}>
+                            <StatusIcon className="w-3 h-3 mr-1" />
+                            {statusLabel}
+                          </Badge>
+                        </div>
+
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-600 dark:text-neutral-400">Progress:</span>
+                          <span className="font-medium text-neutral-900 dark:text-white">
+                            {Math.round(progress)}% ({paidCount}/{schedule.length} payments)
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-600 dark:text-neutral-400">Next Payment:</span>
+                          <span className="font-medium text-neutral-900 dark:text-white">
+                            {nextPayment ? formatCurrency(nextPayment.amount, loan.currency) : 'None'}
+                          </span>
+                        </div>
+
+                        <div className="flex justify-between text-sm">
+                          <span className="text-neutral-600 dark:text-neutral-400">Due Date:</span>
+                          <span className="font-medium text-neutral-900 dark:text-white">
+                            {nextPayment ? formatDate(nextPayment.due_date) : 'N/A'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-600 dark:text-neutral-400">Loan Status:</span>
-                        <Badge variant={statusColor}>
-                          <StatusIcon className="w-3 h-3 mr-1" />
-                          {statusLabel}
-                        </Badge>
-                      </div>
-
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-600 dark:text-neutral-400">Progress:</span>
-                        <span className="font-medium text-neutral-900 dark:text-white">
-                          {Math.round(progress)}% ({paidCount}/{schedule.length} payments)
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-600 dark:text-neutral-400">Next Payment:</span>
-                        <span className="font-medium text-neutral-900 dark:text-white">
-                          {nextPayment ? formatCurrency(nextPayment.amount, loan.currency) : 'None'}
-                        </span>
-                      </div>
-
-                      <div className="flex justify-between text-sm">
-                        <span className="text-neutral-600 dark:text-neutral-400">Due Date:</span>
-                        <span className="font-medium text-neutral-900 dark:text-white">
-                          {nextPayment ? formatDate(nextPayment.due_date) : 'N/A'}
-                        </span>
-                      </div>
+                    {/* Borrower's Own Trust Score */}
+                    <div className="bg-white dark:bg-neutral-900">
+                      <h3 className="font-semibold text-neutral-900 dark:text-white mb-3">Your Trust Score</h3>
+                      <TrustScoreCard showDetails={true} showVouches={true} className='mb-4'/>
                     </div>
                   </div>
                 )}

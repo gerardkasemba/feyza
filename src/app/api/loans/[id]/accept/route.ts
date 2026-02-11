@@ -127,7 +127,69 @@ export async function POST(
       }
     }
 
-    // Update loan status to active and set lender details using service role
+    // Get lender's interest rate
+    
+    let interestRate = loan.interest_rate || 0; // Default to loan's current rate
+    let interestType = loan.interest_type || 'simple';
+
+    if (loan.business_lender_id) {
+      // Get business lender's interest rate from preferences first
+      const { data: lenderPref } = await serviceSupabase
+        .from('lender_preferences')
+        .select('interest_rate')
+        .eq('business_id', loan.business_lender_id)
+        .single();
+      
+      if (lenderPref?.interest_rate !== null && lenderPref?.interest_rate !== undefined) {
+        interestRate = lenderPref.interest_rate;
+        console.log(`[Accept] Using lender preference interest rate: ${interestRate}%`);
+      } else {
+        // Fall back to business profile default rate
+        const { data: business } = await serviceSupabase
+          .from('business_profiles')
+          .select('default_interest_rate, interest_type')
+          .eq('id', loan.business_lender_id)
+          .single();
+        
+        if (business) {
+          interestRate = business.default_interest_rate || 0;
+          interestType = business.interest_type || 'simple';
+          console.log(`[Accept] Using business profile interest rate: ${interestRate}% (${interestType})`);
+        }
+      }
+    }
+
+    // Calculate total interest and total amount
+    const calculateInterest = (principal: number, rate: number, months: number, type: string) => {
+      if (type === 'compound') {
+        // Compound: A = P(1 + r/12)^months - P
+        const monthlyRate = rate / 100 / 12;
+        const compoundAmount = principal * Math.pow(1 + monthlyRate, months);
+        return Math.round((compoundAmount - principal) * 100) / 100;
+      } else {
+        // Simple: I = P * r * (months/12)
+        return Math.round(principal * (rate / 100) * (months / 12) * 100) / 100;
+      }
+    };
+
+    // Convert payment frequency to months
+    const loanMonths = loan.total_installments * 
+      (loan.repayment_frequency === 'weekly' ? 0.25 : 
+       loan.repayment_frequency === 'biweekly' ? 0.5 : 1);
+
+    const totalInterest = calculateInterest(loan.amount, interestRate, loanMonths, interestType);
+    const totalAmount = Math.round((loan.amount + totalInterest) * 100) / 100;
+
+    console.log(`[Accept] Calculated interest for loan ${loanId}:`, {
+      principal: loan.amount,
+      rate: interestRate,
+      type: interestType,
+      months: loanMonths,
+      totalInterest,
+      totalAmount
+    });
+
+    // Update loan status to active and set lender details + interest
     const { error: updateError } = await serviceSupabase
       .from('loans')
       .update({
@@ -135,6 +197,11 @@ export async function POST(
         lender_id: user.id,
         lender_name: lenderName,
         lender_email: lenderEmail,
+        interest_rate: interestRate,
+        interest_type: interestType,
+        total_interest: totalInterest,
+        total_amount: totalAmount,
+        amount_remaining: totalAmount, // Set remaining to total (principal + interest)
         updated_at: new Date().toISOString(),
       })
       .eq('id', loanId);
@@ -142,6 +209,70 @@ export async function POST(
     if (updateError) {
       console.error('Error updating loan:', updateError);
       return NextResponse.json({ error: 'Failed to accept loan: ' + updateError.message }, { status: 500 });
+    }
+
+    console.log(`[Accept] Loan ${loanId} updated with interest rate ${interestRate}%`);
+
+    // Regenerate payment schedule with new interest
+    try {
+      // Delete old schedule
+      await serviceSupabase
+        .from('payment_schedule')
+        .delete()
+        .eq('loan_id', loanId);
+
+      // Calculate per-installment amounts
+      const paymentAmount = Math.round((totalAmount / loan.total_installments) * 100) / 100;
+      const principalPerPayment = Math.round((loan.amount / loan.total_installments) * 100) / 100;
+      const interestPerPayment = Math.round((totalInterest / loan.total_installments) * 100) / 100;
+
+      // Generate new schedule
+      const schedule = [];
+      let currentDate = new Date(loan.start_date);
+      
+      for (let i = 0; i < loan.total_installments; i++) {
+        // Adjust last payment to account for rounding
+        const isLast = i === loan.total_installments - 1;
+        const adjustedPayment = isLast ? 
+          totalAmount - (paymentAmount * i) : paymentAmount;
+        const adjustedPrincipal = isLast ? 
+          loan.amount - (principalPerPayment * i) : principalPerPayment;
+        const adjustedInterest = isLast ? 
+          totalInterest - (interestPerPayment * i) : interestPerPayment;
+
+        schedule.push({
+          loan_id: loanId,
+          due_date: currentDate.toISOString().split('T')[0],
+          amount: adjustedPayment,
+          principal_amount: adjustedPrincipal,
+          interest_amount: adjustedInterest,
+          is_paid: false,
+          status: 'pending',
+        });
+
+        // Move to next payment date based on frequency
+        if (loan.repayment_frequency === 'weekly') {
+          currentDate.setDate(currentDate.getDate() + 7);
+        } else if (loan.repayment_frequency === 'biweekly') {
+          currentDate.setDate(currentDate.getDate() + 14);
+        } else if (loan.repayment_frequency === 'monthly') {
+          currentDate.setMonth(currentDate.getMonth() + 1);
+        }
+      }
+
+      // Insert new schedule
+      const { error: scheduleError } = await serviceSupabase
+        .from('payment_schedule')
+        .insert(schedule);
+
+      if (scheduleError) {
+        console.error('[Accept] Error regenerating payment schedule:', scheduleError);
+      } else {
+        console.log(`[Accept] Regenerated payment schedule for loan ${loanId} with ${schedule.length} installments`);
+      }
+    } catch (scheduleError) {
+      console.error('[Accept] Error in schedule regeneration:', scheduleError);
+      // Don't fail the acceptance if schedule regeneration fails
     }
 
     // Create disbursement if loan has recipient info (for diaspora loans)
@@ -217,6 +348,8 @@ export async function POST(
     });
   } catch (error: any) {
     console.error('Error accepting loan:', error);
-    return NextResponse.json({ error: 'Internal server error: ' + (error.message || 'Unknown error') }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Internal server error: ' + (error.message || 'Unknown error') 
+    }, { status: 500 });
   }
 }

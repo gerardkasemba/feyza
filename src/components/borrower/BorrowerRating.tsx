@@ -1,118 +1,36 @@
 'use client';
 
-import React from 'react';
-import { Star, ThumbsUp, AlertTriangle, XCircle, HelpCircle, Award, Shield, Clock, CheckCircle, AlertOctagon } from 'lucide-react';
-import { FaStar, FaThumbsUp, FaExclamationTriangle, FaTimesCircle, FaQuestionCircle, FaAward, FaShieldAlt, FaClock, FaCheckCircle, FaBan } from 'react-icons/fa';
+import React, { useMemo } from 'react';
+import {
+  Star,
+  ThumbsUp,
+  HelpCircle,
+  AlertTriangle,
+  XCircle,
+  ShieldCheck,
+  Clock,
+  TrendingUp,
+  Info,
+  Award
+} from 'lucide-react';
+
+/**
+ * App-style, mobile-friendly borrower rating UI
+ * - No react-icons dependency
+ * - Consistent sizing + chip + card variants
+ * - Cleaner colors and spacing
+ */
+
+type BorrowerRating = 'great' | 'good' | 'neutral' | 'poor' | 'bad' | 'worst';
 
 interface BorrowerRatingBadgeProps {
-  rating: string;
+  rating: BorrowerRating | string;
   size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
 }
 
-const ratingConfig: Record<string, {
-  label: string;
-  bgColor: string;
-  textColor: string;
-  borderColor: string;
-  icon: any;
-  darkBgColor: string;
-  darkTextColor: string;
-  darkBorderColor: string;
-}> = {
-  great: {
-    label: 'Great Borrower',
-    bgColor: 'bg-green-50',
-    textColor: 'text-green-700',
-    borderColor: 'border-green-200',
-    icon: FaStar,
-    darkBgColor: 'dark:bg-green-900/30',
-    darkTextColor: 'dark:text-green-400',
-    darkBorderColor: 'dark:border-green-800',
-  },
-  good: {
-    label: 'Good Borrower',
-    bgColor: 'bg-blue-50',
-    textColor: 'text-blue-700',
-    borderColor: 'border-blue-200',
-    icon: FaThumbsUp,
-    darkBgColor: 'dark:bg-blue-900/30',
-    darkTextColor: 'dark:text-blue-400',
-    darkBorderColor: 'dark:border-blue-800',
-  },
-  neutral: {
-    label: 'New Borrower',
-    bgColor: 'bg-gray-50',
-    textColor: 'text-gray-700',
-    borderColor: 'border-gray-200',
-    icon: FaQuestionCircle,
-    darkBgColor: 'dark:bg-gray-800',
-    darkTextColor: 'dark:text-gray-400',
-    darkBorderColor: 'dark:border-gray-700',
-  },
-  poor: {
-    label: 'Poor Borrower',
-    bgColor: 'bg-yellow-50',
-    textColor: 'text-yellow-700',
-    borderColor: 'border-yellow-200',
-    icon: FaExclamationTriangle,
-    darkBgColor: 'dark:bg-yellow-900/30',
-    darkTextColor: 'dark:text-yellow-400',
-    darkBorderColor: 'dark:border-yellow-800',
-  },
-  bad: {
-    label: 'Bad Borrower',
-    bgColor: 'bg-orange-50',
-    textColor: 'text-orange-700',
-    borderColor: 'border-orange-200',
-    icon: FaExclamationTriangle,
-    darkBgColor: 'dark:bg-orange-900/30',
-    darkTextColor: 'dark:text-orange-400',
-    darkBorderColor: 'dark:border-orange-800',
-  },
-  worst: {
-    label: 'High Risk',
-    bgColor: 'bg-red-50',
-    textColor: 'text-red-700',
-    borderColor: 'border-red-200',
-    icon: FaTimesCircle,
-    darkBgColor: 'dark:bg-red-900/30',
-    darkTextColor: 'dark:text-red-400',
-    darkBorderColor: 'dark:border-red-800',
-  },
-};
-
-export function BorrowerRatingBadge({ rating, size = 'md', showLabel = true }: BorrowerRatingBadgeProps) {
-  const config = ratingConfig[rating] || ratingConfig.neutral;
-  const Icon = config.icon;
-
-  const sizeClasses = {
-    sm: 'text-xs px-2 py-0.5',
-    md: 'text-sm px-3 py-1',
-    lg: 'text-base px-4 py-2',
-  };
-
-  const iconSizes = {
-    sm: 'w-3 h-3',
-    md: 'w-4 h-4',
-    lg: 'w-5 h-5',
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border font-medium 
-        ${config.bgColor} ${config.textColor} ${config.borderColor}
-        ${config.darkBgColor} ${config.darkTextColor} ${config.darkBorderColor}
-        ${sizeClasses[size]}`}
-    >
-      <Icon className={iconSizes[size]} />
-      {showLabel && <span>{config.label}</span>}
-    </span>
-  );
-}
-
 interface BorrowerRatingCardProps {
-  rating: string;
+  rating: BorrowerRating | string;
   paymentStats?: {
     total: number;
     onTime: number;
@@ -125,6 +43,150 @@ interface BorrowerRatingCardProps {
   isVerified?: boolean;
 }
 
+type RatingUI = {
+  key: BorrowerRating;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  chip: string; // tailwind classes
+  cardBorder: string;
+  cardBg: string;
+  iconWrap: string;
+};
+
+const RATING_UI: Record<BorrowerRating, RatingUI> = {
+  great: {
+    key: 'great',
+    label: 'Great Borrower',
+    description: 'Pays early most of the time. Highly reliable.',
+    icon: Star,
+    chip:
+      'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-900/40',
+    cardBorder: 'border-emerald-200 dark:border-emerald-900/40',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300',
+  },
+  good: {
+    key: 'good',
+    label: 'Good Borrower',
+    description: 'Pays on time consistently. Trustworthy.',
+    icon: ThumbsUp,
+    chip:
+      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-900/40',
+    cardBorder: 'border-blue-200 dark:border-blue-900/40',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300',
+  },
+  neutral: {
+    key: 'neutral',
+    label: 'New Borrower',
+    description: 'Limited history so far.',
+    icon: HelpCircle,
+    chip:
+      'bg-neutral-100 text-neutral-700 border-neutral-200 dark:bg-neutral-900 dark:text-neutral-300 dark:border-neutral-800',
+    cardBorder: 'border-neutral-200 dark:border-neutral-800',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-neutral-100 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300',
+  },
+  poor: {
+    key: 'poor',
+    label: 'Needs Attention',
+    description: 'Mixed payment history. Some late payments.',
+    icon: AlertTriangle,
+    chip:
+      'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-900/20 dark:text-amber-200 dark:border-amber-900/40',
+    cardBorder: 'border-amber-200 dark:border-amber-900/40',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-200',
+  },
+  bad: {
+    key: 'bad',
+    label: 'High Risk',
+    description: 'Frequently late on payments.',
+    icon: AlertTriangle,
+    chip:
+      'bg-orange-50 text-orange-800 border-orange-200 dark:bg-orange-900/20 dark:text-orange-200 dark:border-orange-900/40',
+    cardBorder: 'border-orange-200 dark:border-orange-900/40',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-orange-50 text-orange-800 dark:bg-orange-900/20 dark:text-orange-200',
+  },
+  worst: {
+    key: 'worst',
+    label: 'Avoid Lending',
+    description: 'Rarely pays. Very high risk.',
+    icon: XCircle,
+    chip:
+      'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-200 dark:border-red-900/40',
+    cardBorder: 'border-red-200 dark:border-red-900/40',
+    cardBg: 'bg-white dark:bg-neutral-950',
+    iconWrap: 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-200',
+  },
+};
+
+function normalizeRating(rating: string): BorrowerRating {
+  const r = (rating || '').toLowerCase().trim();
+  if (r in RATING_UI) return r as BorrowerRating;
+  return 'neutral';
+}
+
+function clampPct(n: number) {
+  return Math.max(0, Math.min(100, n));
+}
+
+function progressTone(pct: number) {
+  if (pct >= 80) return 'bg-emerald-500 dark:bg-emerald-600';
+  if (pct >= 50) return 'bg-amber-500 dark:bg-amber-600';
+  return 'bg-red-500 dark:bg-red-600';
+}
+
+function pctToneText(pct: number) {
+  if (pct >= 80) return 'text-emerald-600 dark:text-emerald-400';
+  if (pct >= 50) return 'text-amber-600 dark:text-amber-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
+// ============================================
+// BADGE (chip)
+// ============================================
+
+export function BorrowerRatingBadge({
+  rating,
+  size = 'md',
+  showLabel = true,
+}: BorrowerRatingBadgeProps) {
+  const ui = RATING_UI[normalizeRating(rating)];
+  const Icon = ui.icon;
+
+  const sizeClasses = {
+    sm: 'text-[11px] px-2 py-1 rounded-full',
+    md: 'text-xs px-2.5 py-1.5 rounded-full',
+    lg: 'text-sm px-3 py-2 rounded-full',
+  };
+
+  const iconClasses = {
+    sm: 'w-3.5 h-3.5',
+    md: 'w-4 h-4',
+    lg: 'w-4.5 h-4.5',
+  };
+
+  return (
+    <span
+      className={[
+        'inline-flex items-center gap-1.5 border font-semibold',
+        ui.chip,
+        sizeClasses[size],
+      ].join(' ')}
+    >
+      <Icon className={iconClasses[size]} />
+      {showLabel ? <span>{ui.label}</span> : null}
+    </span>
+  );
+}
+
+// ============================================
+// CARD (app-style)
+// ============================================
+
 export function BorrowerRatingCard({
   rating,
   paymentStats,
@@ -132,101 +194,150 @@ export function BorrowerRatingCard({
   memberMonths = 0,
   isVerified = false,
 }: BorrowerRatingCardProps) {
-  const config = ratingConfig[rating] || ratingConfig.neutral;
-  const Icon = config.icon;
+  const ui = RATING_UI[normalizeRating(rating)];
+  const Icon = ui.icon;
 
-  const descriptions: Record<string, string> = {
-    great: 'Pays early most of the time. Highly reliable.',
-    good: 'Pays on time consistently. Trustworthy.',
-    neutral: 'No payment history yet or limited data.',
-    poor: 'Mixed payment history. Some missed payments.',
-    bad: 'Frequently late on payments. High risk.',
-    worst: 'Rarely or never pays. Avoid lending.',
-  };
+  const onTimePercentage = useMemo(() => {
+    if (!paymentStats || paymentStats.total <= 0) return 0;
+    const good = (paymentStats.onTime || 0) + (paymentStats.early || 0);
+    return clampPct(Math.round((good / paymentStats.total) * 100));
+  }, [paymentStats]);
 
-  const onTimePercentage = paymentStats && paymentStats.total > 0
-    ? Math.round(((paymentStats.onTime + paymentStats.early) / paymentStats.total) * 100)
-    : 0;
+  const breakdown = paymentStats && paymentStats.total > 0;
 
   return (
-    <div className={`rounded-xl border-2 ${config.borderColor} ${config.bgColor}
-      ${config.darkBorderColor} ${config.darkBgColor} p-4`}>
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`w-12 h-12 rounded-full flex items-center justify-center 
-          ${config.bgColor} ${config.darkBgColor} border ${config.borderColor} ${config.darkBorderColor}`}>
-          <Icon className="w-6 h-6" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h4 className={`font-semibold ${config.textColor} ${config.darkTextColor}`}>
-              {config.label}
-            </h4>
-            {isVerified && (
-              <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">
-                ✓ Verified
-              </span>
-            )}
+    <div
+      className={[
+        'rounded-2xl border p-4 sm:p-5',
+        'shadow-sm',
+        ui.cardBorder,
+        ui.cardBg,
+      ].join(' ')}
+    >
+      {/* Top row */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div
+            className={[
+              'w-11 h-11 rounded-2xl grid place-items-center border',
+              'border-neutral-200 dark:border-neutral-800',
+              ui.iconWrap,
+            ].join(' ')}
+          >
+            <Icon className="w-5 h-5" />
           </div>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {descriptions[rating] || descriptions.neutral}
-          </p>
+
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h4 className="text-sm sm:text-base font-bold text-neutral-900 dark:text-white">
+                {ui.label}
+              </h4>
+
+              {isVerified ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/40">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Verified
+                </span>
+              ) : null}
+            </div>
+
+            <p className="mt-0.5 text-[12px] text-neutral-600 dark:text-neutral-400">
+              {ui.description}
+            </p>
+          </div>
         </div>
+
+        {/* Compact chip for quick scanning */}
+        <BorrowerRatingBadge rating={ui.key} size="sm" showLabel={false} />
       </div>
 
-      {paymentStats && paymentStats.total > 0 && (
-        <div className="mt-4 space-y-2">
-          <div className="flex justify-between text-sm">
-            <span className="text-neutral-500 dark:text-neutral-400">On-Time Rate</span>
-            <span className={`font-semibold ${
-              onTimePercentage >= 80 
-                ? 'text-green-600 dark:text-green-400' 
-                : onTimePercentage >= 50 
-                ? 'text-yellow-600 dark:text-yellow-400' 
-                : 'text-red-600 dark:text-red-400'
-            }`}>
+      {/* Payment performance */}
+      {breakdown ? (
+        <div className="mt-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
+              <span className="text-sm font-semibold text-neutral-900 dark:text-white">
+                On-time rate
+              </span>
+            </div>
+            <span className={['text-sm font-bold', pctToneText(onTimePercentage)].join(' ')}>
               {onTimePercentage}%
             </span>
           </div>
-          <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
+
+          <div className="mt-2 h-2 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden">
             <div
-              className={`h-full ${
-                onTimePercentage >= 80 
-                  ? 'bg-green-500 dark:bg-green-600' 
-                  : onTimePercentage >= 50 
-                  ? 'bg-yellow-500 dark:bg-yellow-600' 
-                  : 'bg-red-500 dark:bg-red-600'
-              }`}
+              className={['h-full rounded-full', progressTone(onTimePercentage)].join(' ')}
               style={{ width: `${onTimePercentage}%` }}
             />
           </div>
-          <div className="grid grid-cols-4 gap-2 text-xs text-center pt-2">
-            <div>
-              <p className="font-semibold text-green-600 dark:text-green-400">{paymentStats.early}</p>
-              <p className="text-neutral-500 dark:text-neutral-400">Early</p>
-            </div>
-            <div>
-              <p className="font-semibold text-blue-600 dark:text-blue-400">{paymentStats.onTime}</p>
-              <p className="text-neutral-500 dark:text-neutral-400">On Time</p>
-            </div>
-            <div>
-              <p className="font-semibold text-yellow-600 dark:text-yellow-400">{paymentStats.late}</p>
-              <p className="text-neutral-500 dark:text-neutral-400">Late</p>
-            </div>
-            <div>
-              <p className="font-semibold text-red-600 dark:text-red-400">{paymentStats.missed}</p>
-              <p className="text-neutral-500 dark:text-neutral-400">Missed</p>
-            </div>
+
+          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+            <StatMini label="Early" value={paymentStats!.early} tone="text-blue-600 dark:text-blue-400" />
+            <StatMini label="On time" value={paymentStats!.onTime} tone="text-emerald-600 dark:text-emerald-400" />
+            <StatMini label="Late" value={paymentStats!.late} tone="text-amber-600 dark:text-amber-400" />
+            <StatMini label="Missed" value={paymentStats!.missed} tone="text-red-600 dark:text-red-400" />
+          </div>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-3">
+          <div className="flex items-start gap-2 text-[12px] text-neutral-600 dark:text-neutral-400">
+            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+            No payment history available yet.
           </div>
         </div>
       )}
 
-      <div className="mt-4 pt-3 border-t border-neutral-200 dark:border-neutral-700 flex justify-between text-sm">
-        <span className="text-neutral-500 dark:text-neutral-400">
-          Loans Completed: <strong className="text-neutral-900 dark:text-white">{loansCompleted}</strong>
-        </span>
-        <span className="text-neutral-500 dark:text-neutral-400">
-          Member: <strong className="text-neutral-900 dark:text-white">{memberMonths}+ months</strong>
-        </span>
+      {/* Footer stats */}
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <FooterPill
+          icon={Award}
+          label="Loans completed"
+          value={String(loansCompleted)}
+        />
+        <FooterPill
+          icon={Clock}
+          label="Member"
+          value={`${memberMonths}+ months`}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// SMALL SUBCOMPONENTS
+// ============================================
+
+function StatMini({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-2">
+      <div className={['text-base font-bold leading-none', tone].join(' ')}>
+        {value || 0}
+      </div>
+      <div className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">{label}</div>
+    </div>
+  );
+}
+
+function FooterPill({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-[12px] text-neutral-600 dark:text-neutral-400">
+          <Icon className="w-4 h-4" />
+          <span>{label}</span>
+        </div>
+        <div className="text-sm font-bold text-neutral-900 dark:text-white">{value}</div>
       </div>
     </div>
   );

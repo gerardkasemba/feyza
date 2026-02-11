@@ -238,7 +238,7 @@ export async function GET(request: NextRequest) {
         // Update Trust Score
         if (loan.borrower_id) {
           try {
-            await onPaymentCompleted({
+            const trustResult = await onPaymentCompleted({
               supabase,
               loanId: loan.id,
               borrowerId: loan.borrower_id,
@@ -248,7 +248,12 @@ export async function GET(request: NextRequest) {
               dueDate: payment.due_date,
               paymentMethod: 'auto',
             });
-            console.log(`[Auto-Pay] ✅ Trust score updated for borrower`);
+            
+            console.log(`[Auto-Pay] Trust score update result:`, trustResult);
+            
+            if (!trustResult.trustScoreUpdated) {
+              console.error(`[Auto-Pay] Trust score failed to update for payment ${payment.id}:`, trustResult.error);
+            }
           } catch (trustError) {
             console.error(`[Auto-Pay] Trust score update failed:`, trustError);
           }

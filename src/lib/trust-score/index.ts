@@ -201,19 +201,7 @@ export class TrustScoreService {
   async recalculate(userId: string): Promise<TrustScore | null> {
     console.log(`[TrustScore] Recalculating for user ${userId}`);
 
-    // Get current score or create new one
-    let currentScore = await this.getScore(userId);
-    if (!currentScore) {
-      await this.supabase.from('trust_scores').insert({
-        user_id: userId,
-        score: 50,
-        score_grade: 'C',
-        score_label: 'Building Trust',
-      });
-      currentScore = await this.getScore(userId);
-    }
-
-    // Calculate each component
+    // Calculate each component first
     const paymentScore = await this.calculatePaymentScore(userId);
     const completionScore = await this.calculateCompletionScore(userId);
     const socialScore = await this.calculateSocialScore(userId);
@@ -234,31 +222,74 @@ export class TrustScoreService {
 
     // Get stats for the score
     const stats = await this.getUserStats(userId);
+    
+    // Determine grade based on score
+    let scoreGrade = 'C';
+    let scoreLabel = 'Building Trust';
+    if (clampedScore >= 90) { scoreGrade = 'A+'; scoreLabel = 'Exceptional'; }
+    else if (clampedScore >= 80) { scoreGrade = 'A'; scoreLabel = 'Excellent'; }
+    else if (clampedScore >= 70) { scoreGrade = 'B'; scoreLabel = 'Good'; }
+    else if (clampedScore >= 60) { scoreGrade = 'C'; scoreLabel = 'Building Trust'; }
+    else if (clampedScore >= 50) { scoreGrade = 'D'; scoreLabel = 'Needs Improvement'; }
+    else { scoreGrade = 'F'; scoreLabel = 'Poor'; }
 
-    // Update the score
-    const { data, error } = await this.supabase
+    const scoreData = {
+      user_id: userId,
+      score: clampedScore,
+      score_grade: scoreGrade,
+      score_label: scoreLabel,
+      payment_score: paymentScore,
+      completion_score: completionScore,
+      social_score: socialScore,
+      verification_score: verificationScore,
+      tenure_score: tenureScore,
+      last_calculated_at: new Date().toISOString(),
+      ...stats,
+    };
+
+    // For update, don't include user_id (it's the key we're matching on)
+    const { user_id, ...updateFields } = scoreData;
+
+    // First try to update existing record
+    const { data: updateData, error: updateError } = await this.supabase
       .from('trust_scores')
-      .update({
-        score: clampedScore,
-        payment_score: paymentScore,
-        completion_score: completionScore,
-        social_score: socialScore,
-        verification_score: verificationScore,
-        tenure_score: tenureScore,
-        last_calculated_at: new Date().toISOString(),
-        ...stats,
-      })
+      .update(updateFields)
       .eq('user_id', userId)
-      .select()
-      .single();
+      .select();
 
-    if (error) {
-      console.error('Error updating trust score:', error);
-      return currentScore;
+    if (updateError) {
+      console.error('[TrustScore] Error updating:', updateError);
     }
 
-    console.log(`[TrustScore] Updated: ${clampedScore} (${data.score_grade})`);
-    return data;
+    // If update returned rows, we're done
+    if (updateData && updateData.length > 0) {
+      console.log(`[TrustScore] Updated: ${clampedScore} (${scoreGrade})`);
+      return updateData[0];
+    }
+
+    // No rows updated - need to insert
+    console.log(`[TrustScore] No existing record, inserting new for user ${userId}`);
+    const { data: insertData, error: insertError } = await this.supabase
+      .from('trust_scores')
+      .insert(scoreData)
+      .select();
+
+    if (insertError) {
+      console.error('[TrustScore] Error inserting:', insertError);
+      // If insert failed due to conflict, try to fetch existing
+      if (insertError.code === '23505') { // unique_violation
+        return await this.getScore(userId);
+      }
+      return null;
+    }
+
+    if (insertData && insertData.length > 0) {
+      console.log(`[TrustScore] Inserted new: ${clampedScore} (${scoreGrade})`);
+      return insertData[0];
+    }
+
+    console.error('[TrustScore] Neither update nor insert returned data');
+    return null;
   }
 
   /**

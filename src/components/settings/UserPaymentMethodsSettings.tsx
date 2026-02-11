@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Globe,
   CheckCircle,
+  ExternalLink,
 } from 'lucide-react';
 
 interface PaymentProvider {
@@ -78,13 +79,10 @@ export default function UserPaymentMethodsSettings({
   const [editingMethod, setEditingMethod] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   
-  // Add new method state - ONLY one at a time
+  // Add new method state
   const [showAddNew, setShowAddNew] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<PaymentProvider | null>(null);
   const [newIdentifier, setNewIdentifier] = useState('');
-
-  // Store user's current preferred payment method from users table
-  const [userPreferredMethod, setUserPreferredMethod] = useState<string | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -132,19 +130,6 @@ export default function UserPaymentMethodsSettings({
         console.warn('Payment method migration skipped:', migrationErr);
       }
 
-      // Fetch user's preferred payment method from users table
-      const { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('preferred_payment_method')
-        .eq('id', userId)
-        .single();
-
-      if (userError && userError.code !== 'PGRST116') {
-        console.warn('Error fetching user preferred method:', userError);
-      } else {
-        setUserPreferredMethod(userData?.preferred_payment_method || null);
-      }
-
       // Fetch available providers for user's country (ONLY enabled ones)
       const { data: allProviders, error: provError } = await supabase
         .from('payment_providers')
@@ -171,38 +156,19 @@ export default function UserPaymentMethodsSettings({
       // Get the set of enabled provider IDs for filtering user methods
       const enabledProviderIds = new Set(countryProviders.map(p => p.id));
 
-      // Fetch user's connected methods - ONLY ONE ACTIVE METHOD ALLOWED
+      // Fetch user's connected methods
       const { data: methods, error: methodsError } = await supabase
         .from('user_payment_methods')
         .select('*, payment_provider:payment_provider_id(*)')
         .eq('user_id', userId)
-        .eq('is_active', true)
-        .limit(1); // Only get the first active method
+        .eq('is_active', true);
 
       if (methodsError) throw methodsError;
 
       // Filter user methods to only show those with ENABLED providers
-      let filteredMethods = (methods || []).filter(m => 
+      const filteredMethods = (methods || []).filter(m => 
         m.payment_provider && enabledProviderIds.has(m.payment_provider_id)
       );
-
-      // Sync legacy preferred_payment_method with new system
-      // If user has a legacy preferred method but no corresponding is_default in new system
-      // We need to ensure consistency
-      if (userPreferredMethod && filteredMethods.length > 0) {
-        // Find if legacy preferred method exists in new system
-        const legacyPreferredMethod = filteredMethods.find(m => 
-          (m.payment_provider as PaymentProvider)?.slug === userPreferredMethod
-        );
-        
-        // If legacy preferred exists but isn't marked as default, update it
-        if (legacyPreferredMethod && !legacyPreferredMethod.is_default) {
-          await supabase
-            .from('user_payment_methods')
-            .update({ is_default: true })
-            .eq('id', legacyPreferredMethod.id);
-        }
-      }
 
       setUserMethods(filteredMethods);
     } catch (err: any) {
@@ -227,85 +193,52 @@ export default function UserPaymentMethodsSettings({
     setError(null);
 
     try {
-      const trimmedIdentifier = identifier.trim();
-
       if (existingMethodId) {
         // Update existing method by ID
         const { error } = await supabase
           .from('user_payment_methods')
           .update({ 
-            account_identifier: trimmedIdentifier,
-            payment_provider_id: providerId,
+            account_identifier: identifier.trim(),
             is_active: true,
-            is_default: true, // Always default since only one allowed
             updated_at: new Date().toISOString(),
           })
           .eq('id', existingMethodId);
 
         if (error) throw error;
       } else {
-        // Check if user already has an active method
-        const { data: existingActiveMethods } = await supabase
-          .from('user_payment_methods')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('is_active', true);
-
-        if (existingActiveMethods && existingActiveMethods.length > 0) {
-          // Deactivate all existing methods
-          await supabase
-            .from('user_payment_methods')
-            .update({ 
-              is_active: false,
-              is_default: false,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('user_id', userId)
-            .eq('is_active', true);
-        }
-
-        // Check if user already has this EXACT provider + identifier combination (any status)
-        const { data: existingMethod, error: checkError } = await supabase
+        // Check if user already has a method for this provider (active or inactive)
+        const { data: existingMethod } = await supabase
           .from('user_payment_methods')
           .select('id')
           .eq('user_id', userId)
           .eq('payment_provider_id', providerId)
-          .eq('account_identifier', trimmedIdentifier)
           .maybeSingle();
-
-        if (checkError) throw checkError;
 
         if (existingMethod) {
           // Reactivate and update existing method
           const { error } = await supabase
             .from('user_payment_methods')
             .update({
+              account_identifier: identifier.trim(),
               is_active: true,
-              is_default: true,
               updated_at: new Date().toISOString(),
             })
             .eq('id', existingMethod.id);
 
           if (error) throw error;
         } else {
-          // Create new method - this will be the only active method
+          // Create new method
           const { error } = await supabase
             .from('user_payment_methods')
             .insert({
               user_id: userId,
               payment_provider_id: providerId,
-              account_identifier: trimmedIdentifier,
+              account_identifier: identifier.trim(),
               is_active: true,
-              is_default: true, // Always default since only one allowed
+              is_default: userMethods.length === 0, // First method is default
             });
 
-          if (error) {
-            // Handle unique constraint violation specifically
-            if (error.code === '23505') {
-              throw new Error('This payment method already exists for your account');
-            }
-            throw error;
-          }
+          if (error) throw error;
         }
       }
 
@@ -314,16 +247,13 @@ export default function UserPaymentMethodsSettings({
       if (provider) {
         const legacyUpdate: Record<string, string | null> = {};
         if (provider.slug === 'cashapp') {
-          legacyUpdate.cashapp_username = trimmedIdentifier;
+          legacyUpdate.cashapp_username = identifier.trim();
         } else if (provider.slug === 'venmo') {
-          legacyUpdate.venmo_username = trimmedIdentifier;
+          legacyUpdate.venmo_username = identifier.trim();
         } else if (provider.slug === 'paypal') {
-          legacyUpdate.paypal_email = trimmedIdentifier;
-        }
-
-        // Always update preferred_payment_method when adding/updating method
-        if (['paypal', 'cashapp', 'venmo'].includes(provider.slug)) {
-          legacyUpdate.preferred_payment_method = provider.slug;
+          legacyUpdate.paypal_email = identifier.trim();
+        } else if (provider.slug === 'zelle') {
+          legacyUpdate.zelle_email = identifier.trim();
         }
 
         if (Object.keys(legacyUpdate).length > 0) {
@@ -346,7 +276,7 @@ export default function UserPaymentMethodsSettings({
   };
 
   const removeMethod = async (methodId: string) => {
-    if (!confirm('Remove this payment method? You will need to add a new one to receive payments.')) return;
+    if (!confirm('Remove this payment method?')) return;
 
     setSaving(methodId);
     try {
@@ -354,11 +284,7 @@ export default function UserPaymentMethodsSettings({
       
       const { error } = await supabase
         .from('user_payment_methods')
-        .update({ 
-          is_active: false,
-          is_default: false,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ is_active: false })
         .eq('id', methodId);
 
       if (error) throw error;
@@ -373,10 +299,9 @@ export default function UserPaymentMethodsSettings({
           legacyUpdate.venmo_username = null;
         } else if (provider.slug === 'paypal') {
           legacyUpdate.paypal_email = null;
+        } else if (provider.slug === 'zelle') {
+          legacyUpdate.zelle_email = null;
         }
-
-        // Clear preferred_payment_method when removing method
-        legacyUpdate.preferred_payment_method = null;
 
         if (Object.keys(legacyUpdate).length > 0) {
           await supabase.from('users').update(legacyUpdate).eq('id', userId);
@@ -388,6 +313,45 @@ export default function UserPaymentMethodsSettings({
     } catch (err: any) {
       console.error('Error removing payment method:', err);
       setError(err?.message || 'Failed to remove payment method');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const setDefault = async (methodId: string) => {
+    setSaving(methodId);
+    try {
+      // Unset all defaults first
+      await supabase
+        .from('user_payment_methods')
+        .update({ is_default: false })
+        .eq('user_id', userId);
+
+      // Set this one as default
+      const { error } = await supabase
+        .from('user_payment_methods')
+        .update({ is_default: true })
+        .eq('id', methodId);
+
+      if (error) throw error;
+
+      // Update legacy preferred_payment_method
+      const method = userMethods.find(m => m.id === methodId);
+      if (method?.payment_provider) {
+        const provider = method.payment_provider as PaymentProvider;
+        if (['cashapp', 'venmo', 'paypal'].includes(provider.slug)) {
+          await supabase
+            .from('users')
+            .update({ preferred_payment_method: provider.slug })
+            .eq('id', userId);
+        }
+      }
+
+      await fetchData();
+      onUpdate?.();
+    } catch (err: any) {
+      console.error('Error setting default:', err);
+      setError(err?.message || 'Failed to set default payment method');
     } finally {
       setSaving(null);
     }
@@ -412,20 +376,20 @@ export default function UserPaymentMethodsSettings({
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
-            Payment Method
+            Payment Methods
           </h3>
           <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            Add your payment account to receive and send funds
+            Add your payment accounts to receive and send funds
           </p>
         </div>
-        {userMethods.length === 0 && unconnectedProviders.length > 0 && (
+        {userMethods.length > 0 && unconnectedProviders.length > 0 && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowAddNew(true)}
           >
             <Plus className="w-4 h-4 mr-1" />
-            Add Payment Method
+            Add Method
           </Button>
         )}
       </div>
@@ -440,11 +404,11 @@ export default function UserPaymentMethodsSettings({
         </div>
       )}
 
-      {/* Connected Method */}
+      {/* Connected Methods */}
       {userMethods.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            Your Payment Method
+            Connected Accounts
           </p>
           {userMethods.map(method => {
             const provider = method.payment_provider as PaymentProvider;
@@ -457,7 +421,7 @@ export default function UserPaymentMethodsSettings({
             return (
               <div
                 key={method.id}
-                className="flex items-center justify-between p-4 rounded-xl border border-primary-500 bg-primary-50 dark:bg-primary-900/10"
+                className="flex items-center justify-between p-4 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900"
               >
                 <div className="flex items-center gap-4">
                   <div
@@ -471,14 +435,11 @@ export default function UserPaymentMethodsSettings({
                       <span className="font-medium text-neutral-900 dark:text-white">
                         {provider.name}
                       </span>
-                      <Badge variant="primary" size="sm" className="bg-primary-500 text-white">
-                        Active
-                      </Badge>
+                      {method.is_default && (
+                        <Badge variant="primary" size="sm">Default</Badge>
+                      )}
                       {method.is_verified && (
-                        <Badge variant="outline" size="sm" className="text-green-600 border-green-300">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Verified
-                        </Badge>
+                        <CheckCircle className="w-4 h-4 text-green-500" />
                       )}
                     </div>
                     
@@ -507,20 +468,25 @@ export default function UserPaymentMethodsSettings({
                         </Button>
                       </div>
                     ) : (
-                      <>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                          {method.account_identifier}
-                        </p>
-                        <p className="text-xs text-primary-600 dark:text-primary-400 mt-1">
-                          This is your payment method for sending and receiving funds
-                        </p>
-                      </>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        {method.account_identifier}
+                      </p>
                     )}
                   </div>
                 </div>
 
                 {!isEditing && (
                   <div className="flex items-center gap-2">
+                    {!method.is_default && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDefault(method.id)}
+                        disabled={!!saving}
+                      >
+                        Set Default
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -528,10 +494,8 @@ export default function UserPaymentMethodsSettings({
                         setEditingMethod(method.id);
                         setEditValue(method.account_identifier);
                       }}
-                      className="text-neutral-600 hover:text-neutral-900"
                     >
                       <Edit2 className="w-4 h-4" />
-                      Change
                     </Button>
                     <Button
                       variant="ghost"
@@ -541,7 +505,6 @@ export default function UserPaymentMethodsSettings({
                       className="text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                     >
                       <Trash2 className="w-4 h-4" />
-                      Remove
                     </Button>
                   </div>
                 )}
@@ -551,11 +514,11 @@ export default function UserPaymentMethodsSettings({
         </div>
       )}
 
-      {/* Add New Method Section - Only shown when no method exists */}
-      {(!userMethods.length || showAddNew) && unconnectedProviders.length > 0 && (
+      {/* Add New Method Section */}
+      {(showAddNew || userMethods.length === 0) && unconnectedProviders.length > 0 && (
         <div className="space-y-3">
           <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
-            Add Payment Method
+            {userMethods.length === 0 ? 'Add a Payment Method' : 'Add Another Method'}
           </p>
           
           {!selectedProvider ? (
@@ -628,7 +591,7 @@ export default function UserPaymentMethodsSettings({
                     variant="outline"
                     onClick={() => {
                       setSelectedProvider(null);
-                      setShowAddNew(false);
+                      setShowAddNew(userMethods.length > 0 ? false : true);
                     }}
                     className="flex-1"
                   >
@@ -644,32 +607,23 @@ export default function UserPaymentMethodsSettings({
                     ) : (
                       <Plus className="w-4 h-4 mr-2" />
                     )}
-                    Add Payment Method
+                    Add
                   </Button>
                 </div>
               </div>
             </Card>
           )}
-        </div>
-      )}
 
-      {/* Change Method Button - Only shown when user has a method */}
-      {userMethods.length > 0 && !showAddNew && (
-        <div className="border-t pt-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setShowAddNew(true);
-              setSelectedProvider(null);
-            }}
-            className="w-full"
-          >
-            <Edit2 className="w-4 h-4 mr-2" />
-            Change Payment Method
-          </Button>
-          <p className="text-xs text-neutral-500 text-center mt-2">
-            You can only have one payment method at a time
-          </p>
+          {showAddNew && userMethods.length > 0 && !selectedProvider && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAddNew(false)}
+              className="w-full"
+            >
+              Cancel
+            </Button>
+          )}
         </div>
       )}
 
@@ -690,28 +644,9 @@ export default function UserPaymentMethodsSettings({
       {userMethods.length > 0 && (
         <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
           <p className="text-xs text-blue-700 dark:text-blue-400">
-            💡 This payment method will be used for all transactions. Make sure it's correct and verified.
+            💡 Your payment methods are shown to lenders/borrowers so they know where to send funds.
+            The default method is shown first.
           </p>
-        </div>
-      )}
-
-      {/* No methods info */}
-      {userMethods.length === 0 && !showAddNew && unconnectedProviders.length > 0 && (
-        <div className="text-center py-8 border-2 border-dashed border-neutral-300 dark:border-neutral-700 rounded-xl">
-          <CreditCard className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-3" />
-          <p className="text-neutral-500 dark:text-neutral-400">
-            No payment method added yet
-          </p>
-          <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-1 mb-4">
-            Add a payment method to receive and send funds
-          </p>
-          <Button
-            onClick={() => setShowAddNew(true)}
-            size="sm"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Add Payment Method
-          </Button>
         </div>
       )}
     </div>

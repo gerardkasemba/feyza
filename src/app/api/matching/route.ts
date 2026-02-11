@@ -4,6 +4,19 @@ import { sendEmail, getNoMatchFoundEmail, getNewMatchForLenderEmail, getLoanAcce
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
+interface BusinessProfile {
+  id: string;
+  business_name: string;
+  contact_email: string;
+  user_id: string;
+}
+
+interface UserProfile {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 interface MatchResult {
   lender_user_id: string | null;
   lender_business_id: string | null;
@@ -12,6 +25,8 @@ interface MatchResult {
   interest_rate: number;
   lender_name: string;
   lender_email?: string;
+  business?: BusinessProfile; // Add this
+  user?: UserProfile; // Add this
 }
 
 // POST: Find and assign best matching lender for a loan
@@ -84,14 +99,25 @@ export async function POST(request: NextRequest) {
       const { data: lenderPrefs, error: prefsError } = await supabase
         .from('lender_preferences')
         .select(`
-          *,
-          business:business_profiles!business_id(id, business_name, contact_email),
-          user:users!user_id(id, full_name, email)
+          id,
+          user_id,
+          business_id,
+          capital_pool,
+          capital_reserved,
+          auto_accept,
+          interest_rate,
+          min_amount,
+          max_amount,
+          countries,
+          states,
+          allow_first_time_borrowers,
+          first_time_borrower_limit
         `)
         .eq('is_active', true)
         .gte('capital_pool', loan.amount)
         .lte('min_amount', loan.amount)
-        .gte('max_amount', loan.amount);
+        .gte('max_amount', loan.amount)
+        .limit(50); // Prevent scanning all lenders
 
       if (prefsError) {
         console.error('Fallback query error:', prefsError);
@@ -241,6 +267,50 @@ export async function POST(request: NextRequest) {
           // Sort by match score (highest first)
           .sort((a: any, b: any) => b.match_score - a.match_score)
           .slice(0, 5);
+      }
+      // After filtering and scoring, fetch business/user details only for top matches
+      if (matches && matches.length > 0) {
+        const businessIds = matches
+          .filter(m => m.lender_business_id)
+          .map(m => m.lender_business_id);
+        
+        const userIds = matches
+          .filter(m => m.lender_user_id)
+          .map(m => m.lender_user_id);
+
+        // Fetch business details
+        if (businessIds.length > 0) {
+          const { data: businesses } = await supabase
+            .from('business_profiles')
+            .select('id, business_name, contact_email, user_id')
+            .in('id', businessIds);
+          
+          // Attach to matches
+          matches = matches.map(match => {
+            if (match.lender_business_id) {
+              const business = businesses?.find(b => b.id === match.lender_business_id);
+              return { ...match, business };
+            }
+            return match;
+          });
+        }
+
+        // Fetch user details
+        if (userIds.length > 0) {
+          const { data: users } = await supabase
+            .from('users')
+            .select('id, full_name, email')
+            .in('id', userIds);
+          
+          // Attach to matches
+          matches = matches.map(match => {
+            if (match.lender_user_id) {
+              const user = users?.find(u => u.id === match.lender_user_id);
+              return { ...match, user };
+            }
+            return match;
+          });
+        }
       }
     } else {
       matches = rpcMatches || [];

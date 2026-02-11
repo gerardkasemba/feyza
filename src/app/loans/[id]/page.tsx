@@ -1891,7 +1891,7 @@ export default function LoanDetailPage() {
                 {isLender && loan?.borrower_id && (
                   <div className="space-y-4 mb-4">
                     {/* Trust Score Card */}
-                    <div className="mb-4">
+                    <div className="">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-neutral-900 dark:text-white">Borrower Trust Score</h3>
                       </div>
@@ -1899,7 +1899,7 @@ export default function LoanDetailPage() {
                     </div>
 
                     {/* Legacy Borrower Rating (Payment History) */}
-                    <div className="mb-4 p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
+                    <div className="p-4 border border-neutral-200 dark:border-neutral-800 rounded-xl bg-white dark:bg-neutral-900">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-neutral-900 dark:text-white">Payment History</h3>
                         {loadingBorrowerRating && <div className="text-xs text-neutral-500">Loading...</div>}
@@ -1988,7 +1988,7 @@ export default function LoanDetailPage() {
                     </div>
 
                     {/* Borrower's Own Trust Score */}
-                    <div className="mb-4">
+                    <div className="">
                       <h3 className="font-semibold text-neutral-900 dark:text-white mb-3">Your Trust Score</h3>
                       <TrustScoreCard showDetails={true} showVouches={true} className='mb-4'/>
                     </div>
@@ -2136,6 +2136,43 @@ export default function LoanDetailPage() {
                   Your information is secure and never shared without your consent.
                 </div>
               </Card>
+              
+              {/* Vouch Prompt for Completed Loans (Lender Only) */}
+              {isLender && loan.status === 'completed' && (
+                <Card className="lg:sticky lg:top-6 h-fit mt-4 bg-gradient-to-br from-purple-50 to-white dark:from-purple-900/20 dark:to-neutral-900 border-purple-200 dark:border-purple-800">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-800/50">
+                      <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-neutral-900 dark:text-white">Build Trust Together</h3>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                        Your vouch as a lender carries significant weight
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {hasVouchedForBorrower ? (
+                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 p-3 bg-purple-100/50 dark:bg-purple-900/30 rounded-lg">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="text-sm font-medium">You've vouched for this borrower!</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+                        This loan was repaid successfully. Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'this borrower'} to boost their trust score.
+                      </p>
+                      <Button
+                        onClick={() => setShowVouchModal(true)}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Award className="w-4 h-4 mr-2" />
+                        Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'Borrower'}
+                      </Button>
+                    </>
+                  )}
+                </Card>
+              )}
             </div>
           )}
 
@@ -2969,6 +3006,43 @@ export default function LoanDetailPage() {
                 </div>
               ) : (
                 <div className="text-center py-8 text-neutral-500 dark:text-neutral-400">No borrower information available</div>
+              )}
+              
+              {/* Vouch for Borrower - always show on completed loans regardless of borrowerRatingData */}
+              {loan.status === 'completed' && !borrowerRatingData && (
+                <div className="mt-4 p-4 rounded-xl bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-800/50">
+                      <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-neutral-900 dark:text-white">Build Trust Together</h3>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                        Your vouch as a lender carries significant weight
+                      </p>
+                    </div>
+                  </div>
+                  
+                  {hasVouchedForBorrower ? (
+                    <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300">
+                      <CheckCircle className="w-5 h-5" />
+                      <span className="text-sm font-medium">You've vouched for this borrower</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-sm text-neutral-700 dark:text-neutral-300 mb-3">
+                        This loan was repaid successfully. Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'this borrower'} to boost their trust score and help them access better loan terms in the future.
+                      </p>
+                      <Button
+                        onClick={() => setShowVouchModal(true)}
+                        className="w-full bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        <Award className="w-4 h-4 mr-2" />
+                        Vouch for {(loan.borrower as any)?.full_name?.split(' ')[0] || 'Borrower'}
+                      </Button>
+                    </>
+                  )}
+                </div>
               )}
             </Card>
           )}

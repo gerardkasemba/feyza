@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense, useCallback } from 'react';
+import React, { useEffect, useState, Suspense, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
@@ -9,9 +9,18 @@ import { LoanRequestForm, LoanRequestFormData } from '@/components/loans/LoanReq
 import { createClient } from '@/lib/supabase/client';
 import { BusinessProfile } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
-import { ArrowLeft, Building2, CheckCircle, Building, AlertCircle, Loader2, Smartphone, Camera, RefreshCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  Building2,
+  CheckCircle,
+  Building,
+  AlertCircle,
+  Loader2,
+  Camera,
+  Shield,
+  CreditCard,
+} from 'lucide-react';
 import { usePlaidLink } from 'react-plaid-link';
-import { ConnectedPaymentDisplay } from '@/components/payments';
 
 interface BankInfo {
   dwolla_customer_url?: string;
@@ -22,58 +31,210 @@ interface BankInfo {
   account_mask?: string;
 }
 
+function PageShell({
+  user,
+  title,
+  subtitle,
+  children,
+}: {
+  user: any;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-screen bg-neutral-50 dark:bg-neutral-950 flex flex-col">
+      <Navbar user={user} />
+      <main className="flex-1">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-6">
+          <div className="mb-5">
+            <h1 className="text-xl font-bold text-neutral-900 dark:text-white">{title}</h1>
+            {subtitle ? (
+              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
+            ) : null}
+          </div>
+
+          <div className="space-y-4">{children}</div>
+        </div>
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+function AppTopBar({ lenderSlug }: { lenderSlug?: string | null }) {
+  const backHref = useMemo(() => '/dashboard', []);
+  return (
+    <div className="flex items-center justify-between">
+      <Link
+        href={backHref}
+        className="inline-flex items-center gap-2 rounded-xl px-2.5 py-2 text-sm font-medium
+          text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-white
+          hover:bg-white dark:hover:bg-neutral-900 transition"
+      >
+        <ArrowLeft className="w-4 h-4" />
+        Back
+      </Link>
+
+      {lenderSlug ? (
+        <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
+          Direct lender
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function Banner({
+  tone = 'neutral',
+  icon: Icon,
+  title,
+  badge,
+  children,
+  actions,
+}: {
+  tone?: 'neutral' | 'warning' | 'danger' | 'success' | 'info';
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  badge?: string;
+  children?: React.ReactNode;
+  actions?: React.ReactNode;
+}) {
+  const toneStyles: Record<string, string> = {
+    neutral:
+      'border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950',
+    info:
+      'border-blue-200 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-900/15',
+    success:
+      'border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/15',
+    warning:
+      'border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-900/15',
+    danger:
+      'border-red-200 dark:border-red-900/40 bg-red-50/60 dark:bg-red-900/15',
+  };
+
+  const iconWrap: Record<string, string> = {
+    neutral: 'bg-neutral-100 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-200',
+    info: 'bg-blue-100/70 dark:bg-blue-900/25 text-blue-700 dark:text-blue-200',
+    success: 'bg-emerald-100/70 dark:bg-emerald-900/25 text-emerald-700 dark:text-emerald-200',
+    warning: 'bg-amber-100/70 dark:bg-amber-900/25 text-amber-800 dark:text-amber-200',
+    danger: 'bg-red-100/70 dark:bg-red-900/25 text-red-700 dark:text-red-200',
+  };
+
+  return (
+    <div className={['rounded-2xl border p-4 shadow-sm', toneStyles[tone]].join(' ')}>
+      <div className="flex items-start gap-3">
+        <div className={['w-11 h-11 rounded-2xl grid place-items-center border border-black/5 dark:border-white/5', iconWrap[tone]].join(' ')}>
+          <Icon className="w-5 h-5" />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-sm font-bold text-neutral-900 dark:text-white">{title}</h3>
+            {badge ? (
+              <span className="rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">
+                {badge}
+              </span>
+            ) : null}
+          </div>
+
+          {children ? (
+            <div className="mt-1 text-sm text-neutral-700 dark:text-neutral-300">{children}</div>
+          ) : null}
+
+          {actions ? <div className="mt-3">{actions}</div> : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SectionCard({
+  title,
+  subtitle,
+  icon: Icon,
+  right,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Card className="rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm">
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-neutral-100 dark:bg-neutral-900 grid place-items-center border border-black/5 dark:border-white/5">
+              <Icon className="w-5 h-5 text-neutral-700 dark:text-neutral-200" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold text-neutral-900 dark:text-white">{title}</h2>
+              {subtitle ? (
+                <p className="mt-0.5 text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
+              ) : null}
+            </div>
+          </div>
+          {right ? <div className="shrink-0">{right}</div> : null}
+        </div>
+
+        <div className="mt-4">{children}</div>
+      </div>
+    </Card>
+  );
+}
+
 function NewLoanContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const lenderSlug = searchParams.get('lender');
-  
+
   const [user, setUser] = useState<any>(null);
   const [businesses, setBusinesses] = useState<BusinessProfile[]>([]);
   const [preferredLender, setPreferredLender] = useState<BusinessProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Bank connection state
+
+  // Bank connection
   const [bankConnected, setBankConnected] = useState(false);
   const [bankInfo, setBankInfo] = useState<BankInfo | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [connectingBank, setConnectingBank] = useState(false);
-  
-  // Payment provider state (controlled by admin)
+
+  // Provider enablement
   const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
 
+  // Verification
   const [verificationRequired, setVerificationRequired] = useState(false);
   const [needsReverification, setNeedsReverification] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient();
-      
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      const {
+        data: { user: authUser },
+      } = await supabase.auth.getUser();
+
       if (!authUser) {
-        // Preserve lender parameter when redirecting to sign in
-        const redirectUrl = lenderSlug 
-          ? `/loans/new?lender=${lenderSlug}`
-          : '/loans/new';
+        const redirectUrl = lenderSlug ? `/loans/new?lender=${lenderSlug}` : '/loans/new';
         router.push(`/auth/signin?redirect=${encodeURIComponent(redirectUrl)}`);
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
+      const { data: profile } = await supabase.from('users').select('*').eq('id', authUser.id).single();
 
-      const userData = profile || {
-        id: authUser.id,
-        email: authUser.email,
-        full_name: authUser.user_metadata?.full_name || 'User',
-        user_type: authUser.user_metadata?.user_type || 'individual',
-      };
-      
+      const userData =
+        profile || ({
+          id: authUser.id,
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || 'User',
+          user_type: authUser.user_metadata?.user_type || 'individual',
+        } as any);
+
       setUser(userData);
 
-      // Check if user already has bank connected
       if (userData.dwolla_funding_source_url) {
         setBankConnected(true);
         setBankInfo({
@@ -86,18 +247,16 @@ function NewLoanContent() {
         });
       }
 
-      // Check if user needs re-verification (every 3 months)
       if (userData.verification_status === 'verified' && userData.verified_at) {
         const verifiedAt = new Date(userData.verified_at);
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
-        
+
         if (verifiedAt < threeMonthsAgo || userData.reverification_required) {
           setNeedsReverification(true);
         }
       }
 
-      // Fetch available business lenders
       const { data: businessData } = await supabase
         .from('business_profiles')
         .select('*')
@@ -106,7 +265,6 @@ function NewLoanContent() {
 
       setBusinesses(businessData || []);
 
-      // If a lender slug is provided, look them up
       if (lenderSlug) {
         const { data: lenderData } = await supabase
           .from('business_profiles')
@@ -115,16 +273,12 @@ function NewLoanContent() {
           .eq('is_verified', true)
           .eq('public_profile_enabled', true)
           .single();
-        
+
         if (lenderData) {
           setPreferredLender(lenderData);
-          
-          // Check if business lender requires verified borrowers
-          // For now, we'll require verification for all business loans
+
           const isUserVerified = userData.is_verified || userData.verification_status === 'verified';
-          if (!isUserVerified) {
-            setVerificationRequired(true);
-          }
+          if (!isUserVerified) setVerificationRequired(true);
         }
       }
 
@@ -134,18 +288,17 @@ function NewLoanContent() {
     fetchData();
   }, [router, lenderSlug]);
 
-  // Check if Dwolla (ACH bank transfers) is enabled by admin
   useEffect(() => {
+    const supabase = createClient();
+
     const checkPaymentProviders = async () => {
       try {
-        const supabase = createClient();
         const { data: providers } = await supabase
           .from('payment_providers')
           .select('slug')
           .eq('is_enabled', true);
-        
-        const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
-        setIsDwollaEnabled(dwollaEnabled);
+
+        setIsDwollaEnabled((providers || []).some((p) => p.slug === 'dwolla'));
       } catch (err) {
         console.error('Failed to check payment providers:', err);
       }
@@ -153,17 +306,11 @@ function NewLoanContent() {
 
     checkPaymentProviders();
 
-    // Subscribe to real-time changes
-    const supabase = createClient();
     const channel = supabase
       .channel('loans_new_payment_providers')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'payment_providers' },
-        () => {
-          checkPaymentProviders();
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_providers' }, () => {
+        checkPaymentProviders();
+      })
       .subscribe();
 
     return () => {
@@ -171,84 +318,82 @@ function NewLoanContent() {
     };
   }, []);
 
-  // Get Plaid link token for bank connection
   const fetchLinkToken = useCallback(async () => {
     if (!user) return;
-    
+
     try {
       const response = await fetch('/api/plaid/create-link-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           userId: user.id,
           userEmail: user.email,
           userName: user.full_name,
         }),
       });
-      
+
       const data = await response.json();
-      if (data.link_token) {
-        setLinkToken(data.link_token);
-      }
+      if (data.link_token) setLinkToken(data.link_token);
     } catch (err) {
       console.error('Error fetching link token:', err);
     }
   }, [user]);
 
-  // Plaid Link success handler
-  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
-    if (!user) return;
-    
-    setConnectingBank(true);
-    try {
-      const response = await fetch('/api/plaid/guest-exchange', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          public_token: publicToken,
-          account_id: metadata.accounts[0].id,
-          user_name: user.full_name,
-          user_email: user.email,
-        }),
-      });
+  const onPlaidSuccess = useCallback(
+    async (publicToken: string, metadata: any) => {
+      if (!user) return;
 
-      const data = await response.json();
-      
-      if (data.success) {
-        setBankConnected(true);
-        setBankInfo({
-          dwolla_customer_url: data.dwolla_customer_url,
-          dwolla_customer_id: data.dwolla_customer_id,
-          dwolla_funding_source_url: data.dwolla_funding_source_url,
-          dwolla_funding_source_id: data.dwolla_funding_source_id,
-          bank_name: data.bank_name,
-          account_mask: data.account_mask,
+      setConnectingBank(true);
+      try {
+        const response = await fetch('/api/plaid/guest-exchange', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            public_token: publicToken,
+            account_id: metadata.accounts[0].id,
+            user_name: user.full_name,
+            user_email: user.email,
+          }),
         });
 
-        // Also update user profile with bank info
-        const supabase = createClient();
-        await supabase
-          .from('users')
-          .update({
+        const data = await response.json();
+
+        if (data.success) {
+          setBankConnected(true);
+          setBankInfo({
             dwolla_customer_url: data.dwolla_customer_url,
             dwolla_customer_id: data.dwolla_customer_id,
             dwolla_funding_source_url: data.dwolla_funding_source_url,
             dwolla_funding_source_id: data.dwolla_funding_source_id,
             bank_name: data.bank_name,
-            bank_account_mask: data.account_mask,
-            bank_connected: true,
-          })
-          .eq('id', user.id);
-      } else {
-        alert(data.error || 'Failed to connect bank');
+            account_mask: data.account_mask,
+          });
+
+          const supabase = createClient();
+          await supabase
+            .from('users')
+            .update({
+              dwolla_customer_url: data.dwolla_customer_url,
+              dwolla_customer_id: data.dwolla_customer_id,
+              dwolla_funding_source_url: data.dwolla_funding_source_url,
+              dwolla_funding_source_id: data.dwolla_funding_source_id,
+              bank_name: data.bank_name,
+              bank_account_mask: data.account_mask,
+              bank_connected: true,
+            })
+            .eq('id', user.id);
+        } else {
+          alert(data.error || 'Failed to connect bank');
+        }
+      } catch (err) {
+        console.error('Error exchanging token:', err);
+        alert('Failed to connect bank account');
+      } finally {
+        setConnectingBank(false);
       }
-    } catch (err) {
-      console.error('Error exchanging token:', err);
-      alert('Failed to connect bank account');
-    } finally {
-      setConnectingBank(false);
-    }
-  }, [user]);
+    },
+    [user]
+  );
 
   const { open: openPlaid, ready: plaidReady } = usePlaidLink({
     token: linkToken,
@@ -256,19 +401,12 @@ function NewLoanContent() {
   });
 
   const handleConnectBank = async () => {
-    if (!linkToken) {
-      await fetchLinkToken();
-    }
-    if (plaidReady) {
-      openPlaid();
-    }
+    if (!linkToken) await fetchLinkToken();
+    if (plaidReady) openPlaid();
   };
 
-  // Fetch link token when user is ready
   useEffect(() => {
-    if (user && !linkToken && !bankConnected) {
-      fetchLinkToken();
-    }
+    if (user && !linkToken && !bankConnected) fetchLinkToken();
   }, [user, linkToken, bankConnected, fetchLinkToken]);
 
   const handleSubmit = async (data: LoanRequestFormData) => {
@@ -277,12 +415,15 @@ function NewLoanContent() {
     const inviteToken = data.lenderType === 'personal' ? generateInviteToken() : null;
     const interestRate = data.lenderType === 'business' ? (data.interestRate || 0) : 0;
     const interestType = data.interestType || 'simple';
-    
-    const termMonths = data.totalInstallments * (
-      data.repaymentFrequency === 'weekly' ? 0.25 :
-      data.repaymentFrequency === 'biweekly' ? 0.5 : 1
-    );
-    
+
+    const termMonths =
+      data.totalInstallments *
+      (data.repaymentFrequency === 'weekly'
+        ? 0.25
+        : data.repaymentFrequency === 'biweekly'
+          ? 0.5
+          : 1);
+
     let totalInterest = 0;
     if (interestRate > 0) {
       if (interestType === 'simple') {
@@ -293,52 +434,44 @@ function NewLoanContent() {
         totalInterest = data.amount * Math.pow(1 + r / 12, 12 * t) - data.amount;
       }
     }
-    
+
     const totalAmount = data.amount + totalInterest;
     const repaymentAmount = totalAmount / data.totalInstallments;
 
     const schedule = calculateRepaymentSchedule({
       amount: data.amount,
-      repaymentAmount: repaymentAmount,
+      repaymentAmount,
       totalInstallments: data.totalInstallments,
       startDate: data.startDate,
       frequency: data.repaymentFrequency,
-      interestRate: interestRate,
-      interestType: interestType,
+      interestRate,
+      interestType,
     });
 
     const targetLenderId = preferredLender?.id || null;
 
-    // Validate trust level if borrowing from a specific business
+    // Optional: trust validation (kept as-is)
     if (data.lenderType === 'business' && targetLenderId) {
       try {
         const trustResponse = await fetch(`/api/borrower/trust?business_id=${targetLenderId}`);
         if (trustResponse.ok) {
           const trustData = await trustResponse.json();
-          
-          if (!trustData.canBorrow) {
-            throw new Error(trustData.reason || 'You are not eligible to borrow from this lender.');
-          }
-          
+
+          if (!trustData.canBorrow) throw new Error(trustData.reason || 'Not eligible to borrow from this lender.');
           if (data.amount > trustData.maxAmount) {
-            const message = trustData.isGraduated 
+            const message = trustData.isGraduated
               ? `Amount exceeds the maximum of $${trustData.maxAmount} for this lender.`
-              : `As a new borrower with ${trustData.businessName}, you can borrow up to $${trustData.maxAmount}. Complete ${trustData.loansUntilGraduation} more loan(s) at this amount to unlock higher amounts.`;
+              : `As a new borrower with ${trustData.businessName}, you can borrow up to $${trustData.maxAmount}. Complete ${trustData.loansUntilGraduation} more loan(s) to unlock more.`;
             throw new Error(message);
           }
         }
       } catch (error: any) {
-        if (error.message) {
-          throw error; // Re-throw validation errors
-        }
+        if (error.message) throw error;
         console.error('Failed to check trust level:', error);
-        // Continue with loan creation if trust check fails (fallback)
       }
     }
 
-    // If inviting by username, look up the user to get their ID and email
     let invitedLenderInfo: { id: string; email: string; full_name: string } | null = null;
-
     if (data.lenderType === 'personal' && data.inviteUsername) {
       try {
         const { data: invitedUser, error: lookupError } = await supabase
@@ -346,72 +479,76 @@ function NewLoanContent() {
           .select('id, email, full_name')
           .eq('username', data.inviteUsername)
           .single();
-        
-        if (invitedUser && !lookupError) {
-          invitedLenderInfo = invitedUser;
-        }
+
+        if (invitedUser && !lookupError) invitedLenderInfo = invitedUser;
       } catch (error) {
         console.error('Failed to look up invited user by username:', error);
       }
     }
 
-    // Build loan insert data
     const loanData: any = {
       borrower_id: user.id,
       lender_type: data.lenderType,
       business_lender_id: targetLenderId,
       loan_type_id: data.loanTypeId || null,
-      // Use invited user's email if found by username
-      invite_email: data.lenderType === 'personal' 
-        ? (invitedLenderInfo?.email || data.inviteEmail || null) 
-        : null,
+
+      invite_email: data.lenderType === 'personal' ? invitedLenderInfo?.email || data.inviteEmail || null : null,
       invite_phone: data.lenderType === 'personal' ? data.invitePhone : null,
       invite_username: data.lenderType === 'personal' ? data.inviteUsername : null,
-      // If user found by username, directly set them as lender
+
       lender_id: invitedLenderInfo?.id || null,
-      // If lender is known, skip invite token
       invite_token: invitedLenderInfo ? null : inviteToken,
       invite_accepted: false,
+
       amount: data.amount,
       currency: data.currency,
       purpose: data.purpose,
+
       interest_rate: interestRate,
       interest_type: interestType,
       total_interest: Math.round(totalInterest * 100) / 100,
       total_amount: Math.round(totalAmount * 100) / 100,
+
       repayment_frequency: data.repaymentFrequency,
       repayment_amount: Math.round(repaymentAmount * 100) / 100,
       total_installments: data.totalInstallments,
       start_date: data.startDate,
+
       disbursement_method: data.disbursementMethod,
       mobile_money_provider: data.mobileMoneyProvider,
       mobile_money_phone: data.mobileMoneyPhone,
       mobile_money_name: data.mobileMoneyName,
+
       pickup_person_name: data.pickerFullName || data.recipientName,
       pickup_person_location: data.cashPickupLocation,
       pickup_person_phone: data.pickerPhone,
       pickup_person_id_type: data.pickerIdType,
       pickup_person_id_number: data.pickerIdNumber,
+
       bank_name: data.bankName,
       bank_account_name: data.bankAccountName,
       bank_account_number: data.bankAccountNumber,
       bank_branch: data.bankBranch,
       bank_swift_code: data.bankSwiftCode,
+
       is_for_recipient: data.isForRecipient === true,
       recipient_name: data.recipientName || null,
       recipient_phone: data.recipientPhone || null,
       recipient_country: data.recipientCountry || null,
+
       borrower_signed: data.agreementSigned || false,
       borrower_signed_at: data.agreementSigned ? new Date().toISOString() : null,
+
       status: 'pending',
       match_status: data.lenderType === 'business' ? 'pending' : 'manual',
+
       amount_paid: 0,
       amount_remaining: Math.round(totalAmount * 100) / 100,
+
       borrower_name: user.full_name,
       auto_pay_enabled: true,
     };
 
-    // Add borrower's Dwolla info for ACH disbursement
     if (bankInfo) {
       loanData.borrower_dwolla_customer_url = bankInfo.dwolla_customer_url;
       loanData.borrower_dwolla_customer_id = bankInfo.dwolla_customer_id;
@@ -422,18 +559,11 @@ function NewLoanContent() {
       loanData.borrower_bank_connected = true;
     }
 
-    const { data: loan, error } = await supabase
-      .from('loans')
-      .insert(loanData)
-      .select()
-      .single();
+    const { data: loan, error } = await supabase.from('loans').insert(loanData).select().single();
+    if (error) throw error;
 
-    if (error) {
-      console.error('Error creating loan:', error);
-      throw error;
-    }
-
-    // Create notification for borrower
+    // NOTE: If your table doesn't have notifications.data, this insert will fail (you saw PGRST204).
+    // Keep your original behavior, but you may want to remove "data" or add the column in DB.
     await supabase.from('notifications').insert({
       user_id: user.id,
       type: 'loan_created',
@@ -454,6 +584,7 @@ function NewLoanContent() {
 
     await supabase.from('payment_schedule').insert(scheduleItems);
 
+    // Routing / notifications kept as your original (trimmed only where UI-related)
     if (data.lenderType === 'business') {
       if (targetLenderId) {
         await fetch('/api/notifications/payment', {
@@ -474,21 +605,14 @@ function NewLoanContent() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ loan_id: loan.id }),
         });
-
         const matchResult = await matchResponse.json();
-        
-        if (matchResult.status === 'auto_accepted') {
-          router.push(`/loans/${loan.id}?matched=true`);
-        } else if (matchResult.status === 'pending_acceptance') {
-          router.push(`/loans/${loan.id}?matching=true`);
-        } else {
-          router.push(`/loans/${loan.id}?no_match=true`);
-        }
+
+        if (matchResult.status === 'auto_accepted') router.push(`/loans/${loan.id}?matched=true`);
+        else if (matchResult.status === 'pending_acceptance') router.push(`/loans/${loan.id}?matching=true`);
+        else router.push(`/loans/${loan.id}?no_match=true`);
       }
     } else {
-      // Personal loan - send notification or invite
       if (invitedLenderInfo) {
-        // User found by username - send loan request notification (not invite)
         await fetch('/api/notifications/loan-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -503,7 +627,6 @@ function NewLoanContent() {
           }),
         });
 
-        // Create in-app notification for the lender
         await supabase.from('notifications').insert({
           user_id: invitedLenderInfo.id,
           type: 'loan_request',
@@ -513,7 +636,6 @@ function NewLoanContent() {
           is_read: false,
         });
       } else {
-        // User not on platform - send invite email/SMS
         await fetch('/api/invite/send', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -537,246 +659,227 @@ function NewLoanContent() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
-        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
+      <div className="min-h-screen grid place-items-center bg-neutral-50 dark:bg-neutral-950">
+        <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 py-3 text-sm text-neutral-600 dark:text-neutral-300 shadow-sm">
+          Loading…
+        </div>
       </div>
     );
   }
 
+  const isBlocked = needsReverification || (verificationRequired && !!preferredLender);
+
   return (
-    <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900">
-      <Navbar user={user} />
+    <PageShell
+      user={user}
+      title="New loan request"
+      subtitle={preferredLender ? `Request a loan from ${preferredLender.business_name}` : 'Create a request and choose how you want to receive funds.'}
+    >
+      <AppTopBar lenderSlug={lenderSlug} />
 
-      <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center gap-2 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-6 transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to dashboard
-          </Link>
-
-          {/* Direct Lender Banner */}
-          {preferredLender && (
-            <div className="mb-6 p-4 bg-gradient-to-r from-primary-50 to-teal-50 dark:from-primary-900/20 dark:to-teal-900/20 border border-primary-200 dark:border-primary-800 rounded-xl">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-white dark:bg-neutral-800 rounded-xl flex items-center justify-center overflow-hidden shadow-sm">
-                  {preferredLender.logo_url ? (
-                    <img src={preferredLender.logo_url} alt={preferredLender.business_name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Building2 className="w-6 h-6 text-primary-600 dark:text-primary-400" />
-                  )}
+      {/* Direct lender banner */}
+      {preferredLender ? (
+        <Banner
+          tone="info"
+          icon={Building2}
+          title={preferredLender.business_name}
+          badge="Verified lender"
+          actions={
+            <div className="flex items-center gap-2">
+              {preferredLender.logo_url ? (
+                <img
+                  src={preferredLender.logo_url}
+                  alt={preferredLender.business_name}
+                  className="h-9 w-9 rounded-xl object-cover border border-black/5 dark:border-white/10"
+                />
+              ) : (
+                <div className="h-9 w-9 rounded-xl grid place-items-center bg-white dark:bg-neutral-900 border border-black/5 dark:border-white/10">
+                  <Building2 className="w-5 h-5 text-blue-600 dark:text-blue-300" />
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-neutral-900 dark:text-white">{preferredLender.business_name}</span>
-                    <CheckCircle className="w-4 h-4 text-green-600" />
+              )}
+              <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">
+                Sent directly to this lender
+              </span>
+            </div>
+          }
+        >
+          <p className="text-sm text-neutral-700 dark:text-neutral-300">
+            Your request will be reviewed by this lender.
+          </p>
+        </Banner>
+      ) : null}
+
+      {/* Blocks */}
+      {needsReverification ? (
+        <Banner
+          tone="danger"
+          icon={Camera}
+          title="Re-verification required"
+          badge="Restricted"
+          actions={
+            <Link href="/verify" className="block">
+              <Button className="w-full bg-red-600 hover:bg-red-700 text-white">
+                <Camera className="w-4 h-4 mr-2" />
+                Complete re-verification
+              </Button>
+            </Link>
+          }
+        >
+          <p className="text-sm">
+            Your verification has expired. Please upload a new selfie to continue.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-red-800 dark:text-red-200">
+            <li className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Takes about a minute
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Keeps your account secure
+            </li>
+          </ul>
+        </Banner>
+      ) : null}
+
+      {verificationRequired && preferredLender && !needsReverification ? (
+        <Banner
+          tone="warning"
+          icon={Shield}
+          title="Identity verification required"
+          badge="Before borrowing"
+          actions={
+            <Link
+              href={`/verify?redirect=${encodeURIComponent(`/loans/new?lender=${lenderSlug}`)}`}
+              className="block"
+            >
+              <Button className="w-full">
+                Verify my identity
+              </Button>
+            </Link>
+          }
+        >
+          <p className="text-sm">
+            To borrow from <span className="font-semibold">{preferredLender.business_name}</span>, you must verify first.
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-amber-900 dark:text-amber-200">
+            <li className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Secure & encrypted
+            </li>
+            <li className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4" /> Under 5 minutes
+            </li>
+          </ul>
+        </Banner>
+      ) : null}
+
+      {/* ACH / bank connect */}
+      {!isBlocked && isDwollaEnabled ? (
+        <SectionCard
+          title="Bank account (ACH)"
+          subtitle="Connect your bank to receive funds via ACH (typically 1–3 business days)."
+          icon={Building}
+          right={bankConnected ? <Badge variant="success">Connected</Badge> : <Badge>Optional</Badge>}
+        >
+          {bankConnected && bankInfo ? (
+            <div className="rounded-2xl border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/15 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-white dark:bg-neutral-950 border border-black/5 dark:border-white/10 grid place-items-center">
+                    <Building className="w-5 h-5 text-emerald-600 dark:text-emerald-300" />
                   </div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                    Your loan request will be sent directly to this lender
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-bold text-neutral-900 dark:text-white truncate">
+                        {bankInfo.bank_name || 'Connected bank'}
+                      </p>
+                      <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-300" />
+                    </div>
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      Account ••••{bankInfo.account_mask || '—'}
+                    </p>
+                  </div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleConnectBank}
+                  disabled={connectingBank || !plaidReady}
+                  className="rounded-xl"
+                >
+                  {connectingBank ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Updating…
+                    </>
+                  ) : (
+                    'Change'
+                  )}
+                </Button>
               </div>
             </div>
-          )}
-
-          {/* Re-verification Required Block - Takes Priority */}
-          {needsReverification && (
-            <Card className="mb-6 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-red-100 dark:bg-red-900/30 rounded-xl">
-                  <Camera className="w-6 h-6 text-red-600 dark:text-red-400" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="font-semibold text-red-900 dark:text-red-300">Re-verification Required</h3>
-                    <span className="px-2 py-0.5 bg-red-200 dark:bg-red-800 text-red-800 dark:text-red-200 text-xs font-semibold rounded-full">
-                      Account Restricted
-                    </span>
-                  </div>
-                  <p className="text-sm text-red-800 dark:text-red-400 mb-4">
-                    Your verification has expired. For your security, we require a new selfie every 3 months. 
-                    Please complete re-verification to continue requesting loans.
-                  </p>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
-                      <CheckCircle className="w-4 h-4 text-red-500" />
-                      <span>Only takes 1 minute</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
-                      <CheckCircle className="w-4 h-4 text-red-500" />
-                      <span>Just a new selfie needed</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-red-700 dark:text-red-400">
-                      <CheckCircle className="w-4 h-4 text-red-500" />
-                      <span>Protects your account security</span>
-                    </div>
-                  </div>
-                  <Link href="/verify">
-                    <Button className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white">
-                      <Camera className="w-4 h-4 mr-2" />
-                      Complete Re-verification
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Verification Required Block */}
-          {verificationRequired && preferredLender && !needsReverification && (
-            <Card className="mb-6 border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20">
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-xl">
-                  <AlertCircle className="w-6 h-6 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="font-semibold text-amber-900 dark:text-amber-300 mb-2">Identity Verification Required</h3>
-                  <p className="text-sm text-amber-800 dark:text-amber-400 mb-4">
-                    To borrow from <strong className="text-amber-900 dark:text-amber-300">{preferredLender.business_name}</strong>, you need to verify your identity first. 
-                    This helps protect both you and the lender.
-                  </p>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      <span>Takes less than 5 minutes</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      <span>Secure and encrypted</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
-                      <CheckCircle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                      <span>Required for all business loans</span>
-                    </div>
-                  </div>
-                  <Link href={`/verify?redirect=${encodeURIComponent(`/loans/new?lender=${lenderSlug}`)}`}>
-                    <Button className="w-full sm:w-auto">
-                      Verify My Identity
-                    </Button>
-                  </Link>
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {/* Show form only if verification not required OR not a direct business loan, AND not needing re-verification */}
-          {!needsReverification && (!verificationRequired || !preferredLender) && (
-            <>
-              {/* Bank Connection Card for ACH - Only show if Dwolla is enabled */}
-              {isDwollaEnabled && (
-                <Card className="mb-6">
-                  <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
-                    <Building className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                    Bank Account (ACH)
-                  </h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                    Connect your bank to receive loan funds directly via ACH transfer (1-3 business days).
-                  </p>
-
-                  {bankConnected && bankInfo ? (
-                    <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                            <Building className="w-5 h-5 text-green-600 dark:text-green-400" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-neutral-900 dark:text-white">{bankInfo.bank_name}</span>
-                              <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                            </div>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">Account ••••{bankInfo.account_mask}</p>
-                          </div>
-                        </div>
-                        <Badge variant="success">Connected</Badge>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-                      <div className="flex items-start gap-3 mb-4">
-                        <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-amber-800 dark:text-amber-300">Bank not connected</p>
-                          <p className="text-sm text-amber-700 dark:text-amber-400">
-                            Connect your bank to receive loan funds instantly when approved.
-                          </p>
-                        </div>
-                      </div>
-                      <Button
-                        onClick={handleConnectBank}
-                        disabled={connectingBank || !plaidReady}
-                        className="w-full"
-                      >
-                        {connectingBank ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Connecting...
-                          </>
-                        ) : (
-                          <>
-                            <Building className="w-4 h-4 mr-2" />
-                            Connect Bank Account
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  )}
-                </Card>
-              )}
-
-              {/* Manual Payment Methods Card */}
-              <Card className="mb-6">
-                <h3 className="font-semibold text-neutral-900 dark:text-white mb-3 flex items-center gap-2">
-                  <Smartphone className="w-5 h-5 text-green-600 dark:text-green-400" />
-                  Payment Methods
-                </h3>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                  Add your Cash App, Venmo, Zelle, or PayPal so lenders know where to send your funds.
+          ) : (
+            <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-3">
+              <div className="flex items-start gap-2 text-sm text-neutral-700 dark:text-neutral-300">
+                <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <p>
+                  Not connected yet. Connect once and reuse for future loans.
                 </p>
-
-                <ConnectedPaymentDisplay
-                  userId={user?.id}
-                  userCountry={user?.country || 'US'}
-                  bankConnected={bankConnected}
-                  bankName={bankInfo?.bank_name}
-                  bankAccountMask={bankInfo?.account_mask}
-                  showTitle={false}
-                  showAddPrompt={true}
-                />
-              </Card>
-
-              <Card>
-                <LoanRequestForm 
-                  businesses={businesses} 
-                  preferredLender={preferredLender}
-                  userBankConnected={bankConnected}
-                  userVerificationStatus={user?.verification_status || 'pending'}
-                  userBankName={bankInfo?.bank_name}
-                  userBankAccountMask={bankInfo?.account_mask}
-                  onSubmit={handleSubmit}
-                  onConnectBank={handleConnectBank}
-                  onStartVerification={() => router.push('/verify')}
-                />
-              </Card>
-            </>
+              </div>
+              <Button
+                onClick={handleConnectBank}
+                disabled={connectingBank || !plaidReady}
+                className="mt-3 w-full rounded-xl"
+              >
+                {connectingBank ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting…
+                  </>
+                ) : (
+                  <>
+                    <Building className="w-4 h-4 mr-2" />
+                    Connect bank
+                  </>
+                )}
+              </Button>
+            </div>
           )}
-        </div>
-      </main>
+        </SectionCard>
+      ) : null}
 
-      <Footer />
-    </div>
+      {/* Form */}
+      {!isBlocked ? (
+        <SectionCard
+          title="Loan details"
+          subtitle="Fill out the request. You can review everything before submitting."
+          icon={CreditCard}
+        >
+          <LoanRequestForm
+            businesses={businesses}
+            preferredLender={preferredLender}
+            userBankConnected={bankConnected}
+            userVerificationStatus={user?.verification_status || 'pending'}
+            userBankName={bankInfo?.bank_name}
+            userBankAccountMask={bankInfo?.account_mask}
+            onSubmit={handleSubmit}
+            onConnectBank={handleConnectBank}
+            onStartVerification={() => router.push('/verify')}
+          />
+        </SectionCard>
+      ) : null}
+    </PageShell>
   );
 }
 
 export default function NewLoanPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-900">
-        <div className="animate-pulse text-neutral-500 dark:text-neutral-400">Loading...</div>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="min-h-screen grid place-items-center bg-neutral-50 dark:bg-neutral-950">
+          <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-4 py-3 text-sm text-neutral-600 dark:text-neutral-300 shadow-sm">
+            Loading…
+          </div>
+        </div>
+      }
+    >
       <NewLoanContent />
     </Suspense>
   );

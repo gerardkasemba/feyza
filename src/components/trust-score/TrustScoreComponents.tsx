@@ -1,27 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Card, Button, Badge, Progress } from '@/components/ui';
-import { 
-  Shield, 
-  TrendingUp, 
-  Users, 
-  CheckCircle, 
-  Clock, 
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Shield,
+  Users,
+  CheckCircle,
+  Clock,
   CreditCard,
-  Star,
-  ChevronRight,
   Award,
   Target,
   Zap,
+  Trash2,
   UserPlus,
-  ExternalLink,
   Info,
   X,
-  Trash2,
-  User
+  ChevronRight,
+  TrendingUp,
 } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+
+import { Card, Button, Badge, Progress } from '@/components/ui';
 
 // ============================================
 // TYPES
@@ -68,7 +65,98 @@ interface TrustScoreEvent {
 }
 
 // ============================================
-// TRUST SCORE BADGE
+// UI HELPERS
+// ============================================
+
+function gradeGradient(grade: string) {
+  if (grade.startsWith('A')) return 'from-emerald-500 to-green-600';
+  if (grade.startsWith('B')) return 'from-blue-500 to-indigo-600';
+  if (grade.startsWith('C')) return 'from-amber-500 to-orange-600';
+  if (grade.startsWith('D')) return 'from-orange-500 to-red-500';
+  return 'from-red-500 to-red-700';
+}
+
+function clamp(n: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function initials(name?: string) {
+  if (!name) return '?';
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+  return parts.map((p) => p[0]?.toUpperCase()).join('') || '?';
+}
+
+function fmtMoney(n: number) {
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }).format(n || 0);
+  } catch {
+    return `$${(n || 0).toLocaleString()}`;
+  }
+}
+
+type SheetTab = 'overview' | 'breakdown' | 'vouches' | 'activity';
+
+// ============================================
+// TRUST SCORE RING
+// ============================================
+
+interface TrustScoreRingProps {
+  score: number;
+  grade: string;
+  label?: string;
+}
+
+export function TrustScoreRing({ score, grade, label }: TrustScoreRingProps) {
+  const safeScore = clamp(score);
+  const circumference = 2 * Math.PI * 22;
+  const offset = circumference * (1 - safeScore / 100);
+
+  return (
+    <div className="relative w-20 h-20">
+      <svg className="w-20 h-20 -rotate-90" viewBox="0 0 56 56">
+        <circle
+          cx="28"
+          cy="28"
+          r="22"
+          fill="none"
+          strokeWidth="6"
+          className="stroke-neutral-200 dark:stroke-neutral-800"
+        />
+        <circle
+          cx="28"
+          cy="28"
+          r="22"
+          fill="none"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          className="stroke-neutral-900 dark:stroke-white"
+        />
+      </svg>
+
+      <div className="absolute inset-0 grid place-items-center">
+        <div className="text-center leading-none">
+          <div className="text-xl font-bold text-neutral-900 dark:text-white">{safeScore}</div>
+          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">{grade}</div>
+        </div>
+      </div>
+
+      {label ? (
+        <div className="mt-2 text-center text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+          {label}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// ============================================
+// TRUST SCORE BADGE (kept, simplified)
 // ============================================
 
 interface TrustScoreBadgeProps {
@@ -78,38 +166,39 @@ interface TrustScoreBadgeProps {
   showLabel?: boolean;
 }
 
-export function TrustScoreBadge({ score, grade, size = 'md', showLabel = true }: TrustScoreBadgeProps) {
-  const getGradeColor = (grade: string) => {
-    if (grade.startsWith('A')) return 'from-emerald-500 to-green-600';
-    if (grade.startsWith('B')) return 'from-blue-500 to-indigo-600';
-    if (grade.startsWith('C')) return 'from-amber-500 to-orange-600';
-    if (grade.startsWith('D')) return 'from-orange-500 to-red-500';
-    return 'from-red-500 to-red-700';
-  };
-
+export function TrustScoreBadge({
+  score,
+  grade,
+  size = 'md',
+  showLabel = true,
+}: TrustScoreBadgeProps) {
   const sizes = {
-    sm: { container: 'w-12 h-12', score: 'text-sm', grade: 'text-[10px]' },
-    md: { container: 'w-20 h-20', score: 'text-xl', grade: 'text-xs' },
-    lg: { container: 'w-28 h-28', score: 'text-3xl', grade: 'text-sm' },
+    sm: { container: 'w-11 h-11', score: 'text-sm', grade: 'text-[10px]' },
+    md: { container: 'w-16 h-16', score: 'text-lg', grade: 'text-[11px]' },
+    lg: { container: 'w-20 h-20', score: 'text-xl', grade: 'text-xs' },
   };
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <div 
-        className={`${sizes[size].container} rounded-full bg-gradient-to-br ${getGradeColor(grade)} flex flex-col items-center justify-center text-white shadow-lg`}
+      <div
+        className={`${sizes[size].container} rounded-2xl bg-gradient-to-br ${gradeGradient(
+          grade
+        )} flex flex-col items-center justify-center text-white shadow-sm`}
       >
-        <span className={`font-bold ${sizes[size].score}`}>{score}</span>
+        <span className={`font-bold ${sizes[size].score}`}>{clamp(score)}</span>
         <span className={`font-semibold ${sizes[size].grade}`}>{grade}</span>
       </div>
-      {showLabel && size !== 'sm' && (
-        <span className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">Trust Score</span>
-      )}
+      {showLabel && size !== 'sm' ? (
+        <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+          Trust Score
+        </span>
+      ) : null}
     </div>
   );
 }
 
 // ============================================
-// TRUST SCORE CARD (Full Display)
+// TRUST SCORE CARD (App-style)
 // ============================================
 
 interface TrustScoreCardProps {
@@ -117,17 +206,27 @@ interface TrustScoreCardProps {
   showDetails?: boolean;
   showVouches?: boolean;
   className?: string;
-  currentUserId?: string; // The logged-in user's ID
-  onVouchRevoked?: () => void; // Callback when vouch is revoked
+  currentUserId?: string;
+  onVouchRevoked?: () => void;
 }
 
-export function TrustScoreCard({ userId, showDetails = true, showVouches = true, className = '', currentUserId, onVouchRevoked }: TrustScoreCardProps) {
+export function TrustScoreCard({
+  userId,
+  showDetails = true,
+  showVouches = true,
+  className = '',
+  currentUserId,
+  onVouchRevoked,
+}: TrustScoreCardProps) {
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<TrustScoreData | null>(null);
   const [vouches, setVouches] = useState<Vouch[]>([]);
   const [events, setEvents] = useState<TrustScoreEvent[]>([]);
+  const [tab, setTab] = useState<SheetTab>('overview');
+
   const [myVouchForThisUser, setMyVouchForThisUser] = useState<string | null>(null);
   const [revokingVouch, setRevokingVouch] = useState(false);
+
   const [paymentStats, setPaymentStats] = useState<{
     totalPayments: number;
     onTime: number;
@@ -141,55 +240,62 @@ export function TrustScoreCard({ userId, showDetails = true, showVouches = true,
   } | null>(null);
 
   useEffect(() => {
-    const fetchScore = async () => {
+    const run = async () => {
+      setLoading(true);
       try {
-        const supabase = createClient();
         const params = userId ? `?userId=${userId}` : '';
-        
-        const response = await fetch(`/api/trust-score${params}`);
-        const data = await response.json();
+        const res = await fetch(`/api/trust-score${params}`);
+        const data = await res.json();
 
-        if (data.score) {
+        if (data?.score) {
           setScoreData(data.score);
           setVouches(data.topVouches || []);
           setEvents(data.recentEvents || []);
           setPaymentStats(data.paymentStats || null);
+        } else {
+          setScoreData(null);
         }
 
-        // Check if current user has vouched for this user
         if (currentUserId && userId && currentUserId !== userId) {
           try {
             const vouchResponse = await fetch('/api/vouches?type=given');
             if (vouchResponse.ok) {
               const vouchData = await vouchResponse.json();
-              const myVouch = (vouchData.vouches || []).find(
-                (v: any) => v.vouchee_id === userId
-              );
-              if (myVouch) {
-                setMyVouchForThisUser(myVouch.id);
-              }
+              const myVouch = (vouchData.vouches || []).find((v: any) => v.vouchee_id === userId);
+              if (myVouch) setMyVouchForThisUser(myVouch.id);
+              else setMyVouchForThisUser(null);
             }
-          } catch (err) {
-            console.error('Error checking vouch status:', err);
+          } catch {
+            // ignore
           }
         }
-      } catch (error) {
-        console.error('Error fetching trust score:', error);
+      } catch (e) {
+        console.error('Error fetching trust score:', e);
+        setScoreData(null);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchScore();
+    run();
   }, [userId, currentUserId]);
 
-  // Check if viewing own profile
-  const isOwnProfile = currentUserId && (!userId || userId === currentUserId);
+  const isOwnProfile = !!currentUserId && (!userId || userId === currentUserId);
 
-  // Handler to revoke a vouch
+  const components = useMemo(
+    () => [
+      { label: 'Payment', score: scoreData?.payment_score ?? 0, weight: '40%', icon: CreditCard },
+      { label: 'Completion', score: scoreData?.completion_score ?? 0, weight: '25%', icon: CheckCircle },
+      { label: 'Social', score: scoreData?.social_score ?? 0, weight: '15%', icon: Users },
+      { label: 'Verification', score: scoreData?.verification_score ?? 0, weight: '10%', icon: Shield },
+      { label: 'Tenure', score: scoreData?.tenure_score ?? 0, weight: '10%', icon: Clock },
+    ],
+    [scoreData]
+  );
+
   const handleRevokeVouch = async () => {
     if (!myVouchForThisUser) return;
-    
+
     setRevokingVouch(true);
     try {
       const response = await fetch('/api/vouches', {
@@ -205,11 +311,11 @@ export function TrustScoreCard({ userId, showDetails = true, showVouches = true,
       if (response.ok) {
         setMyVouchForThisUser(null);
         onVouchRevoked?.();
-        // Refresh the score data
+
         const params = userId ? `?userId=${userId}` : '';
         const scoreResponse = await fetch(`/api/trust-score${params}`);
         const data = await scoreResponse.json();
-        if (data.score) {
+        if (data?.score) {
           setScoreData(data.score);
           setVouches(data.topVouches || []);
         }
@@ -223,13 +329,16 @@ export function TrustScoreCard({ userId, showDetails = true, showVouches = true,
 
   if (loading) {
     return (
-      <Card className={`animate-pulse ${className}`}>
-        <div className="flex items-center gap-4">
-          <div className="w-20 h-20 rounded-full bg-neutral-200 dark:bg-neutral-700" />
-          <div className="flex-1 space-y-2">
-            <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-24" />
-            <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-32" />
+      <Card className={`p-4 ${className}`}>
+        <div className="animate-pulse">
+          <div className="flex items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-neutral-200 dark:bg-neutral-800" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-40 bg-neutral-200 dark:bg-neutral-800 rounded" />
+              <div className="h-3 w-56 bg-neutral-200 dark:bg-neutral-800 rounded" />
+            </div>
           </div>
+          <div className="mt-4 h-24 bg-neutral-200 dark:bg-neutral-800 rounded-2xl" />
         </div>
       </Card>
     );
@@ -237,63 +346,68 @@ export function TrustScoreCard({ userId, showDetails = true, showVouches = true,
 
   if (!scoreData) {
     return (
-      <Card className={className}>
+      <Card className={`p-6 ${className}`}>
         <div className="text-center py-8">
-          <Shield className="w-12 h-12 text-neutral-300 dark:text-neutral-600 mx-auto mb-3" />
-          <p className="text-neutral-500 dark:text-neutral-400">No trust score available</p>
+          <Shield className="w-10 h-10 text-neutral-300 dark:text-neutral-700 mx-auto mb-3" />
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">No trust score available</p>
         </div>
       </Card>
     );
   }
 
-  const components = [
-    { label: 'Payment History', score: scoreData.payment_score, weight: '40%', icon: CreditCard, color: 'text-emerald-500' },
-    { label: 'Loan Completion', score: scoreData.completion_score, weight: '25%', icon: CheckCircle, color: 'text-blue-500' },
-    { label: 'Social Trust', score: scoreData.social_score, weight: '15%', icon: Users, color: 'text-purple-500' },
-    { label: 'Verification', score: scoreData.verification_score, weight: '10%', icon: Shield, color: 'text-amber-500' },
-    { label: 'Platform Tenure', score: scoreData.tenure_score, weight: '10%', icon: Clock, color: 'text-cyan-500' },
-  ];
-
   return (
-    <Card className={className}>
-      {/* Header */}
-      <div className="flex items-center gap-6 mb-6">
-        <TrustScoreBadge 
-          score={scoreData.score} 
-          grade={scoreData.score_grade} 
-          size="lg" 
-        />
-        <div className="flex-1">
-          <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-1 flex items-center gap-2">
-            {scoreData.score_label}
-            {isOwnProfile && (
-              <span className="text-sm font-normal text-neutral-500 dark:text-neutral-400">(You)</span>
-            )}
-          </h3>
-          <p className="text-sm text-neutral-500 dark:text-neutral-400">
-            {scoreData.completed_loans} loans completed • {scoreData.current_streak} payment streak
-          </p>
-          {scoreData.vouches_received > 0 && (
-            <div className="flex items-center gap-1 mt-2">
-              <Users className="w-4 h-4 text-purple-500" />
-              <span className="text-sm text-purple-600 dark:text-purple-400 font-medium">
-                {scoreData.vouches_received} vouch{scoreData.vouches_received !== 1 ? 'es' : ''}
-              </span>
+    <Card className={`p-4 sm:p-5 ${className}`}>
+      {/* App-style header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <TrustScoreRing score={scoreData.score} grade={scoreData.score_grade} label="Trust" />
+          <div className="pt-1">
+            <div className="flex items-center gap-2">
+              <h3 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white">
+                {scoreData.score_label}
+              </h3>
+              {isOwnProfile ? (
+                <Badge variant="outline" className="text-[11px] px-2 py-0.5">
+                  You
+                </Badge>
+              ) : null}
             </div>
-          )}
+
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-neutral-500 dark:text-neutral-400">
+              <span className="inline-flex items-center gap-1">
+                <CheckCircle className="w-3.5 h-3.5" />
+                {scoreData.completed_loans} completed
+              </span>
+              <span className="text-neutral-300 dark:text-neutral-700">•</span>
+              <span className="inline-flex items-center gap-1">
+                <TrendingUp className="w-3.5 h-3.5" />
+                {scoreData.current_streak} streak
+              </span>
+              {scoreData.vouches_received > 0 ? (
+                <>
+                  <span className="text-neutral-300 dark:text-neutral-700">•</span>
+                  <span className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 font-medium">
+                    <Users className="w-3.5 h-3.5" />
+                    {scoreData.vouches_received} vouch{scoreData.vouches_received !== 1 ? 'es' : ''}
+                  </span>
+                </>
+              ) : null}
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Show "You vouched" indicator if current user has vouched for this profile */}
-      {myVouchForThisUser && (
-        <div className="mb-4 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800">
-          <div className="flex items-center justify-between">
+      {/* You vouched banner */}
+      {myVouchForThisUser ? (
+        <div className="mt-4 rounded-2xl border border-purple-200 dark:border-purple-900/40 bg-purple-50 dark:bg-purple-900/20 p-3">
+          <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Award className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-              <span className="text-sm font-medium text-purple-700 dark:text-purple-300">
-                You've vouched for this person
-              </span>
+              <Award className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <div className="text-sm font-medium text-purple-800 dark:text-purple-200">
+                You vouched for this person
+              </div>
             </div>
+
             <Button
               variant="ghost"
               size="sm"
@@ -312,137 +426,264 @@ export function TrustScoreCard({ userId, showDetails = true, showVouches = true,
             </Button>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Payment Method Stats */}
-      {paymentStats && paymentStats.totalPayments > 0 && (
-        <div className="mb-6 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl">
-          <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-2 mb-3">
-            <Zap className="w-4 h-4 text-amber-500" />
-            Payment Methods
-          </h4>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700">
-              <div className="flex items-center gap-2 mb-1">
-                <div className={`w-2 h-2 rounded-full ${paymentStats.autoPayEnabled ? 'bg-green-500' : 'bg-neutral-300'}`} />
-                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Auto-Pay</span>
-              </div>
-              <p className="text-lg font-bold text-neutral-900 dark:text-white">
-                {paymentStats.autoPayments}
-              </p>
-              <p className="text-xs text-neutral-500">
-                {paymentStats.autoPayEnabled ? 'Enabled' : 'Not enabled'}
-              </p>
-            </div>
-            <div className="p-3 bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-700">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                <span className="text-xs font-medium text-neutral-600 dark:text-neutral-400">Manual</span>
-              </div>
-              <p className="text-lg font-bold text-neutral-900 dark:text-white">
-                {paymentStats.manualPayments}
-              </p>
-              <p className="text-xs text-neutral-500">
-                Cash App, Venmo, etc.
-              </p>
-            </div>
-          </div>
-          {/* Payment timing breakdown */}
-          <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-green-600 dark:text-green-400">✓ On-time: {paymentStats.onTime}</span>
-              <span className="text-blue-600 dark:text-blue-400">⚡ Early: {paymentStats.early}</span>
-              <span className="text-amber-600 dark:text-amber-400">⏰ Late: {paymentStats.late}</span>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Segmented tabs (mobile-friendly) */}
+      <div className="mt-4 grid grid-cols-4 gap-2 rounded-2xl bg-neutral-100 dark:bg-neutral-900 p-1">
+        {(
+          [
+            ['overview', 'Overview'],
+            ['breakdown', 'Breakdown'],
+            ['vouches', 'Vouches'],
+            ['activity', 'Activity'],
+          ] as const
+        ).map(([key, label]) => {
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={[
+                'rounded-xl px-2 py-2 text-[12px] font-semibold transition',
+                active
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-sm'
+                  : 'text-neutral-600 dark:text-neutral-400',
+              ].join(' ')}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
-      {/* Score Breakdown */}
-      {showDetails && (
-        <div className="space-y-4 mb-6">
-          <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-2">
-            <Target className="w-4 h-4" />
-            Score Breakdown
-          </h4>
+      {/* Tab content */}
+      <div className="mt-4">
+        {tab === 'overview' ? (
           <div className="space-y-3">
-            {components.map((comp) => (
-              <div key={comp.label} className="flex items-center gap-3">
-                <comp.icon className={`w-4 h-4 ${comp.color}`} />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm text-neutral-600 dark:text-neutral-400">
-                      {comp.label}
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500 ml-1">({comp.weight})</span>
-                    </span>
-                    <span className="text-sm font-semibold text-neutral-900 dark:text-white">{comp.score}</span>
-                  </div>
-                  <Progress value={comp.score} className="h-1.5" />
+            {/* Key stats cards */}
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">Loans</div>
+                <div className="mt-1 text-lg font-bold text-neutral-900 dark:text-white">
+                  {scoreData.total_loans}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">Best streak</div>
+                <div className="mt-1 text-lg font-bold text-emerald-600">{scoreData.best_streak}</div>
+              </div>
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3">
+                <div className="text-[11px] text-neutral-500 dark:text-neutral-400">Repaid</div>
+                <div className="mt-1 text-lg font-bold text-neutral-900 dark:text-white">
+                  {fmtMoney(scoreData.total_amount_repaid || 0)}
+                </div>
+              </div>
+            </div>
 
-      {/* Vouches */}
-      {showVouches && vouches.length > 0 && (
-        <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4">
-          <h4 className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 flex items-center gap-2 mb-3">
-            <Award className="w-4 h-4 text-purple-500" />
-            Top Vouches
-          </h4>
-          <div className="space-y-2">
-            {vouches.slice(0, 3).map((vouch) => (
-              <div 
-                key={vouch.id} 
-                className="flex items-center justify-between p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-purple-200 dark:bg-purple-800 flex items-center justify-center text-purple-700 dark:text-purple-300 font-semibold text-sm">
-                    {vouch.voucher?.full_name?.charAt(0) || '?'}
+            {/* Payment methods */}
+            {paymentStats && paymentStats.totalPayments > 0 ? (
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40 p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                      Payment methods
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-neutral-900 dark:text-white">
-                      {vouch.voucher?.full_name || 'Anonymous'}
-                    </p>
-                    <p className="text-xs text-neutral-500 dark:text-neutral-400 capitalize">
-                      {vouch.relationship}
-                    </p>
+                  <Badge variant="outline" className="text-[11px]">
+                    {paymentStats.totalPayments} total
+                  </Badge>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={[
+                          'w-2 h-2 rounded-full',
+                          paymentStats.autoPayEnabled ? 'bg-emerald-500' : 'bg-neutral-300 dark:bg-neutral-700',
+                        ].join(' ')}
+                      />
+                      <div className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
+                        Auto-pay
+                      </div>
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-neutral-900 dark:text-white">
+                      {paymentStats.autoPayments}
+                    </div>
+                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                      {paymentStats.autoPayEnabled ? 'Enabled' : 'Not enabled'}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      <div className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
+                        Manual
+                      </div>
+                    </div>
+                    <div className="mt-1 text-lg font-bold text-neutral-900 dark:text-white">
+                      {paymentStats.manualPayments}
+                    </div>
+                    <div className="text-[11px] text-neutral-500 dark:text-neutral-400">Cash App, Venmo…</div>
                   </div>
                 </div>
-                <Badge variant="default" className="bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300">
-                  +{vouch.trust_score_boost}
-                </Badge>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
-      {/* Stats Row */}
-      <div className="grid grid-cols-3 gap-4 mt-6 pt-4 border-t border-neutral-200 dark:border-neutral-700">
-        <div className="text-center">
-          <p className="text-2xl font-bold text-neutral-900 dark:text-white">{scoreData.total_loans}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">Total Loans</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold text-emerald-600">{scoreData.best_streak}</p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">Best Streak</p>
-        </div>
-        <div className="text-center">
-          <p className="text-2xl font-bold text-neutral-900 dark:text-white">
-            ${(scoreData.total_amount_repaid || 0).toLocaleString()}
-          </p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-400">Repaid</p>
-        </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
+                  <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 p-2 text-emerald-700 dark:text-emerald-300">
+                    ✓ On-time: {paymentStats.onTime}
+                  </div>
+                  <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 p-2 text-blue-700 dark:text-blue-300">
+                    ⚡ Early: {paymentStats.early}
+                  </div>
+                  <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 p-2 text-amber-700 dark:text-amber-300">
+                    ⏰ Late: {paymentStats.late}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {tab === 'breakdown' && showDetails ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Target className="w-4 h-4" />
+              <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                Score breakdown
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {components.map((c) => (
+                <div
+                  key={c.label}
+                  className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <c.icon className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
+                      <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                        {c.label}{' '}
+                        <span className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500">
+                          ({c.weight})
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-sm font-bold text-neutral-900 dark:text-white">{c.score}</div>
+                  </div>
+
+                  <div className="mt-2">
+                    <Progress value={clamp(c.score)} className="h-2" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {tab === 'vouches' && showVouches ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Award className="w-4 h-4 text-purple-500" />
+              <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Top vouches</div>
+            </div>
+
+            {vouches.length === 0 ? (
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-5 text-center text-sm text-neutral-600 dark:text-neutral-400">
+                No vouches yet.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {vouches.slice(0, 6).map((v) => (
+                  <div
+                    key={v.id}
+                    className="flex items-center justify-between rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-900/30 grid place-items-center text-purple-700 dark:text-purple-200 font-bold">
+                        {initials(v.voucher?.full_name)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-neutral-900 dark:text-white">
+                          {v.voucher?.full_name || 'Anonymous'}
+                        </div>
+                        <div className="text-[12px] text-neutral-500 dark:text-neutral-400 capitalize">
+                          {v.relationship}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200">
+                      +{v.trust_score_boost}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {tab === 'activity' ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4" />
+              <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Recent activity</div>
+            </div>
+
+            {events.length === 0 ? (
+              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-5 text-center text-sm text-neutral-600 dark:text-neutral-400">
+                No recent events.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {events.slice(0, 8).map((e) => (
+                  <div
+                    key={e.id}
+                    className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-neutral-900 dark:text-white">{e.title}</div>
+                        {e.description ? (
+                          <div className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+                            {e.description}
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <Badge
+                        variant="outline"
+                        className={[
+                          'text-[11px]',
+                          e.score_impact >= 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-red-700 dark:text-red-300',
+                        ].join(' ')}
+                      >
+                        {e.score_impact >= 0 ? `+${e.score_impact}` : e.score_impact}
+                      </Badge>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between text-[11px] text-neutral-400 dark:text-neutral-500">
+                      <span>{new Date(e.created_at).toLocaleDateString()}</span>
+                      <span className="inline-flex items-center gap-1">
+                        Details <ChevronRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
       </div>
     </Card>
   );
 }
 
 // ============================================
-// MINI TRUST SCORE (For loan cards, etc)
+// MINI TRUST SCORE (compact)
 // ============================================
 
 interface MiniTrustScoreProps {
@@ -458,7 +699,7 @@ export function MiniTrustScore({ userId, className = '' }: MiniTrustScoreProps) 
       try {
         const response = await fetch(`/api/trust-score?userId=${userId}`);
         const data = await response.json();
-        if (data.score) {
+        if (data?.score) {
           setScore({ score: data.score.score, grade: data.score.score_grade });
         }
       } catch (error) {
@@ -474,12 +715,13 @@ export function MiniTrustScore({ userId, className = '' }: MiniTrustScoreProps) 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       <TrustScoreBadge score={score.score} grade={score.grade} size="sm" showLabel={false} />
+      <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-400">Trust</span>
     </div>
   );
 }
 
 // ============================================
-// VOUCH BUTTON
+// VOUCH BUTTON (mobile bottom-sheet modal)
 // ============================================
 
 interface VouchButtonProps {
@@ -518,7 +760,7 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
         setShowModal(false);
         onVouchComplete?.();
       } else {
-        alert(data.error || 'Failed to create vouch');
+        alert(data?.error || 'Failed to create vouch');
       }
     } catch (error) {
       console.error('Error creating vouch:', error);
@@ -530,40 +772,56 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
 
   return (
     <>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => setShowModal(true)}
-        className={className}
-      >
+      <Button variant="outline" size="sm" onClick={() => setShowModal(true)} className={className}>
         <UserPlus className="w-4 h-4 mr-2" />
         Vouch for {targetName.split(' ')[0]}
       </Button>
 
-      {showModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-neutral-800 rounded-2xl max-w-md w-full p-6">
-            <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
-              <Award className="w-6 h-6 text-purple-500" />
-              Vouch for {targetName}
-            </h2>
+      {showModal ? (
+        <div className="fixed inset-0 z-50">
+          {/* Backdrop */}
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={() => setShowModal(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          />
 
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4">
-              <p className="text-sm text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                By vouching, you're putting your reputation on the line. Only vouch for people you truly trust.
-              </p>
+          {/* Bottom sheet */}
+          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-purple-500" />
+                <div>
+                  <div className="text-base font-bold text-neutral-900 dark:text-white">
+                    Vouch for {targetName}
+                  </div>
+                  <div className="text-[12px] text-neutral-500 dark:text-neutral-400">
+                    Only vouch for people you truly trust.
+                  </div>
+                </div>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setShowModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
             </div>
 
-            <div className="space-y-4">
+            <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 p-3">
+              <div className="flex items-start gap-2 text-[13px] text-amber-900 dark:text-amber-200">
+                <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                By vouching, you’re putting your reputation on the line.
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                   Relationship
                 </label>
                 <select
                   value={formData.relationship}
                   onChange={(e) => setFormData({ ...formData, relationship: e.target.value })}
-                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white"
+                  className="w-full px-3 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white"
                 >
                   <option value="family">Family</option>
                   <option value="friend">Friend</option>
@@ -575,24 +833,24 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  How long have you known them?
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
+                  Known for
                 </label>
                 <select
                   value={formData.known_years}
                   onChange={(e) => setFormData({ ...formData, known_years: Number(e.target.value) })}
-                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white"
+                  className="w-full px-3 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white"
                 >
                   <option value={1}>Less than 1 year</option>
-                  <option value={2}>1-2 years</option>
-                  <option value={5}>3-5 years</option>
-                  <option value={10}>5-10 years</option>
+                  <option value={2}>1–2 years</option>
+                  <option value={5}>3–5 years</option>
+                  <option value={10}>5–10 years</option>
                   <option value={15}>10+ years</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                   Message (optional)
                 </label>
                 <textarea
@@ -600,33 +858,28 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
                   onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                   placeholder="Why do you trust this person?"
                   rows={3}
-                  className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-600 rounded-lg bg-white dark:bg-neutral-700 text-neutral-900 dark:text-white resize-none"
+                  className="w-full px-3 py-3 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-white resize-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" onClick={() => setShowModal(false)} className="rounded-2xl">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleVouch}
+                  disabled={loading}
+                  className="rounded-2xl bg-purple-600 hover:bg-purple-700"
+                >
+                  {loading ? 'Creating…' : 'Create vouch'}
+                </Button>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setShowModal(false)}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleVouch}
-                disabled={loading}
-                className="flex-1 bg-purple-600 hover:bg-purple-700"
-              >
-                {loading ? 'Creating...' : 'Create Vouch'}
-              </Button>
-            </div>
+            <div className="pb-2" />
           </div>
         </div>
-      )}
+      ) : null}
     </>
   );
 }
-
-// Export all components
-// export { TrustScoreBadge, TrustScoreCard, MiniTrustScore, VouchButton };

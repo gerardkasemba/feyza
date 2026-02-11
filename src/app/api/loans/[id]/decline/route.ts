@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 
 export async function POST(
   request: NextRequest,
@@ -56,7 +56,39 @@ export async function POST(
       console.error('Error declining loan:', updateError);
       return NextResponse.json({ error: 'Failed to decline loan' }, { status: 500 });
     }
+    // Release reserved capital if this was a matched loan
+    if (loan.business_lender_id || loan.lender_id) {
+      try {
+        const serviceSupabase = await createServiceRoleClient();
+        
+        // Determine which lender preference to update
+        const lenderFilter = loan.business_lender_id 
+          ? `business_id.eq.${loan.business_lender_id}`
+          : `user_id.eq.${loan.lender_id}`;
+        
+        // Get the lender preference record
+        const { data: lenderPref } = await serviceSupabase
+          .from('lender_preferences')
+          .select('id, capital_reserved')
+          .or(lenderFilter)
+          .single();
 
+        if (lenderPref) {
+          // Release the reserved capital
+          const newReserved = Math.max(0, (lenderPref.capital_reserved || 0) - loan.amount);
+          
+          await serviceSupabase
+            .from('lender_preferences')
+            .update({ capital_reserved: newReserved })
+            .eq('id', lenderPref.id);
+
+          console.log(`[Decline] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+        }
+      } catch (releaseError) {
+        console.error('[Decline] Error releasing capital:', releaseError);
+        // Don't fail the decline if capital release fails
+      }
+    }
     // Create notification for borrower
     try {
       await supabase.from('notifications').insert({

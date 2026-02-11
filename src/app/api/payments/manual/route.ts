@@ -271,93 +271,35 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Update Trust Score
+    // Update Trust Score using centralized handler
     try {
-      const trustService = new TrustScoreService(serviceClient);
+      const { onPaymentCompleted } = await import('@/lib/payments/handler');
       
-      // Calculate days from due date
-      const dueDate = new Date(payment.due_date);
-      const paidDate = new Date();
-      const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-      
-      // Record payment event
-      await trustService.onPaymentMade(
-        user.id,
+      const result = await onPaymentCompleted({
+        supabase: serviceClient,
         loanId,
+        borrowerId: user.id,
         paymentId,
-        Number(payment.amount),
-        daysDiff
-      );
+        scheduleId: paymentId,
+        amount: Number(payment.amount),
+        dueDate: payment.due_date,
+        paymentMethod: 'manual',
+      });
 
-      // If loan completed, record that too
-      if (isComplete) {
-        await trustService.onLoanCompleted(user.id, loanId, Number(loan.amount));
+      console.log('[Manual Payment] Trust score update result:', result);
+      
+      if (!result.trustScoreUpdated) {
+        console.error('[Manual Payment] Trust score failed to update:', result.error);
       }
-
-      console.log('[Manual Payment] Trust score updated for user:', user.id);
+      
+      if (result.loanCompleted) {
+        console.log('[Manual Payment] 🎉 Loan completed, tier/eligibility updated!');
+      }
     } catch (trustError) {
       console.error('[Manual Payment] Failed to update trust score:', trustError);
       // Don't fail the payment if trust score update fails
     }
 
-    // Update user payment stats (increment manual payment count)
-    try {
-      // Get current user stats
-      const { data: userStats } = await serviceClient
-        .from('users')
-        .select('total_payments_made, manual_payments_count, payments_on_time, payments_early, payments_late, borrowing_tier, loans_at_current_tier, total_loans_completed')
-        .eq('id', user.id)
-        .single();
-
-      // Calculate payment timing
-      const dueDate = new Date(payment.due_date);
-      const paidDate = new Date();
-      const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-      const updateData: any = {
-        total_payments_made: (userStats?.total_payments_made || 0) + 1,
-        manual_payments_count: (userStats?.manual_payments_count || 0) + 1,
-      };
-
-      // Update timing stats
-      if (daysDiff <= 0) {
-        if (daysDiff < -2) {
-          updateData.payments_early = (userStats?.payments_early || 0) + 1;
-        } else {
-          updateData.payments_on_time = (userStats?.payments_on_time || 0) + 1;
-        }
-      } else {
-        updateData.payments_late = (userStats?.payments_late || 0) + 1;
-      }
-
-      // If loan is completed, update borrowing tier stats
-      if (isComplete) {
-        const currentTier = userStats?.borrowing_tier || 1;
-        const loansAtTier = (userStats?.loans_at_current_tier || 0) + 1;
-        const totalCompleted = (userStats?.total_loans_completed || 0) + 1;
-
-        updateData.total_loans_completed = totalCompleted;
-        
-        // Upgrade tier after 3 loans at current tier (up to tier 6)
-        if (loansAtTier >= 3 && currentTier < 6) {
-          updateData.borrowing_tier = currentTier + 1;
-          updateData.loans_at_current_tier = 0;
-          console.log(`[Manual Payment] User ${user.id} upgraded to tier ${currentTier + 1}`);
-        } else {
-          updateData.loans_at_current_tier = loansAtTier;
-        }
-      }
-
-      await serviceClient
-        .from('users')
-        .update(updateData)
-        .eq('id', user.id);
-
-      console.log('[Manual Payment] User stats updated:', updateData);
-    } catch (statsError) {
-      console.error('[Manual Payment] Failed to update user stats:', statsError);
-      // Don't fail the payment
-    }
 
     return NextResponse.json({ 
       success: true, 

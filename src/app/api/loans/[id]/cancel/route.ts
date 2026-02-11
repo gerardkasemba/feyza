@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getLoanCancelledEmail } from '@/lib/email';
 
 export async function POST(
@@ -55,6 +55,40 @@ export async function POST(
     if (updateError) {
       console.error('Error cancelling loan:', updateError);
       return NextResponse.json({ error: 'Failed to cancel loan' }, { status: 500 });
+    }
+
+    // Release reserved capital if this was a matched loan
+    if (loan.business_lender_id || loan.lender_id) {
+      try {
+        const serviceSupabase = await createServiceRoleClient();
+        
+        // Determine which lender preference to update
+        const lenderFilter = loan.business_lender_id 
+          ? `business_id.eq.${loan.business_lender_id}`
+          : `user_id.eq.${loan.lender_id}`;
+        
+        // Get the lender preference record
+        const { data: lenderPref } = await serviceSupabase
+          .from('lender_preferences')
+          .select('id, capital_reserved')
+          .or(lenderFilter)
+          .single();
+
+        if (lenderPref) {
+          // Release the reserved capital
+          const newReserved = Math.max(0, (lenderPref.capital_reserved || 0) - loan.amount);
+          
+          await serviceSupabase
+            .from('lender_preferences')
+            .update({ capital_reserved: newReserved })
+            .eq('id', lenderPref.id);
+
+          console.log(`[Cancel] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+        }
+      } catch (releaseError) {
+        console.error('[Cancel] Error releasing capital:', releaseError);
+        // Don't fail the cancellation if capital release fails
+      }
     }
 
     // Notify lender if there is one

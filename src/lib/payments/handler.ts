@@ -69,7 +69,7 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
       borrowerId,
       loanId,
       paymentId || scheduleId || 'unknown',
-      amount,
+      amount,  // Payment amount
       daysFromDue
     );
 
@@ -146,8 +146,97 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
           .eq('id', loanId);
 
         // Record loan completion for trust score
-        await trustService.onLoanCompleted(borrowerId, loanId, loan.amount);
+        await trustService.onLoanCompleted(borrowerId, loanId, Number(loan.amount));
         console.log(`[PaymentHandler] ✅ Loan completion recorded for trust score`);
+        // ============================================
+        // RELEASE AND INCREASE LENDER CAPITAL
+        // ============================================
+        try {
+          // Get full loan details
+          const { data: fullLoan } = await supabase
+            .from('loans')
+            .select(`
+              id,
+              amount,
+              total_interest,
+              total_amount,
+              lender_id,
+              business_lender_id
+            `)
+            .eq('id', loanId)
+            .single();
+
+          if (fullLoan && (fullLoan.business_lender_id || fullLoan.lender_id)) {
+            // Find the lender preference record
+            const lenderFilter = fullLoan.business_lender_id
+              ? `business_id.eq.${fullLoan.business_lender_id}`
+              : `user_id.eq.${fullLoan.lender_id}`;
+
+            const { data: lenderPref } = await supabase
+              .from('lender_preferences')
+              .select('id, capital_pool, capital_reserved')
+              .or(lenderFilter)
+              .single();
+
+            if (lenderPref) {
+              // Calculate new capital amounts
+              const principal = Number(fullLoan.amount) || 0;
+              const interest = Number(fullLoan.total_interest) || 0;
+              const totalReturn = principal + interest;
+
+              // Release reserved capital
+              const newReserved = Math.max(0, (lenderPref.capital_reserved || 0) - principal);
+
+              // Increase capital pool with principal + interest earned
+              const newPool = (lenderPref.capital_pool || 0) + totalReturn;
+
+              // Update lender preference
+              await supabase
+                .from('lender_preferences')
+                .update({
+                  capital_reserved: newReserved,
+                  capital_pool: newPool,
+                })
+                .eq('id', lenderPref.id);
+
+              console.log(`[PaymentHandler] 💰 Capital updated for lender:`, {
+                lender_pref_id: lenderPref.id,
+                principal_returned: principal,
+                interest_earned: interest,
+                total_return: totalReturn,
+                old_pool: lenderPref.capital_pool,
+                new_pool: newPool,
+                old_reserved: lenderPref.capital_reserved,
+                new_reserved: newReserved,
+              });
+
+              // Update lender stats
+              try {
+                if (fullLoan.business_lender_id) {
+                  const { data: businessStats } = await supabase
+                    .from('business_profiles')
+                    .select('total_loans_funded, total_amount_funded, total_interest_earned')
+                    .eq('id', fullLoan.business_lender_id)
+                    .single();
+
+                  await supabase
+                    .from('business_profiles')
+                    .update({
+                      total_interest_earned: (businessStats?.total_interest_earned || 0) + interest,
+                    })
+                    .eq('id', fullLoan.business_lender_id);
+                }
+              } catch (statsError) {
+                console.error('[PaymentHandler] Failed to update lender stats:', statsError);
+              }
+            } else {
+              console.warn(`[PaymentHandler] No lender preference found for completed loan ${loanId}`);
+            }
+          }
+        } catch (capitalError) {
+          console.error(`[PaymentHandler] Failed to update lender capital:`, capitalError);
+          // Don't fail the payment if capital update fails
+        }
 
         // Update borrowing tier
         try {
@@ -230,14 +319,14 @@ export async function onPaymentFailed(params: {
   try {
     const trustService = new TrustScoreService(supabase);
 
-  await trustService.recordEvent(borrowerId, {
-    event_type: 'payment_failed',
-    score_impact: -5,
-    title: 'Payment Failed',
-    description: reason || 'Payment failed',
-    loan_id: loanId,
-    payment_id: scheduleId,
-  });
+    await trustService.recordEvent(borrowerId, {
+      event_type: 'payment_failed',
+      score_impact: -5,
+      title: 'Payment Failed',
+      description: reason || 'Payment failed',
+      loan_id: loanId,
+      payment_id: scheduleId,
+    });
 
     console.log(`[PaymentHandler] ✅ Failed payment recorded`);
   } catch (error) {
@@ -286,6 +375,7 @@ export async function onPaymentMissed(params: {
       payment_id: scheduleId,
       metadata: { days_overdue: daysOverdue },
     });
+
 
     console.log(`[PaymentHandler] ✅ Missed payment recorded (${scoreChange} pts)`);
   } catch (error) {

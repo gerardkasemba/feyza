@@ -29,7 +29,84 @@ import {
   TrendingUp,
   Award,
   Tag,
+  Share2,
+  Twitter,
+  Facebook,
+  Linkedin,
+  Copy,
+  Check,
+  // Loan Type Icons
+  Briefcase,
+  Home,
+  Car,
+  GraduationCap,
+  Heart,
+  Stethoscope,
+  Plane,
+  ShoppingBag,
+  Wrench,
+  Baby,
+  Wallet,
+  PiggyBank,
+  Gift,
+  Package,
+  Sparkles,
+  LucideIcon,
 } from 'lucide-react';
+
+// Loan Type Icon Mapping
+const LOAN_TYPE_ICONS: Record<string, LucideIcon> = {
+  'business': Briefcase,
+  'commercial': Briefcase,
+  'personal': Wallet,
+  'home': Home,
+  'mortgage': Home,
+  'housing': Home,
+  'car': Car,
+  'auto': Car,
+  'vehicle': Car,
+  'education': GraduationCap,
+  'school': GraduationCap,
+  'tuition': GraduationCap,
+  'medical': Stethoscope,
+  'health': Heart,
+  'emergency': Zap,
+  'travel': Plane,
+  'vacation': Plane,
+  'shopping': ShoppingBag,
+  'retail': ShoppingBag,
+  'repair': Wrench,
+  'maintenance': Wrench,
+  'baby': Baby,
+  'family': Baby,
+  'childcare': Baby,
+  'wedding': Gift,
+  'gift': Gift,
+  'savings': PiggyBank,
+  'debt': CreditCard,
+  'consolidation': CreditCard,
+  'other': Package,
+  'general': Package,
+};
+
+// Helper to get icon for loan type
+const getLoanTypeIcon = (loanType: LoanType): LucideIcon => {
+  const slug = loanType.slug?.toLowerCase() || '';
+  const name = loanType.name?.toLowerCase() || '';
+  
+  // Check slug first
+  for (const [key, icon] of Object.entries(LOAN_TYPE_ICONS)) {
+    if (slug.includes(key) || name.includes(key)) {
+      return icon;
+    }
+  }
+  
+  // Default icons based on common patterns
+  if (slug.includes('loan') || name.includes('loan')) return Wallet;
+  if (slug.includes('fund') || name.includes('fund')) return Sparkles;
+  
+  return Package; // Default fallback
+};
 
 interface LenderPreferences {
   min_amount: number;
@@ -74,6 +151,10 @@ export default function PublicLenderPage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  
+  // Share button state
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchLender = async () => {
@@ -161,35 +242,70 @@ export default function PublicLenderPage() {
   const handleRequestLoan = () => {
     sessionStorage.setItem('preferred_lender_slug', slug);
     
-    // If user is not logged in, redirect to apply page
     if (!user) {
       router.push('/apply/' + slug);
       return;
     }
     
-    // If user is logged in but not verified, redirect to apply page
     if (!user.is_verified) {
       router.push('/apply/' + slug);
       return;
     }
     
-    // If user is logged in and verified, go to loan form
     router.push('/loans/new?lender=' + slug);
   };
 
-  // Helper to get country name from code
+  // Share handlers
+  const handleShare = () => {
+    const url = canonicalUrl;
+    const title = socialTitle;
+    const text = socialDescription;
+
+    if (navigator.share) {
+      // Use native share on mobile
+      navigator.share({
+        title,
+        text,
+        url,
+      }).catch(console.error);
+    } else {
+      // Show custom share menu on desktop
+      setShowShareMenu(!showShareMenu);
+    }
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(canonicalUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleTwitterShare = () => {
+    const url = `https://twitter.com/intent/tweet?text=${encodeURIComponent(twitterDescription)}&url=${encodeURIComponent(canonicalUrl)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleFacebookShare = () => {
+    const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(canonicalUrl)}`;
+    window.open(url, '_blank');
+  };
+
+  const handleLinkedInShare = () => {
+    const url = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(canonicalUrl)}`;
+    window.open(url, '_blank');
+  };
+
   const getCountryName = (code: string) => {
     const country = countries.find(c => c.code === code);
     return country?.name || code;
   };
 
-  // Helper to get state name from code
   const getStateName = (code: string) => {
     const state = states.find(s => s.code === code);
     return state?.name || code;
   };
 
-  // Prepare SEO data
+  // Prepare SEO and Social Media data
   const minAmount = lenderPrefs?.min_amount || (lender as any)?.min_loan_amount || 50;
   const maxAmount = lenderPrefs?.max_amount || (lender as any)?.max_loan_amount || 5000;
   const interestRate = lenderPrefs?.interest_rate || (lender as any)?.default_interest_rate || 0;
@@ -199,19 +315,27 @@ export default function PublicLenderPage() {
   const description = (lender as any)?.description || '';
   const businessType = getBusinessTypeLabel((lender as any)?.business_type || '');
   const state = (lender as any)?.state || '';
+  const logoUrl = (lender as any)?.logo_url || '';
+  
+  // USE DYNAMIC OG IMAGE ENDPOINT
+  const shareImage = `https://feyza.app/api/og/lender/${slug}`;
   
   // Generate SEO-friendly title and descriptions
   const pageTitle = `${businessName} - Verified Lender on Feyza | Get Loans Up to ${formatCurrency(maxAmount)}`;
+  
+  // SOCIAL MEDIA OPTIMIZED METADATA
+  const socialTitle = `${businessName} is lending on Feyza 💰 | No hidden fees, fair rates`;
+  const socialDescription = lenderPrefs 
+    ? `💰 I can lend you $${minAmount} to $${maxAmount} on Feyza! No hidden fees, fast approval, and ${interestRate === 0 ? '0% interest' : `only ${interestRate}% interest`}. Apply now →` 
+    : `💰 I'm lending on Feyza! No hidden fees, fair rates, and fast funding. Apply now →`;
+  
   const metaDescription = `${tagline} ${businessName} offers loans from ${formatCurrency(minAmount)} to ${formatCurrency(maxAmount)} at ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} interest. Fast approval, transparent terms. Apply now!`;
-  const ogDescription = `Need a loan? ${businessName} provides fast, fair loans on Feyza. Apply online in minutes. Verified lender with ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} rates!`;
+  const twitterDescription = `💰 ${businessName} is lending $${minAmount}-$${maxAmount} on Feyza. No hidden fees!`;
   
   const canonicalUrl = typeof window !== 'undefined' 
     ? `${window.location.origin}/lend/${slug}`
     : `https://feyza.app/lend/${slug}`;
   
-  const shareImage = (lender as any)?.logo_url || '/default-share-image.jpg';
-  
-  // Helper function for business type
   function getBusinessTypeLabel(type: string) {
     const types: Record<string, string> = {
       microfinance: 'Microfinance Institution',
@@ -226,12 +350,26 @@ export default function PublicLenderPage() {
     return types[type] || type;
   }
 
+  // Click outside to close share menu
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (showShareMenu && !(e.target as Element).closest('.share-menu-container')) {
+        setShowShareMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showShareMenu]);
+
   if (loading) {
     return (
       <>
         <Head>
           <title>Loading Lender Profile - Feyza</title>
-          <meta name="description" content="Loading lender information on Feyza peer-to-peer lending platform." />
+          <meta name="description" content="Loading lender information on Feyza." />
+          <meta property="og:title" content="Loading Lender Profile - Feyza" />
+          <meta property="og:description" content="Loading lender information on Feyza." />
+          <meta property="og:image" content="https://feyza.app/default-share-image.jpg" />
         </Head>
         <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
           <div className="flex flex-col items-center gap-3">
@@ -273,7 +411,6 @@ export default function PublicLenderPage() {
     );
   }
 
-  // Get serving locations
   const servingCountries = lenderPrefs?.countries || [];
   const servingStates = lenderPrefs?.states || [];
 
@@ -282,45 +419,48 @@ export default function PublicLenderPage() {
       <Head>
         {/* Primary Meta Tags */}
         <title>{pageTitle}</title>
-        <meta name="title" content={pageTitle} />
+        <meta name="title" content={socialTitle} />
         <meta name="description" content={metaDescription} />
         <meta name="keywords" content={`${businessName}, loan, personal loan, business loan, ${businessType.toLowerCase()}, fast loan, online loan, Feyza, peer-to-peer lending, ${state} loans`} />
         
         {/* Canonical URL */}
         <link rel="canonical" href={canonicalUrl} />
         
-        {/* Open Graph / Facebook */}
+        {/* Open Graph / Facebook / LinkedIn / WhatsApp */}
         <meta property="og:type" content="website" />
         <meta property="og:url" content={canonicalUrl} />
-        <meta property="og:title" content={pageTitle} />
-        <meta property="og:description" content={ogDescription} />
+        <meta property="og:title" content={socialTitle} />
+        <meta property="og:description" content={socialDescription} />
         <meta property="og:image" content={shareImage} />
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
-        <meta property="og:image:alt" content={`${businessName} - Verified Lender on Feyza`} />
+        <meta property="og:image:alt" content={`${businessName} - Lending on Feyza with no hidden fees`} />
         <meta property="og:site_name" content="Feyza" />
         
-        {/* Twitter */}
-        <meta property="twitter:card" content="summary_large_image" />
-        <meta property="twitter:url" content={canonicalUrl} />
-        <meta property="twitter:title" content={pageTitle} />
-        <meta property="twitter:description" content={ogDescription} />
-        <meta property="twitter:image" content={shareImage} />
-        <meta property="twitter:image:alt" content={`${businessName} - Verified Lender on Feyza`} />
+        {/* Twitter / X */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:site" content="@feyza" />
+        <meta name="twitter:creator" content="@feyza" />
+        <meta name="twitter:url" content={canonicalUrl} />
+        <meta name="twitter:title" content={socialTitle} />
+        <meta name="twitter:description" content={twitterDescription} />
+        <meta name="twitter:image" content={shareImage} />
+        <meta name="twitter:image:alt" content={`${businessName} - Lending on Feyza`} />
         
         {/* Additional SEO */}
         <meta name="robots" content="index, follow, max-image-preview:large" />
         <meta name="author" content={businessName} />
         
-        {/* Structured Data / Schema.org */}
+        {/* Structured Data */}
         <script type="application/ld+json">
           {JSON.stringify({
             "@context": "https://schema.org",
             "@type": "FinancialService",
             "name": businessName,
-            "description": tagline,
+            "description": socialDescription,
             "url": canonicalUrl,
             "logo": shareImage,
+            "image": shareImage,
             "sameAs": (lender as any)?.website_url ? [(lender as any).website_url] : [],
             "address": {
               "@type": "PostalAddress",
@@ -334,69 +474,46 @@ export default function PublicLenderPage() {
                 "priceCurrency": "USD",
                 "minPrice": minAmount,
                 "maxPrice": maxAmount
-              },
-              "eligibleRegion": {
-                "@type": "Country",
-                "name": "United States"
               }
-            },
-            "areaServed": {
-              "@type": "State",
-              "name": state || "United States"
             }
-          })}
-        </script>
-
-        {/* Additional structured data for business */}
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": businessName,
-            "description": tagline,
-            "url": canonicalUrl,
-            "logo": shareImage,
-            "sameAs": (lender as any)?.website_url ? [(lender as any).website_url] : []
           })}
         </script>
       </Head>
 
+      {/* Breadcrumb Schema */}
+      <script type="application/ld+json">
+        {JSON.stringify({
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [{
+            "@type": "ListItem",
+            "position": 1,
+            "name": "Home",
+            "item": "https://feyza.app"
+          }, {
+            "@type": "ListItem",
+            "position": 2,
+            "name": "Lenders",
+            "item": "https://feyza.app/lenders"
+          }, {
+            "@type": "ListItem",
+            "position": 3,
+            "name": businessName,
+            "item": canonicalUrl
+          }]
+        })}
+      </script>
+
       <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
         <Navbar user={user} />
 
-        {/* Add breadcrumb schema markup */}
-        <script type="application/ld+json">
-          {JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "BreadcrumbList",
-            "itemListElement": [{
-              "@type": "ListItem",
-              "position": 1,
-              "name": "Home",
-              "item": "https://feyza.app"
-            }, {
-              "@type": "ListItem",
-              "position": 2,
-              "name": "Lenders",
-              "item": "https://feyza.app/lenders"
-            }, {
-              "@type": "ListItem",
-              "position": 3,
-              "name": businessName,
-              "item": canonicalUrl
-            }]
-          })}
-        </script>
-
         <main className="flex-1">
-          {/* Hero Section (grid-based for stable layout) */}
+          {/* Hero Section */}
           <div className="bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                {/* Left */}
                 <div className="lg:col-span-8 min-w-0">
                   <div className="flex items-start gap-6">
-                    {/* Logo */}
                     <div className="w-24 h-24 rounded-2xl flex-shrink-0 overflow-hidden bg-neutral-100 dark:bg-neutral-800 border-2 border-neutral-200 dark:border-neutral-700">
                       {lender.logo_url ? (
                         <img
@@ -453,7 +570,6 @@ export default function PublicLenderPage() {
                   </div>
                 </div>
 
-                {/* Right */}
                 <div className="lg:col-span-4">
                   <div className="bg-gradient-to-br from-green-600 to-green-700 dark:from-green-700 dark:to-green-800 rounded-2xl p-6 text-white dark:text-green-50 shadow-xl">
                     <h3 className="text-lg font-semibold mb-2 dark:text-green-100">Ready to borrow?</h3>
@@ -474,11 +590,10 @@ export default function PublicLenderPage() {
             </div>
           </div>
 
-          {/* Loan Terms Section (equal-height cards) */}
+          {/* Loan Terms Section */}
           <div className="bg-neutral-50 dark:bg-neutral-900/50 py-10">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 auto-rows-fr">
-                {/* Loan Amount */}
                 <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
                     <DollarSign className="w-6 h-6 text-green-600 dark:text-green-400" />
@@ -490,7 +605,6 @@ export default function PublicLenderPage() {
                   <p className="text-xs text-neutral-400 mt-auto">to {formatCurrency(maxAmount)}</p>
                 </div>
 
-                {/* Interest Rate */}
                 <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
                     <Percent className="w-6 h-6 text-blue-600 dark:text-blue-400" />
@@ -502,7 +616,6 @@ export default function PublicLenderPage() {
                   <p className="text-xs text-neutral-400 capitalize mt-auto">{(lenderPrefs?.interest_type || 'simple')} interest</p>
                 </div>
 
-                {/* Fast Approval */}
                 <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
                     <Zap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
@@ -512,7 +625,6 @@ export default function PublicLenderPage() {
                   <p className="text-xs text-neutral-400 mt-auto">Usually &lt; 24 hours</p>
                 </div>
 
-                {/* No Hidden Fees */}
                 <div className="h-full bg-white dark:bg-neutral-800 rounded-2xl p-5 text-center border border-neutral-200 dark:border-neutral-700 flex flex-col">
                   <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
                     <Shield className="w-6 h-6 text-purple-600 dark:text-purple-400" />
@@ -542,7 +654,7 @@ export default function PublicLenderPage() {
                   </div>
                 )}
 
-                {/* Loan Types Offered */}
+                {/* Loan Types Offered - WITH LUCIDE ICONS */}
                 {loanTypes.length > 0 && (
                   <div>
                     <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
@@ -550,27 +662,34 @@ export default function PublicLenderPage() {
                       Loan Types Offered
                     </h2>
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {loanTypes.map((lt) => (
-                        <div
-                          key={lt.id}
-                          className="p-4 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-green-300 dark:hover:border-green-700 transition-colors"
-                        >
-                          <div className="flex items-center gap-2 mb-1">
-                            {lt.icon && <span className="text-lg">{lt.icon}</span>}
-                            <h3 className="font-medium text-neutral-900 dark:text-white">{lt.name}</h3>
+                      {loanTypes.map((lt) => {
+                        const IconComponent = getLoanTypeIcon(lt);
+                        return (
+                          <div
+                            key={lt.id}
+                            className="p-4 bg-white dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:border-green-300 dark:hover:border-green-700 transition-all hover:shadow-md"
+                          >
+                            <div className="flex items-center gap-2 mb-2">
+                              <div className="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                                <IconComponent className="w-4 h-4 text-green-600 dark:text-green-400" />
+                              </div>
+                              <h3 className="font-medium text-neutral-900 dark:text-white">
+                                {lt.name}
+                              </h3>
+                            </div>
+                            {lt.description && (
+                              <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2 pl-10">
+                                {lt.description}
+                              </p>
+                            )}
                           </div>
-                          {lt.description && (
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400 line-clamp-2">
-                              {lt.description}
-                            </p>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
 
-                {/* Service Areas - Countries & States */}
+                {/* Service Areas */}
                 {(servingCountries.length > 0 || servingStates.length > 0) && (
                   <div>
                     <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4 flex items-center gap-2">
@@ -618,14 +737,12 @@ export default function PublicLenderPage() {
                   </div>
                 )}
 
-                {/* How It Works (equal height, no fragile connector line) */}
+                {/* How It Works */}
                 <div>
                   <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-6">
                     How It Works
                   </h2>
-
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 auto-rows-fr">
-                    {/* Step 1 */}
                     <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
                       <div className="flex flex-col items-center text-center h-full">
                         <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -641,7 +758,6 @@ export default function PublicLenderPage() {
                       </div>
                     </div>
 
-                    {/* Step 2 */}
                     <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
                       <div className="flex flex-col items-center text-center h-full">
                         <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -657,7 +773,6 @@ export default function PublicLenderPage() {
                       </div>
                     </div>
 
-                    {/* Step 3 */}
                     <div className="h-full rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/60 dark:bg-neutral-900/30 p-5">
                       <div className="flex flex-col items-center text-center h-full">
                         <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mb-4">
@@ -680,7 +795,6 @@ export default function PublicLenderPage() {
                   <h2 className="text-xl font-bold text-neutral-900 dark:text-white mb-4">
                     Why Choose {businessName}?
                   </h2>
-
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
@@ -691,7 +805,6 @@ export default function PublicLenderPage() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">Identity and business verified</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
                         <Zap className="w-4 h-4 text-white" />
@@ -701,7 +814,6 @@ export default function PublicLenderPage() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">Quick approval process</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
                         <Shield className="w-4 h-4 text-white" />
@@ -711,7 +823,6 @@ export default function PublicLenderPage() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400">No hidden fees or surprises</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3">
                       <div className="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center flex-shrink-0">
                         <TrendingUp className="w-4 h-4 text-white" />
@@ -725,7 +836,7 @@ export default function PublicLenderPage() {
                 </div>
               </div>
 
-              {/* Right Column (sticky whole column) */}
+              {/* Right Column - WITH SHARE BUTTON */}
               <div className="lg:col-span-4 space-y-6 lg:sticky lg:top-6 self-start">
                 {/* Apply Now Card */}
                 <Card className="p-6">
@@ -766,14 +877,6 @@ export default function PublicLenderPage() {
                         <span className="font-medium text-neutral-900 dark:text-white">{loanTypes.length} available</span>
                       </div>
                     )}
-                    {servingCountries.length > 0 && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-neutral-500 dark:text-neutral-400">Serving</span>
-                        <span className="font-medium text-neutral-900 dark:text-white">
-                          {servingCountries.length} {servingCountries.length === 1 ? 'country' : 'countries'}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
                   <Button
@@ -784,9 +887,86 @@ export default function PublicLenderPage() {
                     Apply Now
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
-
                   <p className="text-xs text-center text-neutral-400 mt-3">
                     No impact on your credit score
+                  </p>
+                </Card>
+
+                {/* SHARE BUTTON SECTION */}
+                <Card className="p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+                      <Share2 className="w-4 h-4" />
+                      Share this lender
+                    </h3>
+                    
+                    {/* Share Button Container */}
+                    <div className="relative share-menu-container">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleShare}
+                        className="flex items-center gap-2"
+                      >
+                        <Share2 className="w-4 h-4" />
+                        Share
+                      </Button>
+
+                      {/* Custom Share Menu (Desktop) */}
+                      {showShareMenu && !navigator.share && (
+                        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden z-50">
+                          <div className="p-2">
+                            <button
+                              onClick={handleCopyLink}
+                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                            >
+                              {copied ? (
+                                <Check className="w-5 h-5 text-green-600" />
+                              ) : (
+                                <Copy className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+                              )}
+                              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                                {copied ? 'Copied!' : 'Copy Link'}
+                              </span>
+                            </button>
+                            
+                            <button
+                              onClick={handleTwitterShare}
+                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                            >
+                              <Twitter className="w-5 h-5 text-[#1DA1F2]" />
+                              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                                Share on Twitter
+                              </span>
+                            </button>
+                            
+                            <button
+                              onClick={handleFacebookShare}
+                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                            >
+                              <Facebook className="w-5 h-5 text-[#4267B2]" />
+                              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                                Share on Facebook
+                              </span>
+                            </button>
+                            
+                            <button
+                              onClick={handleLinkedInShare}
+                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                            >
+                              <Linkedin className="w-5 h-5 text-[#0077B5]" />
+                              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                                Share on LinkedIn
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    Share this lender profile with friends, family, or your network
                   </p>
                 </Card>
 
@@ -794,7 +974,6 @@ export default function PublicLenderPage() {
                 {((lender as any).contact_email || (lender as any).contact_phone || (lender as any).website_url) && (
                   <Card className="p-6">
                     <h3 className="font-semibold text-neutral-900 dark:text-white mb-4">Contact</h3>
-
                     <div className="space-y-3">
                       {(lender as any).contact_email && (
                         <a
@@ -805,7 +984,6 @@ export default function PublicLenderPage() {
                           {(lender as any).contact_email}
                         </a>
                       )}
-
                       {(lender as any).contact_phone && (
                         <a
                           href={`tel:${(lender as any).contact_phone}`}
@@ -815,7 +993,6 @@ export default function PublicLenderPage() {
                           {(lender as any).contact_phone}
                         </a>
                       )}
-
                       {(lender as any).website_url && (
                         <a
                           href={(lender as any).website_url}

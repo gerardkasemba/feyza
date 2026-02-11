@@ -467,34 +467,80 @@ export default async function DashboardPage() {
             showWhenConnected={false}
           />
 
-          {/* Stats Row */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatsCard
-              title="Total Borrowed"
-              value={formatCurrency(totalBorrowed)}
-              subtitle={`${activeLoansAsBorrower.length} active loan${activeLoansAsBorrower.length !== 1 ? 's' : ''}`}
-              icon={TrendingDown}
-            />
-            <StatsCard
-              title="Total Lent"
-              value={formatCurrency(totalLent)}
-              subtitle={`${activeLoansAsLender.length} active loan${activeLoansAsLender.length !== 1 ? 's' : ''}`}
-              icon={TrendingUp}
-            />
-            <StatsCard
-              title="Due This Week"
-              value={dueThisWeekCount > 0 ? formatCurrency(dueThisWeekAmount) : '$0'}
-              subtitle={dueThisWeekCount > 0 ? `${dueThisWeekCount} payment${dueThisWeekCount !== 1 ? 's' : ''} to make` : 'No payments due'}
-              icon={AlertCircle}
-              highlight={dueThisWeekCount > 0}
-            />
-            <StatsCard
-              title="Expected This Week"
-              value={expectedThisWeekCount > 0 ? formatCurrency(expectedThisWeekAmount) : '$0'}
-              subtitle={expectedThisWeekCount > 0 ? `${expectedThisWeekCount} payment${expectedThisWeekCount !== 1 ? 's' : ''} incoming` : 'No payments expected'}
-              icon={Clock}
-            />
+{/* Mobile-first, app-like stats */}
+<div className="mb-6 space-y-3 sm:space-y-0 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
+  {/* Primary card (mobile: single compact “overview”) */}
+  <div className="sm:hidden">
+    <Card className="rounded-2xl border border-neutral-200/70 dark:border-neutral-800 bg-white/90 dark:bg-neutral-900/70 backdrop-blur">
+      <div className="p-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">This week</p>
+            <p className="mt-0.5 text-lg font-semibold text-neutral-900 dark:text-white">
+              {dueThisWeekCount > 0 ? formatCurrency(dueThisWeekAmount) : formatCurrency(0)}
+            </p>
+            <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+              Due • {dueThisWeekCount > 0 ? `${dueThisWeekCount} payment${dueThisWeekCount !== 1 ? 's' : ''}` : 'None'}
+            </p>
           </div>
+
+          <div className="text-right">
+            <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Incoming</p>
+            <p className="mt-0.5 text-sm font-semibold text-neutral-900 dark:text-white">
+              {expectedThisWeekCount > 0 ? formatCurrency(expectedThisWeekAmount) : formatCurrency(0)}
+            </p>
+            <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
+              {expectedThisWeekCount > 0
+                ? `${expectedThisWeekCount} payment${expectedThisWeekCount !== 1 ? 's' : ''}`
+                : 'None'}
+            </p>
+          </div>
+        </div>
+
+        {/* tiny “status” row */}
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className="text-neutral-500 dark:text-neutral-400">
+            Borrowed: <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(totalBorrowed)}</span>
+          </span>
+          <span className="text-neutral-500 dark:text-neutral-400">
+            Lent: <span className="font-medium text-neutral-900 dark:text-white">{formatCurrency(totalLent)}</span>
+          </span>
+        </div>
+      </div>
+    </Card>
+  </div>
+
+  {/* Desktop/tablet: keep the normal 4 cards */}
+  <div className="hidden sm:contents">
+    <StatsCard
+      title="Total Borrowed"
+      value={formatCurrency(totalBorrowed)}
+      subtitle={`${activeLoansAsBorrower.length} active loan${activeLoansAsBorrower.length !== 1 ? 's' : ''}`}
+      icon={TrendingDown}
+    />
+    <StatsCard
+      title="Total Lent"
+      value={formatCurrency(totalLent)}
+      subtitle={`${activeLoansAsLender.length} active loan${activeLoansAsLender.length !== 1 ? 's' : ''}`}
+      icon={TrendingUp}
+    />
+    <StatsCard
+      title="Due This Week"
+      value={dueThisWeekCount > 0 ? formatCurrency(dueThisWeekAmount) : formatCurrency(0)}
+      subtitle={dueThisWeekCount > 0 ? `${dueThisWeekCount} payment${dueThisWeekCount !== 1 ? 's' : ''} to make` : 'No payments due'}
+      icon={AlertCircle}
+      highlight={dueThisWeekCount > 0}
+    />
+    <StatsCard
+      title="Expected This Week"
+      value={expectedThisWeekCount > 0 ? formatCurrency(expectedThisWeekAmount) : formatCurrency(0)}
+      subtitle={expectedThisWeekCount > 0 ? `${expectedThisWeekCount} payment${expectedThisWeekCount !== 1 ? 's' : ''} incoming` : 'No payments expected'}
+      icon={Clock}
+    />
+  </div>
+</div>
+
+
 
           {/* Borrowing Limit, Trust Level & Income Profile Row */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">

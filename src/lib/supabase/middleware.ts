@@ -29,33 +29,38 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // OPTIMIZATION: Only get user for protected routes
+  // This avoids unnecessary auth checks on public pages
+  const protectedPaths = [
+    '/dashboard', '/loans', '/business', '/settings', 
+    '/notifications', '/admin', '/profile', '/lender', '/borrower'
+  ]
+  
+  const authPaths = [
+    '/auth/signin', '/auth/signup', 
+    '/auth/forgot-password', '/auth/reset-password'
+  ]
+
+  const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path))
+  const isAuthPath = authPaths.some(path => pathname === path || pathname.startsWith(path))
+
+  // Skip auth check if not needed
+  if (!isProtectedPath && !isAuthPath) {
+    return response
+  }
+
   try {
-    // Get user with session refresh
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    // OPTIMIZATION: Use getSession instead of getUser for faster checks
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     
-    // Handle refresh token errors specifically
-    if (userError) {
-      // Only log for page requests, not for static assets or API debug calls
-      if (!pathname.includes('_next') && !pathname.includes('.') && !pathname.startsWith('/api/debug')) {
-        console.error('[Middleware] Auth error:', userError.message, 'Path:', pathname)
-      }
+    if (sessionError) {
+      console.error('[Middleware] Session error:', sessionError.message)
       
-      // Clear invalid auth cookies
+      // Clear invalid cookies
       response.cookies.delete('sb-access-token')
       response.cookies.delete('sb-refresh-token')
-      response.cookies.delete('sb-provider-token')
-      
-      // Only redirect to login for protected routes
-      const protectedPaths = [
-        '/dashboard', '/loans', '/business', '/settings', 
-        '/notifications', '/admin', '/profile', '/payments'
-      ]
-      const isProtectedPath = protectedPaths.some(path => 
-        pathname.startsWith(path)
-      )
       
       if (isProtectedPath) {
-        console.log('[Middleware] Redirecting to signin (protected path, no auth):', pathname)
         const url = new URL('/auth/signin', request.url)
         url.searchParams.set('redirect', pathname)
         return NextResponse.redirect(url)
@@ -64,38 +69,16 @@ export async function updateSession(request: NextRequest) {
       return response
     }
 
-    // Protected routes - redirect to signin if not authenticated
-    const protectedPaths = [
-      '/dashboard', '/loans', '/business', '/settings', 
-      '/notifications', '/admin', '/profile', '/payments'
-    ]
-    const isProtectedPath = protectedPaths.some(path => 
-      pathname.startsWith(path)
-    )
-
-    if (!user && isProtectedPath) {
-      console.log('[Middleware] No user, redirecting to signin:', pathname)
+    // Protected routes - redirect if not authenticated
+    if (!session && isProtectedPath) {
       const url = new URL('/auth/signin', request.url)
       url.searchParams.set('redirect', pathname)
       return NextResponse.redirect(url)
     }
 
-    // Auth routes - redirect to dashboard if already authenticated
-    const authPaths = [
-      '/auth/signin', '/auth/signup', 
-      '/auth/forgot-password', '/auth/reset-password'
-    ]
-    const isAuthPath = authPaths.some(path => 
-      pathname === path || pathname.startsWith(path)
-    )
-
-    if (user && isAuthPath) {
+    // Auth routes - redirect if already authenticated
+    if (session && isAuthPath) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-
-    // Log successful auth for fund page specifically
-    if (pathname.includes('/fund')) {
-      console.log('[Middleware] ✅ Auth OK for fund page, user:', user?.id)
     }
 
   } catch (error) {

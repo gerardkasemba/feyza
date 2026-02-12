@@ -21,7 +21,7 @@ import {
   Smartphone,
   // Loan type icons
   Heart, GraduationCap, Home, Car, Plane, ShoppingBag, Wrench, Baby, Stethoscope, 
-  Banknote, PiggyBank, Gift, Package, LucideIcon
+  Banknote, PiggyBank, Gift, Package, LucideIcon, DollarSign
 } from 'lucide-react';
 import { ConnectedPaymentDisplay } from '@/components/payments';
 
@@ -120,13 +120,7 @@ interface BankInfo {
 interface GuestLoanRequestFormProps {
   businessSlug?: string | null;
   businessLenderId?: string | null;
-  businessName?: string | null;
-  businessInterestRate?: number | null;
-  businessInterestType?: 'simple' | 'compound' | null;
-  businessFirstTimeLimit?: number | null;
-  businessMaxLoanAmount?: number | null;
-  presetMaxAmount?: number | undefined;
-  skipToStep?: number | undefined;
+  presetMaxAmount?: number;
 }
 
 const ID_TYPES = [
@@ -165,7 +159,7 @@ const COUNTRIES = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-export default function GuestLoanRequestForm({ businessSlug, businessLenderId }: GuestLoanRequestFormProps = {}) {
+export default function GuestLoanRequestForm({ businessSlug, businessLenderId, presetMaxAmount }: GuestLoanRequestFormProps = {}) {
   const router = useRouter();
   const supabase = createClient();
 
@@ -243,6 +237,10 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
   const [city, setCity] = useState('');
   const [country, setCountry] = useState('');
   const [addressDocumentType, setAddressDocumentType] = useState('');
+
+  // Business lender info for direct applications
+  const [businessLenderInfo, setBusinessLenderInfo] = useState<any>(null);
+  const [loadingBusinessInfo, setLoadingBusinessInfo] = useState(false);
   const [addressDocumentFile, setAddressDocumentFile] = useState<File | null>(null);
 
   // Form with react-hook-form
@@ -282,6 +280,104 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       setValue('startDate', selectedStartDate.toISOString().split('T')[0]);
     }
   }, [selectedStartDate, setValue]);
+
+  // Skip to step 3 when business ID or slug is provided (direct business loan)
+  useEffect(() => {
+    if (businessSlug || businessLenderId) {
+      setStep(3);
+      setLenderType('business');
+      console.log('[GuestLoanForm] Skipping to step 3 - direct business loan');
+    }
+  }, [businessSlug, businessLenderId]);
+
+  // Fetch business info from ID
+  useEffect(() => {
+    const fetchBusinessInfo = async () => {
+      if (!businessLenderId) return;
+      
+      setLoadingBusinessInfo(true);
+      try {
+        // Get business profile
+        const { data: businessData } = await supabase
+          .from('business_profiles')
+          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, min_loan_amount, max_loan_amount, first_time_borrower_amount')
+          .eq('id', businessLenderId)
+          .single();
+        
+        if (businessData) {
+          setBusinessLenderInfo(businessData);
+          console.log('[GuestLoanForm] Business lender info loaded:', businessData);
+          
+          // Get lender preferences for accurate settings
+          const { data: prefs } = await supabase
+            .from('lender_preferences')
+            .select('interest_rate, interest_type, min_amount, max_amount, first_time_borrower_limit')
+            .eq('business_id', businessLenderId)
+            .single();
+          
+          // Pre-fill interest rate and type
+          if (prefs) {
+            setValue('interestRate', prefs.interest_rate || 0);
+            setValue('interestType', prefs.interest_type || 'simple');
+            console.log('[GuestLoanForm] Using lender preferences:', prefs);
+          } else if (businessData.default_interest_rate) {
+            setValue('interestRate', businessData.default_interest_rate || 0);
+            setValue('interestType', businessData.interest_type || 'simple');
+            console.log('[GuestLoanForm] Using business defaults');
+          }
+        }
+      } catch (err) {
+        console.error('[GuestLoanForm] Error fetching business info:', err);
+      } finally {
+        setLoadingBusinessInfo(false);
+      }
+    };
+    
+    fetchBusinessInfo();
+  }, [businessLenderId, supabase, setValue]);
+
+  // Fetch business info from slug
+  useEffect(() => {
+    const fetchBusinessFromSlug = async () => {
+      if (!businessSlug) return;
+      
+      setLoadingBusinessInfo(true);
+      try {
+        const { data: businessData } = await supabase
+          .from('business_profiles')
+          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, slug, min_loan_amount, max_loan_amount, first_time_borrower_amount')
+          .eq('slug', businessSlug)
+          .single();
+        
+        if (businessData) {
+          setBusinessLenderInfo(businessData);
+          setValue('lenderType', 'business');
+          console.log('[GuestLoanForm] Business loaded from slug:', businessData);
+          
+          // Get preferences
+          const { data: prefs } = await supabase
+            .from('lender_preferences')
+            .select('interest_rate, interest_type, min_amount, max_amount, first_time_borrower_limit')
+            .eq('business_id', businessData.id)
+            .single();
+          
+          if (prefs) {
+            setValue('interestRate', prefs.interest_rate || 0);
+            setValue('interestType', prefs.interest_type || 'simple');
+          } else if (businessData.default_interest_rate) {
+            setValue('interestRate', businessData.default_interest_rate || 0);
+            setValue('interestType', businessData.interest_type || 'simple');
+          }
+        }
+      } catch (err) {
+        console.error('[GuestLoanForm] Error fetching business from slug:', err);
+      } finally {
+        setLoadingBusinessInfo(false);
+      }
+    };
+    
+    fetchBusinessFromSlug();
+  }, [businessSlug, supabase, setValue]);
 
   // Calculate totals
   const freqType = repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
@@ -1577,6 +1673,9 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
       {/* STEP 3: Loan Details */}
       {step === 3 && (
         <div className="space-y-4 animate-fade-in">
+
+          {/* Business Lender Info Banner */}
+
           <button type="button" onClick={() => { setStep(2); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
@@ -1588,10 +1687,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId }:
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <Input label="Principal Amount *" type="number" placeholder="1000" min="1" {...register('amount', { valueAsNumber: true })} />
-              {isLoggedIn && borrowingLimit && lenderType === 'personal' && (
-                <p className="text-xs mt-1 text-neutral-500">Available: {formatCurrency(borrowingLimit.availableAmount || 0)}</p>
-              )}
+              <Input 
+                label="Principal Amount *" 
+                type="number" 
+                placeholder="1000" 
+                min="1" 
+                {...register('amount', { valueAsNumber: true })} 
+                helperText={
+                  presetMaxAmount 
+                    ? `Maximum available: $${presetMaxAmount.toLocaleString()}`
+                    : (isLoggedIn && borrowingLimit && lenderType === 'personal')
+                    ? `Available: ${formatCurrency(borrowingLimit.availableAmount || 0)}`
+                    : undefined
+                }
+              />
             </div>
             <Select label="Currency *" options={currencyOptions} {...register('currency')} />
           </div>

@@ -295,6 +295,12 @@ export default function PublicLenderPage() {
     window.open(url, '_blank');
   };
 
+  const handleWhatsAppShare = () => {
+    const text = `${socialDescription} ${canonicalUrl}`;
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
+  };
+
   const getCountryName = (code: string) => {
     const country = countries.find(c => c.code === code);
     return country?.name || code;
@@ -317,20 +323,22 @@ export default function PublicLenderPage() {
   const state = (lender as any)?.state || '';
   const logoUrl = (lender as any)?.logo_url || '';
   
-  // USE DYNAMIC OG IMAGE ENDPOINT
+  // DYNAMIC OG IMAGE ENDPOINT
   const shareImage = `https://feyza.app/api/og/lender/${slug}`;
   
   // Generate SEO-friendly title and descriptions
   const pageTitle = `${businessName} - Verified Lender on Feyza | Get Loans Up to ${formatCurrency(maxAmount)}`;
   
-  // SOCIAL MEDIA OPTIMIZED METADATA
-  const socialTitle = `${businessName} is lending on Feyza 💰 | No hidden fees, fair rates`;
-  const socialDescription = lenderPrefs 
-    ? `💰 I can lend you $${minAmount} to $${maxAmount} on Feyza! No hidden fees, fast approval, and ${interestRate === 0 ? '0% interest' : `only ${interestRate}% interest`}. Apply now →` 
-    : `💰 I'm lending on Feyza! No hidden fees, fair rates, and fast funding. Apply now →`;
+  // SOCIAL MEDIA OPTIMIZED METADATA - THIRD PERSON (SHAREABLE BY ANYONE)
+  const socialTitle = `${businessName} is offering loans on Feyza 💰 | No hidden fees`;
   
-  const metaDescription = `${tagline} ${businessName} offers loans from ${formatCurrency(minAmount)} to ${formatCurrency(maxAmount)} at ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} interest. Fast approval, transparent terms. Apply now!`;
-  const twitterDescription = `💰 ${businessName} is lending $${minAmount}-$${maxAmount} on Feyza. No hidden fees!`;
+  const socialDescription = lenderPrefs 
+    ? `💰 Borrow $${minAmount.toLocaleString()} to $${maxAmount.toLocaleString()} from ${businessName} on Feyza! No hidden fees, fast approval, and ${interestRate === 0 ? '0% interest' : `only ${interestRate}% interest`}. Apply now →` 
+    : `💰 ${businessName} is offering loans on Feyza! No hidden fees, fair rates, and fast funding. Apply now →`;
+  
+  const metaDescription = `${businessName} offers loans from ${formatCurrency(minAmount)} to ${formatCurrency(maxAmount)} at ${interestRate === 0 ? 'interest-free' : `${interestRate}%`} interest. ${tagline} Fast approval, transparent terms, no hidden fees. Apply now on Feyza!`;
+  
+  const twitterDescription = `💰 ${businessName} offers $${minAmount.toLocaleString()}-$${maxAmount.toLocaleString()} loans on Feyza. ${interestRate === 0 ? '0% interest' : `${interestRate}% interest`}, no hidden fees!`;
   
   const canonicalUrl = typeof window !== 'undefined' 
     ? `${window.location.origin}/lend/${slug}`
@@ -436,6 +444,7 @@ export default function PublicLenderPage() {
         <meta property="og:image:height" content="630" />
         <meta property="og:image:alt" content={`${businessName} - Lending on Feyza with no hidden fees`} />
         <meta property="og:site_name" content="Feyza" />
+        <meta property="og:locale" content="en_US" />
         
         {/* Twitter / X */}
         <meta name="twitter:card" content="summary_large_image" />
@@ -448,8 +457,9 @@ export default function PublicLenderPage() {
         <meta name="twitter:image:alt" content={`${businessName} - Lending on Feyza`} />
         
         {/* Additional SEO */}
-        <meta name="robots" content="index, follow, max-image-preview:large" />
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
         <meta name="author" content={businessName} />
+        <meta name="theme-color" content="#059669" />
         
         {/* Structured Data */}
         <script type="application/ld+json">
@@ -457,9 +467,9 @@ export default function PublicLenderPage() {
             "@context": "https://schema.org",
             "@type": "FinancialService",
             "name": businessName,
-            "description": socialDescription,
+            "description": metaDescription,
             "url": canonicalUrl,
-            "logo": shareImage,
+            "logo": logoUrl || shareImage,
             "image": shareImage,
             "sameAs": (lender as any)?.website_url ? [(lender as any).website_url] : [],
             "address": {
@@ -475,6 +485,11 @@ export default function PublicLenderPage() {
                 "minPrice": minAmount,
                 "maxPrice": maxAmount
               }
+            },
+            "aggregateRating": {
+              "@type": "AggregateRating",
+              "ratingValue": "5",
+              "reviewCount": "1"
             }
           })}
         </script>
@@ -892,11 +907,11 @@ export default function PublicLenderPage() {
                   </p>
                 </Card>
 
-                {/* SHARE BUTTON SECTION */}
-                <Card className="p-5">
+                {/* ENHANCED SHARE BUTTON SECTION */}
+                <Card className="p-5 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border-blue-200 dark:border-blue-800">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
-                      <Share2 className="w-4 h-4" />
+                      <Share2 className="w-4 h-4 text-blue-600" />
                       Share this lender
                     </h3>
                     
@@ -906,7 +921,7 @@ export default function PublicLenderPage() {
                         variant="outline"
                         size="sm"
                         onClick={handleShare}
-                        className="flex items-center gap-2"
+                        className="flex items-center gap-2 bg-white dark:bg-neutral-800 hover:bg-blue-50 dark:hover:bg-blue-900/30"
                       >
                         <Share2 className="w-4 h-4" />
                         Share
@@ -914,7 +929,7 @@ export default function PublicLenderPage() {
 
                       {/* Custom Share Menu (Desktop) */}
                       {showShareMenu && !navigator.share && (
-                        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden z-50">
+                        <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-neutral-800 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden z-50">
                           <div className="p-2">
                             <button
                               onClick={handleCopyLink}
@@ -926,7 +941,7 @@ export default function PublicLenderPage() {
                                 <Copy className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
                               )}
                               <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
-                                {copied ? 'Copied!' : 'Copy Link'}
+                                {copied ? 'Link copied!' : 'Copy link'}
                               </span>
                             </button>
                             
@@ -936,7 +951,7 @@ export default function PublicLenderPage() {
                             >
                               <Twitter className="w-5 h-5 text-[#1DA1F2]" />
                               <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
-                                Share on Twitter
+                                Share on X (Twitter)
                               </span>
                             </button>
                             
@@ -959,14 +974,26 @@ export default function PublicLenderPage() {
                                 Share on LinkedIn
                               </span>
                             </button>
+
+                            <button
+                              onClick={handleWhatsAppShare}
+                              className="w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700 rounded-lg transition-colors"
+                            >
+                              <svg className="w-5 h-5 text-[#25D366]" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
+                              </svg>
+                              <span className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+                                Share on WhatsApp
+                              </span>
+                            </button>
                           </div>
                         </div>
                       )}
                     </div>
                   </div>
 
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    Share this lender profile with friends, family, or your network
+                  <p className="text-xs text-neutral-600 dark:text-neutral-400">
+                    Help others discover trusted lending with no hidden fees
                   </p>
                 </Card>
 

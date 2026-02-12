@@ -17,6 +17,33 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  // ============================================
+  // ADDED: Middleware optimizations to prevent flickering
+  // ============================================
+  
+  // Skip middleware on static assets and API routes
+  skipMiddlewareUrlNormalize: true,
+  
+  // Prevent trailing slash redirects that cause extra middleware runs
+  skipTrailingSlashRedirect: true,
+  
+  // Optimize static asset handling
+  poweredByHeader: false,
+  
+  // Compress responses
+  compress: true,
+  
+  // Generate ETags for better caching
+  generateEtags: true,
+  
+  // ============================================
+  // OPTIONAL: Add if you have large pages that need ISR
+  // ============================================
+  // experimental: {
+  //   // Enable if you need incremental static regeneration
+  //   // isrMemoryCacheSize: 0,
+  // },
 };
 
 export default nextConfig;

@@ -23,7 +23,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { 
-  FaStar, 
+  FaStar as FaStarIcon, 
   FaThumbsUp, 
   FaUserPlus, 
   FaExclamationTriangle, 
@@ -61,6 +61,16 @@ interface Match {
   };
 }
 
+interface TrustScore {
+  score: number;
+  score_grade: string;
+  score_label: string;
+  total_loans: number;
+  completed_loans: number;
+  ontime_payments: number;
+  total_payments: number;
+}
+
 export default function MatchReviewPage() {
   const router = useRouter();
   const params = useParams();
@@ -68,6 +78,7 @@ export default function MatchReviewPage() {
 
   const [user, setUser] = useState<any>(null);
   const [match, setMatch] = useState<Match | null>(null);
+  const [trustScore, setTrustScore] = useState<TrustScore | null>(null); // ADDED
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -137,6 +148,25 @@ export default function MatchReviewPage() {
       }
       
       setMatch(data.match);
+      
+      // ============================================
+      // ADDED: Fetch trust score for borrower
+      // ============================================
+      if (data.match?.loan?.borrower?.id) {
+        try {
+          const { data: scoreData } = await supabase
+            .from('trust_scores')
+            .select('score, score_grade, score_label, total_loans, completed_loans, ontime_payments, total_payments')
+            .eq('user_id', data.match.loan.borrower.id)
+            .single();
+          
+          setTrustScore(scoreData);
+          console.log('[MatchReview] Trust score:', scoreData);
+        } catch (err) {
+          console.log('[MatchReview] No trust score found for borrower');
+        }
+      }
+      
     } catch (err) {
       console.error('Failed to fetch data:', err);
       setError('Failed to load match details. Please try again.');
@@ -191,7 +221,7 @@ export default function MatchReviewPage() {
       great: { 
         color: 'bg-green-100 text-green-700', 
         darkColor: 'dark:bg-green-900/30 dark:text-green-400',
-        icon: <FaStar className="w-3 h-3" />
+        icon: <FaStarIcon className="w-3 h-3" />
       },
       good: { 
         color: 'bg-blue-100 text-blue-700', 
@@ -374,6 +404,44 @@ export default function MatchReviewPage() {
                   <span className="text-neutral-400 dark:text-neutral-500">Not verified</span>
                 )}
               </div>
+              
+              {/* ============================================ */}
+              {/* ADDED: Trust Score Display */}
+              {/* ============================================ */}
+              {trustScore && (
+                <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-neutral-500 dark:text-neutral-400 flex items-center gap-1">
+                      <Star className="w-4 h-4" />
+                      Trust Score
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-2xl font-bold text-neutral-900 dark:text-white">
+                        {trustScore.score}
+                      </span>
+                      <span className={`text-xs font-medium px-2 py-1 rounded ${
+                        trustScore.score >= 80 ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                        trustScore.score >= 60 ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                        'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400'
+                      }`}>
+                        {trustScore.score_grade}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {trustScore.score_label} • {trustScore.completed_loans || 0} loans completed
+                  </p>
+                  {trustScore.total_payments > 0 && (
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                      {trustScore.ontime_payments}/{trustScore.total_payments} payments on-time
+                    </p>
+                  )}
+                </div>
+              )}
+              {/* ============================================ */}
+              {/* END TRUST SCORE DISPLAY */}
+              {/* ============================================ */}
+              
               <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-neutral-500 dark:text-neutral-400">Payment History</span>

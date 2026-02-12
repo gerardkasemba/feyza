@@ -3,18 +3,21 @@ import { cn } from '@/lib/utils';
 
 interface AvatarProps {
   src?: string;
-  name: string;
+  name?: string; // Make name optional since it might be undefined
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
 }
 
-export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
-  const initials = name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
+export function Avatar({ src, name = '', size = 'md', className }: AvatarProps) {
+  // Add safety check for name
+  const initials = name && name.trim() !== ''
+    ? name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : '?'; // Fallback for empty name
 
   const sizes = {
     sm: 'w-8 h-8 text-xs',
@@ -42,8 +45,11 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
     ]
   };
 
-  // Generate consistent color based on name
-  const colorIndex = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.light.length;
+  // Generate consistent color based on name (or use index 0 if no name)
+  const colorIndex = name && name.length > 0
+    ? name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) % colors.light.length
+    : 0;
+  
   const bgColorLight = colors.light[colorIndex];
   const bgColorDark = colors.dark[colorIndex];
 
@@ -51,7 +57,7 @@ export function Avatar({ src, name, size = 'md', className }: AvatarProps) {
     return (
       <img
         src={src}
-        alt={name}
+        alt={name || 'Avatar'}
         className={cn(
           'rounded-full object-cover border-2 border-white dark:border-neutral-800',
           sizes[size],

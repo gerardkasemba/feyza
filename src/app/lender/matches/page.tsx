@@ -38,6 +38,8 @@ interface LoanMatch {
     purpose?: string;
     repayment_frequency: string;
     total_installments: number;
+    lender_id?: string;
+    business_lender_id?: string;
     borrower?: {
       full_name: string;
       borrower_rating?: string;
@@ -137,17 +139,27 @@ export default function PendingMatchesPage() {
           }, {} as Record<string, any>);
         }
         
-        // Merge loan data into matches, filtering out loans that already have a lender assigned
+        // ============================================
+        // CORRECTED LOGIC: Don't filter by lender_id
+        // The match status determines visibility
+        // ============================================
         const enrichedMatches = matchesData
           .map(match => {
             const loan = loansData?.find(l => l.id === match.loan_id);
-            if (!loan) return null;
-            
-            // Filter out if loan already has a lender (means it was already matched/accepted)
-            if (loan.lender_id || loan.business_lender_id) {
-              console.log('[Matches] Filtering out match', match.id, '- loan already has lender');
+            if (!loan) {
+              console.log('[Matches] No loan found for match', match.id);
               return null;
             }
+            
+            // IMPORTANT: Do NOT filter out loans with lender_id or business_lender_id
+            // The loan_matches.status field already tracks if this match is:
+            // - 'pending' (still active)
+            // - 'accepted' (this lender won the match)
+            // - 'declined' (this lender declined or another lender won)
+            // - 'expired' (this lender didn't respond in time)
+            //
+            // Filtering here would cause matches to mysteriously disappear
+            // from the lender's dashboard, leading to confusion.
             
             return {
               ...match,
@@ -158,7 +170,7 @@ export default function PendingMatchesPage() {
             };
           })
           .filter(Boolean);
-        
+
         console.log('[Matches] Enriched matches:', enrichedMatches.length);
         setMatches(enrichedMatches as LoanMatch[]);
       } else {

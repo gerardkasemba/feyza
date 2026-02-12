@@ -96,6 +96,23 @@ function BusinessSettingsContent() {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [authInitialized, setAuthInitialized] = useState(false);
+
+  // ============================================
+  // FIXED: Single source of truth for auth
+  // ============================================
+  useEffect(() => {
+    const initAuth = async () => {
+      const supabase = createClient();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        setUser(authUser);
+      }
+      setAuthInitialized(true);
+    };
+    
+    initAuth();
+  }, []);
 
   // Sync activeTab with URL param
   useEffect(() => {
@@ -125,13 +142,13 @@ function BusinessSettingsContent() {
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  // Lending settings
+  // Lending settings - NOW STORED IN lender_preferences TABLE
   const [defaultInterestRate, setDefaultInterestRate] = useState('0');
   const [interestType, setInterestType] = useState('simple');
   const [minLoanAmount, setMinLoanAmount] = useState('');
   const [maxLoanAmount, setMaxLoanAmount] = useState('');
   const [firstTimeBorrowerAmount, setFirstTimeBorrowerAmount] = useState('50');
-  const [capitalPool, setCapitalPool] = useState('10000'); // Available capital for auto-matching
+  const [capitalPool, setCapitalPool] = useState('10000');
   const [autoMatchEnabled, setAutoMatchEnabled] = useState(false);
 
   // Payment methods (for manual payments when Dwolla is disabled)
@@ -161,84 +178,85 @@ function BusinessSettingsContent() {
   const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
   const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
 
+  // ============================================
+  // FIXED: Only fetch data after auth is initialized and user exists
+  // ============================================
   useEffect(() => {
-    const fetchData = async () => {
-      const supabase = createClient();
-      
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+    if (authInitialized) {
+      if (!user) {
         router.push('/auth/signin');
         return;
       }
+      fetchData();
+    }
+  }, [authInitialized, user, router]);
 
-      const { data: profile } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
+  // ============================================
+  // FIXED: fetchData now uses existing user state
+  // ============================================
+  const fetchData = async () => {
+    setLoading(true);
+    const supabase = createClient();
 
-      setUser(profile || { id: authUser.id, email: authUser.email });
+    // Get business profile using existing user
+    const { data: businessData, error: businessError } = await supabase
+      .from('business_profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
 
-      const { data: businessData } = await supabase
-        .from('business_profiles')
-        .select('*')
-        .eq('user_id', authUser.id)
-        .single();
+    if (businessError || !businessData) {
+      console.error('Error fetching business:', businessError);
+      router.push('/business/onboarding');
+      return;
+    }
 
-      if (!businessData) {
-        router.push('/business/setup');
-        return;
-      }
+    setBusiness(businessData);
 
-      setBusiness(businessData);
-      
-      // Fetch lender preferences for auto-matching settings
-      const { data: lenderPrefs } = await supabase
-        .from('lender_preferences')
-        .select('capital_pool, is_active')
-        .eq('business_id', businessData.id)
-        .single();
-      
-      if (lenderPrefs) {
-        setCapitalPool(lenderPrefs.capital_pool?.toString() || '10000');
-        setAutoMatchEnabled(lenderPrefs.is_active || false);
-      }
-      
-      // Populate form
-      setBusinessName(businessData.business_name || '');
-      setBusinessType(businessData.business_type || '');
-      setBusinessEntityType(businessData.business_entity_type || '');
-      setTagline(businessData.tagline || '');
-      setDescription(businessData.description || '');
-      setState(businessData.state || '');
-      setEinTaxId(businessData.ein_tax_id || '');
-      setYearsInBusiness(businessData.years_in_business?.toString() || '');
-      setWebsiteUrl(businessData.website_url || '');
-      setNumberOfEmployees(businessData.number_of_employees || '');
-      setAnnualRevenueRange(businessData.annual_revenue_range || '');
-      setContactEmail(businessData.contact_email || '');
-      setContactPhone(businessData.contact_phone || '');
-      setDefaultInterestRate(businessData.default_interest_rate?.toString() || '0');
-      setInterestType(businessData.interest_type || 'simple');
-      setMinLoanAmount(businessData.min_loan_amount?.toString() || '');
-      setMaxLoanAmount(businessData.max_loan_amount?.toString() || '');
-      setFirstTimeBorrowerAmount(businessData.first_time_borrower_amount?.toString() || '50');
-      setPublicProfileEnabled(businessData.public_profile_enabled || false);
-      // Payment methods
-      setPaypalEmail(businessData.paypal_email || '');
-      setCashappUsername(businessData.cashapp_username || '');
-      setVenmoUsername(businessData.venmo_username || '');
-      setZelleEmail(businessData.zelle_email || '');
-      setPreferredPaymentMethod(businessData.preferred_payment_method || '');
-      if (businessData.logo_url) {
-        setLogoPreview(businessData.logo_url);
-      }
+    // Load profile data
+    setBusinessName(businessData.business_name || '');
+    setBusinessType(businessData.business_type || '');
+    setBusinessEntityType(businessData.business_entity_type || '');
+    setTagline(businessData.tagline || '');
+    setDescription(businessData.description || '');
+    setState(businessData.state || '');
+    setEinTaxId(businessData.ein_tax_id || '');
+    setYearsInBusiness(businessData.years_in_business?.toString() || '');
+    setWebsiteUrl(businessData.website_url || '');
+    setNumberOfEmployees(businessData.number_of_employees || '');
+    setAnnualRevenueRange(businessData.annual_revenue_range || '');
+    setContactEmail(businessData.contact_email || '');
+    setContactPhone(businessData.contact_phone || '');
+    setLogoPreview(businessData.logo_url || null);
+    setPublicProfileEnabled(businessData.public_profile_enabled || false);
 
-      setLoading(false);
-    };
+    // === IMPORTANT: Load lending settings from lender_preferences ===
+    const { data: lenderPrefs } = await supabase
+      .from('lender_preferences')
+      .select('*')
+      .eq('business_id', businessData.id)
+      .single();
 
-    fetchData();
-  }, [router]);
+    if (lenderPrefs) {
+      // Map lender_preferences fields to business settings state
+      setDefaultInterestRate(lenderPrefs.interest_rate?.toString() || '0');
+      setInterestType(lenderPrefs.interest_type || 'simple');
+      setMinLoanAmount(lenderPrefs.min_amount?.toString() || '');
+      setMaxLoanAmount(lenderPrefs.max_amount?.toString() || '');
+      setFirstTimeBorrowerAmount(lenderPrefs.first_time_borrower_limit?.toString() || '50');
+      setCapitalPool(lenderPrefs.capital_pool?.toString() || '10000');
+      setAutoMatchEnabled(lenderPrefs.is_active || false);
+    }
+
+    // Load payment methods (from business_profiles)
+    setPaypalEmail(businessData.paypal_email || '');
+    setCashappUsername(businessData.cashapp_username || '');
+    setVenmoUsername(businessData.venmo_username || '');
+    setZelleEmail(businessData.zelle_email || '');
+    setPreferredPaymentMethod(businessData.preferred_payment_method || '');
+
+    setLoading(false);
+  };
 
   // Check if Dwolla (ACH bank transfers) is enabled by admin
   useEffect(() => {
@@ -399,6 +417,9 @@ function BusinessSettingsContent() {
     }
   };
 
+  // ============================================
+  // REPLACED: handleSaveLending now saves to lender_preferences ONLY
+  // ============================================
   const handleSaveLending = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -406,38 +427,42 @@ function BusinessSettingsContent() {
 
     try {
       const supabase = createClient();
-      
-      const { error } = await supabase
-        .from('business_profiles')
-        .update({
-          default_interest_rate: parseFloat(defaultInterestRate) || 0,
-          interest_type: interestType,
-          min_loan_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
-          max_loan_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
-          first_time_borrower_amount: firstTimeBorrowerAmount ? parseFloat(firstTimeBorrowerAmount) : 50,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', business.id);
 
-      if (error) throw error;
-
-      // Also update lender_preferences with capital pool and auto-match settings
-      await supabase
+      // === IMPORTANT: Save to lender_preferences, NOT business_profiles ===
+      const { error: prefsError } = await supabase
         .from('lender_preferences')
-        .update({
-          interest_rate: parseFloat(defaultInterestRate) || 0,
+        .upsert({
+          business_id: business.id,
+          user_id: null, // Business lender
+          interest_rate: parseFloat(defaultInterestRate),
           interest_type: interestType,
-          min_amount: minLoanAmount ? parseFloat(minLoanAmount) : null,
-          max_amount: maxLoanAmount ? parseFloat(maxLoanAmount) : null,
-          first_time_borrower_limit: firstTimeBorrowerAmount ? parseFloat(firstTimeBorrowerAmount) : 50,
-          capital_pool: capitalPool ? parseFloat(capitalPool) : 10000,
+          min_amount: parseFloat(minLoanAmount) || 50,
+          max_amount: parseFloat(maxLoanAmount) || 5000,
+          first_time_borrower_limit: parseFloat(firstTimeBorrowerAmount) || 50,
+          allow_first_time_borrowers: true, // Business lenders accept first-timers
+          capital_pool: parseFloat(capitalPool) || 0,
           is_active: autoMatchEnabled,
-        })
-        .eq('business_id', business.id);
+          auto_accept: false, // Always require manual approval for business
+          preferred_currency: 'USD',
+          countries: '["US"]', // Default to US as JSON string
+          states: '[]', // Default empty array as JSON string
+          min_borrower_rating: 'neutral',
+          require_verified_borrower: false,
+          min_term_weeks: 1,
+          max_term_weeks: 52,
+          notify_on_match: true,
+          notify_email: true,
+        }, {
+          onConflict: 'business_id'
+        });
 
-      setMessage({ type: 'success', text: 'Lending settings updated!' });
+      if (prefsError) throw prefsError;
+
+      setMessage({ type: 'success', text: 'Lending settings saved successfully!' });
+      await fetchData(); // Reload to get updated values
     } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to update settings' });
+      console.error('Error saving lending settings:', error);
+      setMessage({ type: 'error', text: error.message || 'Failed to save settings' });
     } finally {
       setSaving(false);
     }
@@ -470,6 +495,7 @@ function BusinessSettingsContent() {
     if (!error) {
       setShowSuspendModal(false);
       setMessage({ type: 'success', text: 'Account suspended. You will no longer receive loan requests.' });
+      await fetchData(); // Reload to update UI
     } else {
       setMessage({ type: 'error', text: 'Failed to suspend account' });
     }
@@ -486,6 +512,7 @@ function BusinessSettingsContent() {
     
     if (!error) {
       setMessage({ type: 'success', text: 'Account reactivated! You will now receive loan requests.' });
+      await fetchData(); // Reload to update UI
     }
   };
 
@@ -600,10 +627,34 @@ function BusinessSettingsContent() {
     }
   };
 
-  if (loading) {
+  // ============================================
+  // FIXED: Better loading state with Navbar already showing user
+  // ============================================
+  if (loading || !authInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-neutral-500">Loading...</div>
+      <div className="min-h-screen flex flex-col bg-neutral-50 dark:bg-neutral-950">
+        <Navbar user={user} />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-pulse space-y-8 w-full max-w-4xl px-4">
+            {/* Header skeleton */}
+            <div className="space-y-4">
+              <div className="h-8 w-48 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+              <div className="h-4 w-64 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+            </div>
+            
+            {/* Content skeleton */}
+            <div className="flex gap-6">
+              <div className="w-64 space-y-2">
+                <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+                <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+                <div className="h-10 bg-neutral-200 dark:bg-neutral-700 rounded"></div>
+              </div>
+              <div className="flex-1">
+                <div className="h-64 bg-neutral-200 dark:bg-neutral-700 rounded-xl"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -663,7 +714,7 @@ function BusinessSettingsContent() {
               </nav>
             </div>
 
-            {/* Content */}
+            {/* Content - Rest of your JSX remains exactly the same */}
             <div className="flex-1 min-w-0">
               {/* Profile Tab */}
               {activeTab === 'profile' && (
@@ -860,7 +911,6 @@ function BusinessSettingsContent() {
                     </Card>
                   ) : isDwollaEnabled ? (
                     <>
-                      {/* Bank Connection Card - Only when Dwolla is enabled */}
                       <Card>
                         <div className="flex items-center gap-3 mb-6">
                           <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center">
@@ -912,7 +962,6 @@ function BusinessSettingsContent() {
                     </>
                   ) : (
                     <>
-                      {/* Manual Payment Methods - When Dwolla is disabled */}
                       <Card>
                         <div className="flex items-center gap-3 mb-6">
                           <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
@@ -938,7 +987,6 @@ function BusinessSettingsContent() {
                           </div>
                         </div>
 
-                        {/* Payment Method Inputs */}
                         <div className="space-y-4 mb-6">
                           <h3 className="font-medium text-neutral-900 dark:text-white">Your Payment Methods</h3>
                           
@@ -1097,7 +1145,6 @@ function BusinessSettingsContent() {
               {/* Account Tab */}
               {activeTab === 'account' && (
                 <div className="space-y-6">
-                  {/* Suspend Account */}
                   <Card>
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1108,15 +1155,21 @@ function BusinessSettingsContent() {
                         <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
                           Temporarily stop receiving new loan requests. Your existing loans will continue as normal.
                         </p>
-                        <Button variant="outline" onClick={() => setShowSuspendModal(true)}>
-                          <Pause className="w-4 h-4 mr-2" />
-                          Suspend Lending
-                        </Button>
+                        {autoMatchEnabled ? (
+                          <Button variant="outline" onClick={() => setShowSuspendModal(true)}>
+                            <Pause className="w-4 h-4 mr-2" />
+                            Suspend Lending
+                          </Button>
+                        ) : (
+                          <Button variant="outline" onClick={handleReactivateAccount}>
+                            <Play className="w-4 h-4 mr-2" />
+                            Reactivate Account
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </Card>
 
-                  {/* Delete Account */}
                   <Card className="border-red-200 dark:border-red-800">
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center flex-shrink-0">

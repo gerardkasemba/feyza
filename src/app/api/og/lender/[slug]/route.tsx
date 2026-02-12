@@ -39,10 +39,12 @@ export async function GET(req: NextRequest, context: RouteContext) {
               height: '630px',
               padding: '60px',
               color: 'white',
-              fontFamily: 'Inter',
+              fontFamily: 'Inter, system-ui, sans-serif',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
-            <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <h1 style={{ fontSize: '64px', fontWeight: 700, marginBottom: '16px' }}>
                 Lender Not Found
               </h1>
@@ -63,6 +65,11 @@ export async function GET(req: NextRequest, context: RouteContext) {
     const maxAmount = lender.lender_preferences?.[0]?.max_amount ?? 5000
     const interestRate = lender.lender_preferences?.[0]?.interest_rate ?? 0
 
+    // Format numbers with commas
+    const formatNumber = (num: number) => {
+      return new Intl.NumberFormat('en-US').format(num)
+    }
+
     return new ImageResponse(
       (
         <div
@@ -73,7 +80,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
             height: '630px',
             padding: '60px',
             color: 'white',
-            fontFamily: 'Inter',
+            fontFamily: 'Inter, system-ui, sans-serif',
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', flex: 1 }}>
@@ -87,6 +94,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
                   borderRadius: '24px',
                   marginBottom: '32px',
                   objectFit: 'cover',
+                  border: '3px solid rgba(255, 255, 255, 0.2)',
                 }}
               />
             ) : (
@@ -103,6 +111,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
                   fontSize: '48px',
                   fontWeight: 'bold',
                   marginBottom: '32px',
+                  border: '3px solid rgba(255, 255, 255, 0.2)',
                 }}
               >
                 {businessName.charAt(0).toUpperCase()}
@@ -116,6 +125,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
                 fontWeight: 700,
                 marginBottom: '16px',
                 lineHeight: 1.2,
+                maxWidth: '900px',
               }}
             >
               {businessName}
@@ -126,45 +136,88 @@ export async function GET(req: NextRequest, context: RouteContext) {
               style={{
                 fontSize: '28px',
                 opacity: 0.9,
-                marginBottom: '32px',
+                marginBottom: '48px',
+                maxWidth: '900px',
               }}
             >
               {tagline}
             </p>
 
-            {/* Loan Details */}
-            <div style={{ display: 'flex', gap: '48px', marginTop: '20px' }}>
+            {/* Loan Details - Enhanced with better spacing */}
+            <div style={{ display: 'flex', gap: '60px', marginTop: '20px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '20px', opacity: 0.8, marginBottom: '8px' }}>
+                <span style={{ 
+                  fontSize: '18px', 
+                  opacity: 0.75, 
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                }}>
                   Loan Range
                 </span>
-                <span style={{ fontSize: '36px', fontWeight: 700 }}>
-                  ${minAmount} - ${maxAmount}
+                <span style={{ fontSize: '40px', fontWeight: 700, lineHeight: 1 }}>
+                  ${formatNumber(minAmount)} - ${formatNumber(maxAmount)}
                 </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '20px', opacity: 0.8, marginBottom: '8px' }}>
+                <span style={{ 
+                  fontSize: '18px', 
+                  opacity: 0.75, 
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                }}>
                   Interest Rate
                 </span>
-                <span style={{ fontSize: '36px', fontWeight: 700 }}>
-                  {interestRate === 0 ? '0%' : `${interestRate}%`}
+                <span style={{ fontSize: '40px', fontWeight: 700, lineHeight: 1 }}>
+                  {interestRate === 0 ? 'Interest Free' : `${interestRate}%`}
                 </span>
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: '20px', opacity: 0.8, marginBottom: '8px' }}>
+                <span style={{ 
+                  fontSize: '18px', 
+                  opacity: 0.75, 
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '1px',
+                }}>
                   Hidden Fees
                 </span>
-                <span style={{ fontSize: '36px', fontWeight: 700 }}>None</span>
+                <span style={{ fontSize: '40px', fontWeight: 700, lineHeight: 1 }}>
+                  None
+                </span>
               </div>
             </div>
 
+            {/* Verified Badge */}
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              marginTop: '60px',
+              background: 'rgba(255, 255, 255, 0.1)',
+              padding: '16px 24px',
+              borderRadius: '12px',
+              width: 'fit-content',
+            }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ marginRight: '12px' }}>
+                <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              <span style={{ fontSize: '20px', fontWeight: 600 }}>Verified Lender on Feyza</span>
+            </div>
+
             {/* Feyza Branding */}
-            <div style={{ display: 'flex', alignItems: 'center', marginTop: '60px', fontSize: '24px' }}>
-              <span style={{ marginRight: '12px' }}>⚡</span>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              marginTop: '40px', 
+              fontSize: '22px',
+              opacity: 0.8,
+            }}>
+              <span style={{ marginRight: '12px', fontSize: '28px' }}>⚡</span>
               <span style={{ fontWeight: 600 }}>Feyza</span>
-              <span style={{ opacity: 0.8, marginLeft: '12px' }}>• Peer-to-Peer Lending</span>
+              <span style={{ opacity: 0.7, marginLeft: '12px' }}>• Peer-to-Peer Lending</span>
             </div>
           </div>
         </div>
@@ -184,14 +237,19 @@ export async function GET(req: NextRequest, context: RouteContext) {
             height: '630px',
             padding: '60px',
             color: 'white',
-            fontFamily: 'Inter',
+            fontFamily: 'Inter, system-ui, sans-serif',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <h1 style={{ fontSize: '48px', fontWeight: 700 }}>
-            Feyza • Peer-to-Peer Lending
-          </h1>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <h1 style={{ fontSize: '64px', fontWeight: 700, marginBottom: '16px' }}>
+              ⚡ Feyza
+            </h1>
+            <p style={{ fontSize: '32px', opacity: 0.9 }}>
+              Peer-to-Peer Lending
+            </p>
+          </div>
         </div>
       ),
       { width: 1200, height: 630 }

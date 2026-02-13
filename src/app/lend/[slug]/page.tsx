@@ -324,7 +324,7 @@ export default function PublicLenderPage() {
   const logoUrl = (lender as any)?.logo_url || '';
   
   // DYNAMIC OG IMAGE ENDPOINT
-  const shareImage = `https://feyza.app/api/og/lender/${slug}`;
+  const shareImage = `/api/og/lender/${slug}`;
   
   // Generate SEO-friendly title and descriptions
   const pageTitle = `${businessName} - Verified Lender on Feyza | Get Loans Up to ${formatCurrency(maxAmount)}`;

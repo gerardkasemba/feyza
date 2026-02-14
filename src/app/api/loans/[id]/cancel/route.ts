@@ -49,6 +49,8 @@ export async function POST(
         cancelled_at: new Date().toISOString(),
         cancelled_reason: reason || 'Cancelled by borrower',
         updated_at: new Date().toISOString(),
+        // Keep existing values - don't modify financial fields
+        // uses_apr_calculation: loan.uses_apr_calculation, // Not needed, but safe to include
       })
       .eq('id', loanId);
 
@@ -72,7 +74,7 @@ export async function POST(
           .from('lender_preferences')
           .select('id, capital_reserved')
           .or(lenderFilter)
-          .single();
+          .maybeSingle(); // Use maybeSingle instead of single to avoid errors when not found
 
         if (lenderPref) {
           // Release the reserved capital
@@ -84,6 +86,8 @@ export async function POST(
             .eq('id', lenderPref.id);
 
           console.log(`[Cancel] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+        } else {
+          console.log(`[Cancel] No lender preference found for filter: ${lenderFilter}`);
         }
       } catch (releaseError) {
         console.error('[Cancel] Error releasing capital:', releaseError);

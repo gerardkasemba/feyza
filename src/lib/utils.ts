@@ -94,24 +94,35 @@ export function generateInviteToken(): string {
 }
 
 // Interest calculation functions
+// FIXED: Changed to calculate total interest, not APR-based
 export function calculateSimpleInterest(
+  principal: number,
+  interestRate: number
+): number {
+  // Simple interest: I = P * r
+  // interestRate is the total interest percentage (e.g., 20 for 20%)
+  return principal * (interestRate / 100);
+}
+
+// For backward compatibility - APR-based calculation (rarely used for P2P)
+export function calculateAnnualizedSimpleInterest(
   principal: number,
   annualRate: number,
   termMonths: number
 ): number {
-  // Simple interest: I = P * r * t
+  // APR-based: I = P * r * t
   const monthlyRate = annualRate / 100 / 12;
   return principal * monthlyRate * termMonths;
 }
 
 export function calculateCompoundInterest(
   principal: number,
-  annualRate: number,
+  interestRate: number,
   termMonths: number,
   compoundingPerYear: number = 12
 ): number {
   // Compound interest: A = P(1 + r/n)^(nt) - P
-  const r = annualRate / 100;
+  const r = interestRate / 100;
   const n = compoundingPerYear;
   const t = termMonths / 12;
   const amount = principal * Math.pow(1 + r / n, n * t);
@@ -120,16 +131,25 @@ export function calculateCompoundInterest(
 
 export function calculateTotalInterest(
   principal: number,
-  annualRate: number,
+  interestRate: number,
   termMonths: number,
-  interestType: 'simple' | 'compound'
+  interestType: 'simple' | 'compound',
+  useAPR: boolean = false  // Optional: for legacy APR behavior
 ): number {
-  if (annualRate === 0) return 0;
+  if (interestRate === 0) return 0;
   
   if (interestType === 'simple') {
-    return calculateSimpleInterest(principal, annualRate, termMonths);
+    if (useAPR) {
+      // Legacy APR calculation (old behavior)
+      return calculateAnnualizedSimpleInterest(principal, interestRate, termMonths);
+    } else {
+      // NEW DEFAULT: Total interest (P2P standard)
+      return calculateSimpleInterest(principal, interestRate);
+    }
   }
-  return calculateCompoundInterest(principal, annualRate, termMonths);
+  
+  // Compound interest always considers time
+  return calculateCompoundInterest(principal, interestRate, termMonths);
 }
 
 export function calculateLoanTermMonths(

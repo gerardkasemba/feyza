@@ -159,32 +159,49 @@ export async function POST(
       }
     }
 
-    // Calculate total interest and total amount
-    const calculateInterest = (principal: number, rate: number, months: number, type: string) => {
-      if (type === 'compound') {
-        // Compound: A = P(1 + r/12)^months - P
-        const monthlyRate = rate / 100 / 12;
-        const compoundAmount = principal * Math.pow(1 + monthlyRate, months);
-        return Math.round((compoundAmount - principal) * 100) / 100;
-      } else {
-        // Simple: I = P * r * (months/12)
-        return Math.round(principal * (rate / 100) * (months / 12) * 100) / 100;
-      }
-    };
+    // FIXED: Calculate total interest correctly based on interest type
+    let totalInterest: number;
+    let totalAmount: number;
 
-    // Convert payment frequency to months
-    const loanMonths = loan.total_installments * 
-      (loan.repayment_frequency === 'weekly' ? 0.25 : 
-       loan.repayment_frequency === 'biweekly' ? 0.5 : 1);
+    if (interestType === 'compound') {
+      // For compound interest, we need the term in months
+      const loanMonths = loan.total_installments * 
+        (loan.repayment_frequency === 'weekly' ? 0.25 : 
+         loan.repayment_frequency === 'biweekly' ? 0.5 : 1);
+      
+      // Compound interest formula: A = P(1 + r/n)^(nt) - P
+      // For monthly compounding: A = P(1 + r/12)^months - P
+      const monthlyRate = interestRate / 100 / 12;
+      const compoundAmount = loan.amount * Math.pow(1 + monthlyRate, loanMonths);
+      totalInterest = Math.round((compoundAmount - loan.amount) * 100) / 100;
+      
+      console.log(`[Accept] Compound interest calculation:`, {
+        principal: loan.amount,
+        rate: interestRate,
+        months: loanMonths,
+        monthlyRate,
+        compoundAmount,
+        totalInterest
+      });
+    } else {
+      // SIMPLE INTEREST: Total interest = principal * (rate / 100)
+      // rate is the TOTAL interest percentage (e.g., 20% means $20 interest on $100)
+      totalInterest = Math.round(loan.amount * (interestRate / 100) * 100) / 100;
+      
+      console.log(`[Accept] Simple interest calculation:`, {
+        principal: loan.amount,
+        rate: interestRate,
+        totalInterest,
+        expected: loan.amount * (interestRate / 100)
+      });
+    }
 
-    const totalInterest = calculateInterest(loan.amount, interestRate, loanMonths, interestType);
-    const totalAmount = Math.round((loan.amount + totalInterest) * 100) / 100;
+    totalAmount = Math.round((loan.amount + totalInterest) * 100) / 100;
 
     console.log(`[Accept] Calculated interest for loan ${loanId}:`, {
       principal: loan.amount,
       rate: interestRate,
       type: interestType,
-      months: loanMonths,
       totalInterest,
       totalAmount
     });
@@ -203,6 +220,7 @@ export async function POST(
         total_amount: totalAmount,
         amount_remaining: totalAmount, // Set remaining to total (principal + interest)
         updated_at: new Date().toISOString(),
+        uses_apr_calculation: false, // Explicitly set to false for simple interest
       })
       .eq('id', loanId);
 

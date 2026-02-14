@@ -26,6 +26,13 @@ export async function POST(
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
+    // Only allow declining of pending loans
+    if (loan.status !== 'pending' && loan.status !== 'matched') {
+      return NextResponse.json({ 
+        error: `Cannot decline loan with status: ${loan.status}` 
+      }, { status: 400 });
+    }
+
     // Verify user is the lender or business owner
     let isAuthorized = loan.lender_id === user.id;
     
@@ -43,12 +50,14 @@ export async function POST(
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
 
-    // Update loan status
+    // Update loan status - only change status fields, not financial fields
     const { error: updateError } = await supabase
       .from('loans')
       .update({
         status: 'declined',
         updated_at: new Date().toISOString(),
+        // Keep all financial fields exactly as they were
+        // Don't modify total_interest, total_amount, etc.
       })
       .eq('id', loanId);
 
@@ -56,6 +65,7 @@ export async function POST(
       console.error('Error declining loan:', updateError);
       return NextResponse.json({ error: 'Failed to decline loan' }, { status: 500 });
     }
+
     // Release reserved capital if this was a matched loan
     if (loan.business_lender_id || loan.lender_id) {
       try {
@@ -71,7 +81,7 @@ export async function POST(
           .from('lender_preferences')
           .select('id, capital_reserved')
           .or(lenderFilter)
-          .single();
+          .maybeSingle(); // Use maybeSingle instead of single to avoid errors when not found
 
         if (lenderPref) {
           // Release the reserved capital
@@ -83,12 +93,15 @@ export async function POST(
             .eq('id', lenderPref.id);
 
           console.log(`[Decline] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+        } else {
+          console.log(`[Decline] No lender preference found for filter: ${lenderFilter}`);
         }
       } catch (releaseError) {
         console.error('[Decline] Error releasing capital:', releaseError);
         // Don't fail the decline if capital release fails
       }
     }
+
     // Create notification for borrower
     try {
       await supabase.from('notifications').insert({
@@ -102,7 +115,10 @@ export async function POST(
       console.error('Error creating notification:', notifError);
     }
 
-    return NextResponse.json({ success: true, redirectUrl: loan.business_lender_id ? '/business' : '/dashboard' });
+    return NextResponse.json({ 
+      success: true, 
+      redirectUrl: loan.business_lender_id ? '/business' : '/dashboard' 
+    });
   } catch (error) {
     console.error('Error declining loan:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

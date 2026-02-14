@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { Button, Input, Select, Card, Calendar as CalendarPicker } from '@/components/ui';
 import { BusinessProfile, DisbursementMethod } from '@/types';
-import { formatCurrency, formatPercentage, calculateTotalInterest, calculateLoanTermMonths } from '@/lib/utils';
+import { formatCurrency, formatPercentage, calculateLoanTermMonths, generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
 import {
   getRepaymentPresets,
   PayFrequency,
@@ -305,10 +305,23 @@ export function LoanRequestForm({
   const [usernameFound, setUsernameFound] = useState<{ username: string; displayName: string } | null>(null);
   const [usernameError, setUsernameError] = useState<string | null>(null);
 
-  const termMonths = calculateLoanTermMonths(totalInstallments || 1, repaymentFrequency);
-  const totalInterest = calculateTotalInterest(amount, interestRate, termMonths, interestType);
+  // FIXED: Calculate interest correctly - interestRate is the TOTAL interest percentage, not APR
+  const totalInterest = amount > 0 && interestRate > 0 
+    ? amount * (interestRate / 100)  // Simple: 20% of $1000 = $200
+    : 0;
+  
   const totalAmount = amount + totalInterest;
   const repaymentAmount = totalInstallments > 0 ? totalAmount / totalInstallments : 0;
+
+  // For debugging - remove in production
+  console.log('Loan calculation:', {
+    amount,
+    interestRate,
+    totalInterest,
+    totalAmount,
+    repaymentAmount,
+    totalInstallments
+  });
 
   const repaymentPresets = useMemo(() => getRepaymentPresets(amount), [amount]);
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
@@ -672,10 +685,10 @@ export function LoanRequestForm({
     setSubmitError(null);
 
     try {
-      const tm = calculateLoanTermMonths(data.totalInstallments, data.repaymentFrequency);
-      const ti = calculateTotalInterest(data.amount, data.interestRate || 0, tm, data.interestType || 'simple');
-      const ta = data.amount + ti;
-      data.repaymentAmount = ta / data.totalInstallments;
+      // FIXED: Calculate repayment amount correctly
+      const calculatedTotalInterest = data.amount * ((data.interestRate || 0) / 100);
+      const calculatedTotalAmount = data.amount + calculatedTotalInterest;
+      data.repaymentAmount = calculatedTotalAmount / data.totalInstallments;
 
       // Bank-only flow
       data.disbursementMethod = 'bank_transfer';
@@ -1167,7 +1180,7 @@ export function LoanRequestForm({
             <Banner tone="info" icon={Info} title="Business lender pricing">
               <div className="text-sm">
                 <p className="font-medium text-blue-900 dark:text-blue-200">
-                  {selectedBusiness.business_name} charges {formatPercentage((selectedBusiness as any).default_interest_rate)} APR
+                  {selectedBusiness.business_name} charges {formatPercentage((selectedBusiness as any).default_interest_rate)} interest
                 </p>
                 <p className="text-blue-700 dark:text-blue-300">
                   Interest type: {(selectedBusiness as any).interest_type === 'compound' ? 'Compound' : 'Simple'}
@@ -1559,7 +1572,7 @@ export function LoanRequestForm({
                 {interestRate > 0 ? (
                   <>
                     <span className="text-neutral-500 dark:text-neutral-400">Interest rate</span>
-                    <span className="text-right font-medium text-neutral-900 dark:text-white">{formatPercentage(interestRate)} APR</span>
+                    <span className="text-right font-medium text-neutral-900 dark:text-white">{formatPercentage(interestRate)}</span>
 
                     <span className="text-neutral-500 dark:text-neutral-400">Total interest</span>
                     <span className="text-right font-medium text-orange-600 dark:text-orange-400">{formatCurrency(totalInterest)}</span>

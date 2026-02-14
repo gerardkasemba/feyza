@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { Button, Input, Select, Card, Calendar as CalendarPicker, Alert } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
-import { formatCurrency, formatPercentage, calculateTotalInterest, calculateLoanTermMonths, generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
+import { formatCurrency, formatPercentage, calculateLoanTermMonths, generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
 import { 
   getRepaymentPresets, 
   RepaymentPreset,
@@ -379,13 +379,23 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
     fetchBusinessFromSlug();
   }, [businessSlug, supabase, setValue]);
 
-  // Calculate totals
-  const freqType = repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-  const intType = (interestType || 'simple') as 'simple' | 'compound';
-  const termMonths = calculateLoanTermMonths(totalInstallments || 1, freqType);
-  const totalInterest = calculateTotalInterest(amount, interestRate, termMonths, intType);
+  // FIXED: Calculate interest correctly - interestRate is the TOTAL interest percentage, not APR
+  const totalInterest = amount > 0 && interestRate > 0 
+    ? amount * (interestRate / 100)  // Simple: 20% of $1000 = $200
+    : 0;
+  
   const totalAmount = amount + totalInterest;
   const repaymentAmount = totalInstallments > 0 ? totalAmount / totalInstallments : 0;
+
+  // For debugging - remove in production
+  console.log('Guest loan calculation:', {
+    amount,
+    interestRate,
+    totalInterest,
+    totalAmount,
+    repaymentAmount,
+    totalInstallments
+  });
 
   // Smart schedule presets
   const repaymentPresets = useMemo(() => getRepaymentPresets(amount), [amount]);
@@ -958,15 +968,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       const data = getValues();
       const inviteToken = lenderType === 'personal' ? generateInviteToken() : null;
       const frequency = data.repaymentFrequency as 'weekly' | 'biweekly' | 'monthly' | 'custom';
-      const intTypeCalc = (interestType || 'simple') as 'simple' | 'compound';
+      
+      // FIXED: Use the correctly calculated totals
+      const calculatedTotalInterest = amount * (interestRate / 100);
+      const calculatedTotalAmount = amount + calculatedTotalInterest;
+      const calculatedRepaymentAmount = totalInstallments > 0 ? calculatedTotalAmount / totalInstallments : 0;
+
       const schedule = calculateRepaymentSchedule({
         amount: data.amount,
-        repaymentAmount: repaymentAmount,
+        repaymentAmount: calculatedRepaymentAmount,
         totalInstallments: data.totalInstallments,
         startDate: data.startDate,
         frequency: frequency,
         interestRate: interestRate,
-        interestType: intTypeCalc,
+        interestType: interestType as 'simple' | 'compound',
       });
 
       if (isLoggedIn) {
@@ -988,10 +1003,10 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           purpose: data.purpose || loanTypes.find((lt: LoanTypeOption) => lt.id === selectedLoanTypeId)?.name,
           interest_rate: interestRate,
           interest_type: interestType,
-          total_interest: Math.round(totalInterest * 100) / 100,
-          total_amount: Math.round(totalAmount * 100) / 100,
+          total_interest: Math.round(calculatedTotalInterest * 100) / 100,
+          total_amount: Math.round(calculatedTotalAmount * 100) / 100,
           repayment_frequency: data.repaymentFrequency,
-          repayment_amount: Math.round(repaymentAmount * 100) / 100,
+          repayment_amount: Math.round(calculatedRepaymentAmount * 100) / 100,
           total_installments: data.totalInstallments,
           start_date: data.startDate,
           disbursement_method: 'bank_transfer',
@@ -1000,7 +1015,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           status: 'pending',
           match_status: lenderType === 'business' ? 'pending' : 'manual',
           amount_paid: 0,
-          amount_remaining: Math.round(totalAmount * 100) / 100,
+          amount_remaining: Math.round(calculatedTotalAmount * 100) / 100,
           borrower_name: user?.full_name,
           auto_pay_enabled: true,
         };
@@ -1133,7 +1148,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             total_interest: 0,
             total_amount: data.amount,
             repayment_frequency: data.repaymentFrequency,
-            repayment_amount: Math.round(repaymentAmount * 100) / 100,
+            repayment_amount: Math.round(calculatedRepaymentAmount * 100) / 100,
             total_installments: data.totalInstallments,
             start_date: data.startDate,
             disbursement_method: 'bank_transfer',
@@ -1824,8 +1839,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <span className="text-neutral-500">Principal:</span>
                 <span className="text-right font-medium">{formatCurrency(amount)}</span>
+                
+                {interestRate > 0 && (
+                  <>
+                    <span className="text-neutral-500">Interest Rate:</span>
+                    <span className="text-right font-medium">{formatPercentage(interestRate)}</span>
+                    
+                    <span className="text-neutral-500">Total Interest:</span>
+                    <span className="text-right font-medium text-orange-600">{formatCurrency(totalInterest)}</span>
+                  </>
+                )}
+                
                 <span className="text-neutral-500 font-medium">Total to Repay:</span>
                 <span className="text-right font-bold text-primary-600">{formatCurrency(totalAmount)}</span>
+                
                 <span className="text-neutral-500">Per Installment:</span>
                 <span className="text-right font-medium">{formatCurrency(repaymentAmount)}</span>
               </div>
@@ -2160,10 +2187,23 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             <div className="grid grid-cols-2 gap-2 text-sm">
               <span className="text-primary-700">Principal:</span>
               <span className="text-right font-medium text-primary-900">{formatCurrency(amount)}</span>
+              
+              {interestRate > 0 && (
+                <>
+                  <span className="text-primary-700">Interest Rate:</span>
+                  <span className="text-right font-medium text-primary-900">{formatPercentage(interestRate)}</span>
+                  
+                  <span className="text-primary-700">Total Interest:</span>
+                  <span className="text-right font-medium text-orange-600">{formatCurrency(totalInterest)}</span>
+                </>
+              )}
+              
               <span className="text-primary-700">Total to Repay:</span>
               <span className="text-right font-bold text-primary-900">{formatCurrency(totalAmount)}</span>
+              
               <span className="text-primary-700">Installments:</span>
               <span className="text-right font-medium text-primary-900">{totalInstallments} × {formatCurrency(repaymentAmount)}</span>
+              
               <span className="text-primary-700">Start Date:</span>
               <span className="text-right font-medium text-primary-900">{startDate ? new Date(startDate).toLocaleDateString() : '-'}</span>
             </div>

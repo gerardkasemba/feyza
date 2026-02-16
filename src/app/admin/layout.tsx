@@ -28,6 +28,7 @@ import {
   Sun,
   RefreshCw,
   MapPin,
+  Mail as Emails,
 } from 'lucide-react';
 
 const navItems = [
@@ -46,6 +47,7 @@ const navItems = [
   { href: '/admin/payment-providers', label: 'Payment Methods', icon: CreditCard },
   { href: '/admin/platform-fee', label: 'Platform Fees', icon: Percent },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/emails', label: 'Emails Management', icon: Emails },
 ];
 
 export default function AdminLayout({

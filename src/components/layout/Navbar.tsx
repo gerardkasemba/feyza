@@ -29,6 +29,7 @@ import {
   Sun,
   TrendingUp,
   Info,
+  BarChart3,
   CreditCard as PayIcon,
   TrendingUp as TrackIcon,
   LogIn,
@@ -278,6 +279,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
   if (user.user_type === 'business') {
     baseItems.push(
       { href: '/lender/matches', label: 'Loan Matches', icon: Target },
+      { href: '/business/analytics', label: 'Analytics', icon: BarChart3 },
       { href: '/lender/preferences', label: 'Lending Preferences', icon: CreditCard },
       { href: '/business/settings', label: 'Business Settings', icon: Briefcase }
     );

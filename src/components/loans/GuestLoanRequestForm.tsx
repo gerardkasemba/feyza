@@ -209,6 +209,9 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
   // Bank connection is only required if Dwolla is enabled
   const requiresBankConnection = isDwollaEnabled;
 
+  // Lender loan limits
+  const [maxLoanAmount, setMaxLoanAmount] = useState<number>(500); // Default limit
+
   // Username search (for personal loans)
   const [usernameSearch, setUsernameSearch] = useState('');
   const [usernameSearching, setUsernameSearching] = useState(false);
@@ -319,10 +322,14 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           if (prefs) {
             setValue('interestRate', prefs.interest_rate || 0);
             setValue('interestType', prefs.interest_type || 'simple');
+            // Set max loan amount from lender preferences
+            setMaxLoanAmount(prefs.max_amount || 10000);
             console.log('[GuestLoanForm] Using lender preferences:', prefs);
           } else if (businessData.default_interest_rate) {
             setValue('interestRate', businessData.default_interest_rate || 0);
             setValue('interestType', businessData.interest_type || 'simple');
+            // Set max loan amount from business profile
+            setMaxLoanAmount(businessData.max_loan_amount || 10000);
             console.log('[GuestLoanForm] Using business defaults');
           }
         }
@@ -840,6 +847,11 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       setStepError('Please enter a valid amount');
       return false;
     }
+    // Check against lender's maximum loan amount
+    if (values.amount > maxLoanAmount) {
+      setStepError(`Amount cannot exceed ${formatCurrency(maxLoanAmount)} (lender's maximum)`);
+      return false;
+    }
     if (!values.totalInstallments || values.totalInstallments < 1) {
       setStepError('Please select a repayment schedule');
       return false;
@@ -909,6 +921,16 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
   const goToNextStep = (nextStep: number) => {
     setStepError(null);
+    
+    // Skip step 4 (bank transfer) if Dwolla is disabled (manual payment mode)
+    if (step === 3 && nextStep === 4 && !isDwollaEnabled && isLoggedIn) {
+      // Skip directly to step 5 (review) for logged-in users
+      if (validateStep3()) {
+        setStep(5);
+      }
+      return;
+    }
+    
     let isValid = true;
 
     if (isLoggedIn) {
@@ -1707,13 +1729,12 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 type="number" 
                 placeholder="1000" 
                 min="1" 
+                max={maxLoanAmount}
                 {...register('amount', { valueAsNumber: true })} 
                 helperText={
                   presetMaxAmount 
                     ? `Maximum available: $${presetMaxAmount.toLocaleString()}`
-                    : (isLoggedIn && borrowingLimit && lenderType === 'personal')
-                    ? `Available: ${formatCurrency(borrowingLimit.availableAmount || 0)}`
-                    : undefined
+                    : `Maximum: ${formatCurrency(maxLoanAmount)}`
                 }
               />
             </div>
@@ -1868,13 +1889,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       )}
 
       {/* STEP 4: Account Creation (Guest) or Disbursement (Logged-in) */}
+      {/* STEP 4 - Only show bank transfer section if Dwolla is enabled for logged-in users */}
       {step === 4 && (
         <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(3); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
+          <button 
+            type="button" 
+            onClick={() => { setStep(3); setStepError(null); }} 
+            className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700"
+          >
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
 
-          {isLoggedIn ? (
+          {isLoggedIn && isDwollaEnabled ? (
             <>
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">How to Receive Money</h2>
@@ -1888,38 +1914,14 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   </div>
                   <div>
                     <p className="font-medium text-green-800">Bank Transfer</p>
-                    <p className="text-sm text-green-700">{bankInfo?.bank_name ? `Funds will be sent to ${bankInfo.bank_name} (••••${bankInfo.account_mask})` : 'Funds will be sent to your connected bank'}</p>
+                    <p className="text-sm text-green-700">
+                      {bankInfo?.bank_name 
+                        ? `Funds will be sent to ${bankInfo.bank_name} (••••${bankInfo.account_mask})` 
+                        : 'Funds will be sent to your connected bank'}
+                    </p>
                   </div>
                 </div>
               </div>
-
-              <div className="flex justify-end pt-4">
-                <Button type="button" onClick={() => goToNextStep(5)}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Create Your Account</h2>
-                <p className="text-neutral-500">Sign up to complete your loan request</p>
-              </div>
-
-              <Input label="Full Name *" value={guestFullName} onChange={(e) => setGuestFullName(e.target.value)} placeholder="John Doe" />
-              <Input label="Email *" type="email" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} placeholder="john@example.com" />
-              <Input label="Phone (Optional)" type="tel" value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} placeholder="+1 234 567 8900" />
-
-              <div>
-                <label className="block text-sm font-medium mb-2">Password *</label>
-                <div className="relative">
-                  <input type={showPassword ? 'text' : 'password'} value={guestPassword} onChange={(e) => setGuestPassword(e.target.value)} placeholder="••••••••" minLength={8}
-                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-primary-500 dark:bg-neutral-800 dark:border-neutral-700" />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400">
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
-              <Input label="Confirm Password *" type={showPassword ? 'text' : 'password'} value={guestConfirmPassword} onChange={(e) => setGuestConfirmPassword(e.target.value)} placeholder="••••••••" />
 
               <div className="flex justify-end pt-4">
                 <Button type="button" onClick={() => goToNextStep(5)}>
@@ -1927,6 +1929,85 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 </Button>
               </div>
             </>
+          ) : !isLoggedIn ? (
+            <>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Create Your Account</h2>
+                <p className="text-neutral-500">Sign up to complete your loan request</p>
+              </div>
+
+              <Input 
+                label="Full Name *" 
+                value={guestFullName} 
+                onChange={(e) => setGuestFullName(e.target.value)} 
+                placeholder="John Doe" 
+              />
+              
+              <Input 
+                label="Email *" 
+                type="email" 
+                value={guestEmail} 
+                onChange={(e) => setGuestEmail(e.target.value)} 
+                placeholder="john@example.com" 
+              />
+              
+              <Input 
+                label="Phone (Optional)" 
+                type="tel" 
+                value={guestPhone} 
+                onChange={(e) => setGuestPhone(e.target.value)} 
+                placeholder="+1 234 567 8900" 
+              />
+
+              <div>
+                <label className="block text-sm font-medium mb-2">Password *</label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? 'text' : 'password'} 
+                    value={guestPassword} 
+                    onChange={(e) => setGuestPassword(e.target.value)} 
+                    placeholder="••••••••" 
+                    minLength={8}
+                    className="w-full px-4 py-3 rounded-xl border border-neutral-300 focus:ring-2 focus:ring-primary-500 dark:bg-neutral-800 dark:border-neutral-700" 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={() => setShowPassword(!showPassword)} 
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-400"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <Input 
+                label="Confirm Password *" 
+                type={showPassword ? 'text' : 'password'} 
+                value={guestConfirmPassword} 
+                onChange={(e) => setGuestConfirmPassword(e.target.value)} 
+                placeholder="••••••••" 
+              />
+
+              <div className="flex justify-end pt-4">
+                <Button type="button" onClick={() => goToNextStep(5)}>
+                  Continue <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </div>
+            </>
+          ) : (
+            // Handle case when user is logged in but Dwolla is not enabled
+            <div className="text-center py-8">
+              <p className="text-neutral-600 dark:text-neutral-400">
+                Please enable Dwolla to continue with your loan request.
+              </p>
+              <Button 
+                type="button" 
+                onClick={() => {/* Handle Dwolla setup */}} 
+                className="mt-4"
+              >
+                Set Up Dwolla
+              </Button>
+            </div>
           )}
         </div>
       )}
@@ -2173,7 +2254,16 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       {/* Agreement Step - Final step */}
       {((isLoggedIn && step === 5) || (!isLoggedIn && lenderType === 'personal' && step === 6) || (!isLoggedIn && lenderType === 'business' && step === 9)) && (
         <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(step - 1); setStepError(null); setSubmitError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
+          <button type="button" onClick={() => { 
+            // For logged-in users, go back to step 3 if Dwolla is disabled, step 4 if enabled
+            if (isLoggedIn && step === 5) {
+              setStep(isDwollaEnabled ? 4 : 3);
+            } else {
+              setStep(step - 1);
+            }
+            setStepError(null); 
+            setSubmitError(null); 
+          }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
             <ChevronLeft className="w-4 h-4" /> Back
           </button>
 

@@ -127,15 +127,39 @@ export async function POST(
     }
 
     // Handle ACH/Dwolla payment flow (existing code)
-    // Get user profile with Dwolla info
-    const { data: lenderProfile } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', user.id)
-      .single();
-
-    if (!lenderProfile?.dwolla_funding_source_url) {
-      return NextResponse.json({ error: 'Please connect your bank account first' }, { status: 400 });
+    // Get lender's Dwolla info - use business account if this is a business loan
+    let lenderDwollaInfo: any = null;
+    
+    if (loan.business_lender_id) {
+      // This is a business lender - use business Dwolla info
+      const { data: businessProfile } = await serviceSupabase
+        .from('business_profiles')
+        .select('*')
+        .eq('id', loan.business_lender_id)
+        .single();
+      
+      if (!businessProfile?.dwolla_funding_source_url) {
+        return NextResponse.json({ 
+          error: 'Please connect your business bank account first. Go to Business Settings to connect.' 
+        }, { status: 400 });
+      }
+      
+      lenderDwollaInfo = businessProfile;
+      console.log('[Fund] Using business Dwolla info for business lender:', loan.business_lender_id);
+    } else {
+      // This is a personal lender - use personal Dwolla info
+      const { data: lenderProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+      
+      if (!lenderProfile?.dwolla_funding_source_url) {
+        return NextResponse.json({ error: 'Please connect your bank account first' }, { status: 400 });
+      }
+      
+      lenderDwollaInfo = lenderProfile;
+      console.log('[Fund] Using personal Dwolla info for personal lender:', user.id);
     }
 
     // Get borrower's Dwolla info - check multiple sources
@@ -152,8 +176,9 @@ export async function POST(
     console.log('[Fund] Initiating ACH transfer:', {
       loanId,
       amount: loan.amount,
-      lenderFundingSource: lenderProfile.dwolla_funding_source_url,
+      lenderFundingSource: lenderDwollaInfo.dwolla_funding_source_url,
       borrowerFundingSource: borrowerDwollaFundingSource,
+      isBusinessLender: !!loan.business_lender_id,
     });
 
     // IDEMPOTENCY CHECK: Check if a disbursement transfer already exists for this loan
@@ -182,7 +207,7 @@ export async function POST(
 
     try {
       const result = await createFacilitatedTransfer({
-        sourceFundingSourceUrl: lenderProfile.dwolla_funding_source_url,
+        sourceFundingSourceUrl: lenderDwollaInfo.dwolla_funding_source_url,
         destinationFundingSourceUrl: borrowerDwollaFundingSource,
         amount: loan.amount,
         currency: 'USD',
@@ -237,13 +262,13 @@ export async function POST(
         lender_signed_at: new Date().toISOString(),
         disbursement_status: 'processing',
         disbursement_transfer_id: transferIds[transferIds.length - 1],
-        // Update lender info if not already set
-        lender_dwolla_customer_url: lenderProfile.dwolla_customer_url,
-        lender_dwolla_customer_id: lenderProfile.dwolla_customer_id,
-        lender_dwolla_funding_source_url: lenderProfile.dwolla_funding_source_url,
-        lender_dwolla_funding_source_id: lenderProfile.dwolla_funding_source_id,
-        lender_bank_name: lenderProfile.bank_name,
-        lender_bank_account_mask: lenderProfile.bank_account_mask,
+        // Update lender info with correct Dwolla info (business or personal)
+        lender_dwolla_customer_url: lenderDwollaInfo.dwolla_customer_url,
+        lender_dwolla_customer_id: lenderDwollaInfo.dwolla_customer_id,
+        lender_dwolla_funding_source_url: lenderDwollaInfo.dwolla_funding_source_url,
+        lender_dwolla_funding_source_id: lenderDwollaInfo.dwolla_funding_source_id,
+        lender_bank_name: lenderDwollaInfo.bank_name,
+        lender_bank_account_mask: lenderDwollaInfo.bank_account_mask,
         lender_bank_connected: true,
       })
       .eq('id', loanId);
@@ -253,7 +278,11 @@ export async function POST(
       // Transfer already initiated, so don't fail completely
     }
 
-    const lenderName = lenderProfile.full_name || loan.business_lender?.business_name || 'Your lender';
+    // FIXED: Use lenderDwollaInfo instead of lenderProfile
+    const lenderName = lenderDwollaInfo?.full_name || 
+                       lenderDwollaInfo?.business_name || 
+                       loan.business_lender?.business_name || 
+                       'Your lender';
     const borrowerName = loan.borrower?.full_name || 'the borrower';
     const borrowerEmail = loan.borrower?.email;
 

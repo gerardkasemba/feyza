@@ -2269,15 +2269,42 @@ export default function LoanDetailPage() {
                       const totalToPay = feeCalc ? feeCalc.grossAmount : nextPayment.amount;
                       const platformFee = feeCalc?.platformFee || 0;
                       
-                      // Get lender payment info - check both business_lender and personal lender
+                      // Get lender payment info
+                      // CRITICAL: For business loans, ONLY use business payment methods (no fallback to personal)
                       const lenderProfile = loan.business_lender as any;
                       const personalLender = loan.lender as any;
                       
-                      const cashappUsername = lenderProfile?.cashapp_username || personalLender?.cashapp_username;
-                      const venmoUsername = lenderProfile?.venmo_username || personalLender?.venmo_username;
-                      const zelleEmail = lenderProfile?.zelle_email || personalLender?.zelle_email;
-                      const paypalEmail = lenderProfile?.paypal_email || personalLender?.paypal_email;
-                      const preferredMethod = lenderProfile?.preferred_payment_method || personalLender?.preferred_payment_method;
+                      // Determine payment source
+                      const paymentSource = loan.business_lender_id ? 'business' : 'personal';
+                      
+                      // Get payment methods from correct source (NO FALLBACK!)
+                      let cashappUsername: string | null = null;
+                      let venmoUsername: string | null = null;
+                      let zelleEmail: string | null = null;
+                      let zellePhone: string | null = null;
+                      let zelleName: string | null = null;
+                      let paypalEmail: string | null = null;
+                      let preferredMethod: string | null = null;
+                      
+                      if (paymentSource === 'business' && lenderProfile) {
+                        // Business loan - use ONLY business payment methods
+                        cashappUsername = lenderProfile.cashapp_username;
+                        venmoUsername = lenderProfile.venmo_username;
+                        zelleEmail = lenderProfile.zelle_email;
+                        zellePhone = lenderProfile.zelle_phone;
+                        zelleName = lenderProfile.zelle_name || lenderProfile.business_name;
+                        paypalEmail = lenderProfile.paypal_email;
+                        preferredMethod = lenderProfile.preferred_payment_method;
+                      } else if (paymentSource === 'personal' && personalLender) {
+                        // Personal loan - use personal payment methods
+                        cashappUsername = personalLender.cashapp_username;
+                        venmoUsername = personalLender.venmo_username;
+                        zelleEmail = personalLender.zelle_email;
+                        zellePhone = personalLender.zelle_phone;
+                        zelleName = personalLender.full_name;
+                        paypalEmail = personalLender.paypal_email;
+                        preferredMethod = personalLender.preferred_payment_method;
+                      }
                       
                       // Clean usernames - remove $ or @ prefix if present
                       const cleanCashapp = cashappUsername?.replace(/^\$/, '').trim();
@@ -2290,7 +2317,13 @@ export default function LoanDetailPage() {
                       const amount = Number(totalToPay || 0);
                       const formattedAmount = Number.isFinite(amount) ? amount.toFixed(2) : '0.00';
                       
-                      const hasAnyMethod = !!cleanCashapp || !!cleanVenmo || !!zelleEmail || !!paypalEmail;
+                      // Zelle display - show email OR phone, plus name
+                      const zelleDisplay = zelleEmail || zellePhone;
+                      const zelleDetails = zelleEmail && zellePhone 
+                        ? `${zelleEmail} or ${zellePhone}` 
+                        : zelleDisplay;
+                      
+                      const hasAnyMethod = !!cleanCashapp || !!cleanVenmo || !!zelleDisplay || !!paypalEmail;
                       
                       // Payment methods config with proper deep links
                       const paymentMethods = [
@@ -2325,9 +2358,10 @@ export default function LoanDetailPage() {
                         {
                           key: 'zelle',
                           name: 'Zelle',
-                          available: !!zelleEmail,
-                          username: zelleEmail,
-                          displayName: zelleEmail,
+                          available: !!zelleDisplay,
+                          username: zelleDisplay,
+                          displayName: zelleDetails,
+                          recipientName: zelleName,
                           url: null, // Zelle doesn't have web links
                           emoji: '🏦',
                           colors: {
@@ -2350,14 +2384,14 @@ export default function LoanDetailPage() {
                         },
                       ];
                       
-                      // Sort to put preferred method first
-                      const sortedMethods = [...paymentMethods].sort((a, b) => {
-                        if (a.key === preferredMethod) return -1;
-                        if (b.key === preferredMethod) return 1;
-                        return 0;
-                      });
+                      // Filter to show ONLY the preferred method (or first available if no preference set)
+                      const preferredMethodObj = preferredMethod 
+                        ? paymentMethods.find(m => m.key === preferredMethod && m.available)
+                        : null;
                       
-                      const availableMethods = sortedMethods.filter(m => m.available);
+                      const availableMethods = preferredMethodObj 
+                        ? [preferredMethodObj]  // Show only preferred method
+                        : paymentMethods.filter(m => m.available).slice(0, 1);  // Show first available if no preference
                       
                       return (
                         <div className="mt-4 space-y-4">
@@ -2422,13 +2456,13 @@ export default function LoanDetailPage() {
                                     );
                                   }
                                   
-                                  // Zelle - no link, show info card
+                                  // Zelle - no link, show info card with name verification
                                   return (
                                     <div
                                       key={method.key}
-                                      className={`flex items-center justify-between px-4 py-4 rounded-xl font-medium border ${colorClass}`}
+                                      className={`px-4 py-4 rounded-xl border ${colorClass}`}
                                     >
-                                      <div className="flex items-center gap-3 min-w-0">
+                                      <div className="flex items-center gap-3 mb-3">
                                         <span className="text-2xl flex-shrink-0">{method.emoji}</span>
                                         <div className="min-w-0 flex-1">
                                           <div className="flex items-center gap-2 flex-wrap">
@@ -2439,14 +2473,27 @@ export default function LoanDetailPage() {
                                               </span>
                                             )}
                                           </div>
-                                          <span className={`text-sm truncate block ${isPreferred ? 'opacity-90' : 'opacity-70'}`}>
-                                            {method.displayName}
+                                          <span className={`text-sm font-bold block ${isPreferred ? 'opacity-90' : 'opacity-70'}`}>
+                                            {formatCurrency(totalToPay, loan.currency)}
                                           </span>
                                         </div>
                                       </div>
-                                      <div className="text-right flex-shrink-0">
-                                        <span className="font-bold text-base block">{formatCurrency(totalToPay, loan.currency)}</span>
-                                        <span className={`text-[10px] ${isPreferred ? 'opacity-80' : 'opacity-60'}`}>Open your bank app</span>
+                                      
+                                      {/* Zelle recipient details */}
+                                      <div className={`text-sm space-y-1 ${isPreferred ? 'opacity-90' : 'opacity-75'}`}>
+                                        <div className="flex items-start gap-2">
+                                          <span className="font-medium min-w-[60px]">Send to:</span>
+                                          <span className="font-mono text-xs break-all">{method.displayName}</span>
+                                        </div>
+                                        {method.recipientName && (
+                                          <div className="flex items-start gap-2">
+                                            <span className="font-medium min-w-[60px]">Name:</span>
+                                            <span className="font-semibold">{method.recipientName}</span>
+                                          </div>
+                                        )}
+                                        <p className={`text-xs mt-2 ${isPreferred ? 'opacity-70' : 'opacity-60'}`}>
+                                          Open your bank app and verify the name matches before sending
+                                        </p>
                                       </div>
                                     </div>
                                   );

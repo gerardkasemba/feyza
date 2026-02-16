@@ -539,21 +539,42 @@ export class TrustScoreService {
    * Record a trust score event
    */
   async recordEvent(userId: string, event: TrustScoreEvent): Promise<void> {
-    await this.supabase.from('trust_score_events').insert({
-      user_id: userId,
-      event_type: event.event_type,
-      score_impact: event.score_impact,
-      title: event.title,
-      description: event.description,
-      loan_id: event.loan_id,
-      payment_id: event.payment_id,
-      other_user_id: event.other_user_id,
-      vouch_id: event.vouch_id,
-      metadata: event.metadata || {},
-    });
+    console.log(`[TrustScore] Recording event for user ${userId}:`, event.event_type, event.score_impact);
+    
+    try {
+      const { error: insertError } = await this.supabase.from('trust_score_events').insert({
+        user_id: userId,
+        event_type: event.event_type,
+        score_impact: event.score_impact,
+        title: event.title,
+        description: event.description,
+        loan_id: event.loan_id,
+        payment_id: event.payment_id,
+        other_user_id: event.other_user_id,
+        vouch_id: event.vouch_id,
+        metadata: event.metadata || {},
+      });
 
-    // Recalculate score after event
-    await this.recalculate(userId);
+      if (insertError) {
+        console.error('[TrustScore] ❌ Failed to insert event:', insertError);
+        throw insertError;
+      }
+
+      console.log('[TrustScore] ✅ Event recorded successfully');
+
+      // Recalculate score after event
+      console.log('[TrustScore] Triggering recalculation...');
+      await this.recalculate(userId);
+    } catch (error: any) {
+      console.error('[TrustScore] ❌ Error in recordEvent:', error);
+      console.error('[TrustScore] Error details:', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
+      throw error;
+    }
   }
 
   /**

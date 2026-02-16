@@ -156,6 +156,8 @@ function BusinessSettingsContent() {
   const [cashappUsername, setCashappUsername] = useState('');
   const [venmoUsername, setVenmoUsername] = useState('');
   const [zelleEmail, setZelleEmail] = useState('');
+  const [zellePhone, setZellePhone] = useState('');
+  const [zelleName, setZelleName] = useState('');
   const [preferredPaymentMethod, setPreferredPaymentMethod] = useState('');
   const [savingPaymentMethods, setSavingPaymentMethods] = useState(false);
 
@@ -253,6 +255,8 @@ function BusinessSettingsContent() {
     setCashappUsername(businessData.cashapp_username || '');
     setVenmoUsername(businessData.venmo_username || '');
     setZelleEmail(businessData.zelle_email || '');
+    setZellePhone(businessData.zelle_phone || '');
+    setZelleName(businessData.zelle_name || businessData.business_name || '');
     setPreferredPaymentMethod(businessData.preferred_payment_method || '');
 
     setLoading(false);
@@ -311,6 +315,8 @@ function BusinessSettingsContent() {
           cashapp_username: cashappUsername || null,
           venmo_username: venmoUsername || null,
           zelle_email: zelleEmail || null,
+          zelle_phone: zellePhone || null,
+          zelle_name: zelleName || null,
           preferred_payment_method: preferredPaymentMethod || null,
         })
         .eq('id', business.id);
@@ -1022,16 +1028,83 @@ function BusinessSettingsContent() {
                                 onChange={(e) => setVenmoUsername(e.target.value)}
                               />
                             </div>
-                            <div>
-                              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                                Zelle Email/Phone
-                              </label>
-                              <Input 
-                                placeholder="email@example.com or phone"
-                                value={zelleEmail}
-                                onChange={(e) => setZelleEmail(e.target.value)}
-                              />
+                          </div>
+
+                          {/* Zelle Section - Expanded with Phone and Name */}
+                          <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4 mt-4">
+                            <div className="flex items-center gap-2 mb-3">
+                              <h4 className="font-medium text-neutral-900 dark:text-white">Zelle</h4>
+                              <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
+                                Requires Name
+                              </span>
                             </div>
+                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">
+                              Provide email OR phone number, plus your business name for verification
+                            </p>
+                            
+                            <div className="grid md:grid-cols-2 gap-4">
+                              {/* Zelle Email */}
+                              <div>
+                                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                  Zelle Email
+                                </label>
+                                <Input 
+                                  type="email"
+                                  placeholder="business@example.com"
+                                  value={zelleEmail}
+                                  onChange={(e) => setZelleEmail(e.target.value)}
+                                />
+                              </div>
+
+                              {/* Zelle Phone */}
+                              <div>
+                                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                  Zelle Phone <span className="text-neutral-400">(alternative to email)</span>
+                                </label>
+                                <Input 
+                                  type="tel"
+                                  placeholder="+1 (555) 123-4567"
+                                  value={zellePhone}
+                                  onChange={(e) => setZellePhone(e.target.value)}
+                                />
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                                  Include country code (e.g., +1 for US)
+                                </p>
+                              </div>
+
+                              {/* Zelle Name */}
+                              <div className="md:col-span-2">
+                                <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                  Business Name for Zelle <span className="text-red-500">*</span>
+                                </label>
+                                <Input 
+                                  placeholder="My Business LLC"
+                                  value={zelleName}
+                                  onChange={(e) => setZelleName(e.target.value)}
+                                />
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                                  This name will be shown to borrowers for verification. Use your legal business name.
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Zelle Preview */}
+                            {(zelleEmail || zellePhone) && zelleName && (
+                              <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                                <p className="text-xs font-medium text-blue-900 dark:text-blue-300 mb-1">
+                                  Borrowers will see:
+                                </p>
+                                <div className="bg-white dark:bg-neutral-900 border rounded p-2 text-sm">
+                                  <p className="font-medium">🏦 Zelle</p>
+                                  <p className="text-neutral-600 dark:text-neutral-400">
+                                    Send to: <strong>{zelleEmail || zellePhone}</strong>
+                                  </p>
+                                  <p className="text-neutral-600 dark:text-neutral-400">
+                                    Name: <strong>{zelleName}</strong>
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                           </div>
 
                           <div>

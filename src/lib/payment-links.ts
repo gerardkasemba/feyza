@@ -103,9 +103,16 @@ export function getOpenAppLabel(providerSlug: string): string {
 /**
  * Get instructions for manual payment methods
  */
-export function getManualPaymentInstructions(providerSlug: string, identifier: string): string {
+export function getManualPaymentInstructions(
+  providerSlug: string, 
+  identifier: string,
+  recipientName?: string
+): string {
   switch (providerSlug.toLowerCase()) {
     case 'zelle':
+      if (recipientName) {
+        return `Send payment via Zelle to: ${identifier} (Name: ${recipientName}). Open your banking app and look for Zelle in the menu.`;
+      }
       return `Send payment via Zelle to: ${identifier}. Open your banking app and look for Zelle in the menu.`;
     case 'mpesa':
     case 'm-pesa':

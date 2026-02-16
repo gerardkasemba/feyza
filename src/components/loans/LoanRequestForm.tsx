@@ -268,6 +268,10 @@ export function LoanRequestForm({
     comfortLevel: ComfortLevel;
   } | null>(null);
   const [loadingFinancialProfile, setLoadingFinancialProfile] = useState(true);
+
+  // Payment provider state (check if Dwolla is enabled)
+  const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
+  const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
   const [selectedComfortLevel, setSelectedComfortLevel] = useState<ComfortLevel>('balanced');
 
   const { register, setValue, watch, getValues } = useForm<LoanRequestFormData>({
@@ -437,7 +441,23 @@ export function LoanRequestForm({
       }
     };
 
+    const checkPaymentProviders = async () => {
+      try {
+        const response = await fetch('/api/payment-methods?country=US&type=disbursement');
+        if (response.ok) {
+          const data = await response.json();
+          const dwollaEnabled = (data.providers || []).some((p: any) => p.slug === 'dwolla');
+          setIsDwollaEnabled(dwollaEnabled);
+        }
+      } catch (error) {
+        console.error('Failed to check payment providers:', error);
+      } finally {
+        setLoadingPaymentProviders(false);
+      }
+    };
+
     fetchBorrowingLimits();
+    checkPaymentProviders();
   }, []);
 
   useEffect(() => {
@@ -658,6 +678,15 @@ export function LoanRequestForm({
 
   const goToNextStep = (nextStep: number) => {
     setStepError(null);
+
+    // Skip step 4 (bank transfer) if Dwolla is disabled (manual payment mode)
+    if (step === 3 && nextStep === 4 && !isDwollaEnabled) {
+      // Skip directly to step 5 (review)
+      if (validateStep3()) {
+        setStep(5);
+      }
+      return;
+    }
 
     let isValid = true;
     if (step === 1) isValid = validateStep1();
@@ -1597,8 +1626,8 @@ export function LoanRequestForm({
         </div>
       )}
 
-      {/* STEP 4 */}
-      {step === 4 && (
+      {/* STEP 4 - Only show if Dwolla is enabled */}
+      {step === 4 && isDwollaEnabled && (
         <div className="space-y-4">
           <BackButton onClick={() => { setStep(3); setStepError(null); }} />
 
@@ -1624,7 +1653,11 @@ export function LoanRequestForm({
       {/* STEP 5 */}
       {step === 5 && (
         <div className="space-y-4">
-          <BackButton onClick={() => { setStep(4); setStepError(null); setSubmitError(null); }} />
+          <BackButton onClick={() => { 
+            setStep(isDwollaEnabled ? 4 : 3); // Go back to step 3 if manual payment, step 4 if Dwolla
+            setStepError(null); 
+            setSubmitError(null); 
+          }} />
 
           <SectionHeader title="Review & sign" subtitle="Confirm the terms before submitting." />
 

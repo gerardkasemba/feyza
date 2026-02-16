@@ -64,17 +64,27 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
 
     console.log(`[PaymentHandler] Days from due: ${daysFromDue} (negative = early)`);
 
-    // Record payment event for trust score
-    await trustService.onPaymentMade(
-      borrowerId,
-      loanId,
-      paymentId || scheduleId || 'unknown',
-      amount,  // Payment amount
-      daysFromDue
-    );
-
-    trustScoreUpdated = true;
-    console.log(`[PaymentHandler] ✅ Trust score updated for borrower ${borrowerId}`);
+    // Record payment event for trust score with error handling
+    try {
+      await trustService.onPaymentMade(
+        borrowerId,
+        loanId,
+        paymentId || scheduleId || 'unknown',
+        amount,  // Payment amount
+        daysFromDue
+      );
+      trustScoreUpdated = true;
+      console.log(`[PaymentHandler] ✅ Trust score updated for borrower ${borrowerId}`);
+    } catch (trustError: any) {
+      console.error(`[PaymentHandler] ❌ Failed to update trust score:`, trustError);
+      console.error(`[PaymentHandler] Trust error details:`, {
+        message: trustError.message,
+        code: trustError.code,
+        details: trustError.details,
+        hint: trustError.hint,
+      });
+      // Don't fail the payment, but log the error clearly
+    }
 
     // Update user payment stats
     try {
@@ -184,11 +194,12 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
               const interest = Number(fullLoan.total_interest) || 0;
               const totalReturn = principal + interest;
 
-              // Release reserved capital
+              // Release reserved capital (reduce reserved by principal)
               const newReserved = Math.max(0, (lenderPref.capital_reserved || 0) - principal);
 
-              // Increase capital pool with principal + interest earned
-              const newPool = (lenderPref.capital_pool || 0) + totalReturn;
+              // FIXED: Only add the INTEREST to the pool, not the principal
+              // The principal was already in the pool or reserved, we're just earning interest on top
+              const newPool = (lenderPref.capital_pool || 0) + interest;
 
               // Update lender preference
               await supabase
@@ -240,11 +251,18 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
 
         // Update borrowing tier
         try {
+          console.log(`[PaymentHandler] Checking tier upgrade for user ${borrowerId}...`);
+          
           const { data: userStats } = await supabase
             .from('users')
             .select('borrowing_tier, loans_at_current_tier, total_loans_completed')
             .eq('id', borrowerId)
             .single();
+
+          if (!userStats) {
+            console.error(`[PaymentHandler] ❌ Could not fetch user stats for tier update`);
+            throw new Error('User stats not found');
+          }
 
           const currentTier = userStats?.borrowing_tier || 1;
           const loansAtTier = (userStats?.loans_at_current_tier || 0) + 1;
@@ -258,19 +276,31 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
           if (loansAtTier >= 3 && currentTier < 6) {
             tierUpdate.borrowing_tier = currentTier + 1;
             tierUpdate.loans_at_current_tier = 0;
-            console.log(`[PaymentHandler] 🎖️ User ${borrowerId} upgraded to tier ${currentTier + 1}`);
+            console.log(`[PaymentHandler] 🎖️ User ${borrowerId} upgraded from tier ${currentTier} to tier ${currentTier + 1}!`);
           } else {
             tierUpdate.loans_at_current_tier = loansAtTier;
+            console.log(`[PaymentHandler] User ${borrowerId} progress: ${loansAtTier}/3 loans at tier ${currentTier}`);
           }
 
-          await supabase
+          const { error: tierUpdateError } = await supabase
             .from('users')
             .update(tierUpdate)
             .eq('id', borrowerId);
 
+          if (tierUpdateError) {
+            console.error(`[PaymentHandler] ❌ Failed to update borrowing tier:`, tierUpdateError);
+            throw tierUpdateError;
+          }
+
           console.log(`[PaymentHandler] ✅ Borrowing tier updated:`, tierUpdate);
-        } catch (tierError) {
-          console.error(`[PaymentHandler] Failed to update borrowing tier:`, tierError);
+        } catch (tierError: any) {
+          console.error(`[PaymentHandler] ❌ Borrowing tier update failed:`, tierError);
+          console.error(`[PaymentHandler] Tier error details:`, {
+            message: tierError.message,
+            code: tierError.code,
+            details: tierError.details,
+          });
+          // Don't fail the payment if tier update fails
         }
       }
     }

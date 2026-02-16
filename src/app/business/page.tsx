@@ -7,6 +7,7 @@ import { StatsCard } from '@/components/dashboard';
 import { LoanCard } from '@/components/loans';
 import { PendingLoanCard } from '@/components/business/PendingLoanCard';
 import { LendingTermsCard } from '@/components/business/LendingTermsCard';
+import { PaymentMissingBanner } from '@/components/business/PaymentMissingBanner';
 // Import the real-time wrapper
 import { BusinessDashboardClient } from '@/components/realtime/RealtimePageWrapper';
 import { formatCurrency } from '@/lib/utils';
@@ -22,7 +23,8 @@ import {
   CreditCard,
   Zap,
   Target,
-  ArrowRight
+  ArrowRight,
+  BarChart3
 } from 'lucide-react';
 import { BusinessLoanTypesCard } from '@/components/business/BusinessLoanTypesCard';
 
@@ -72,7 +74,7 @@ export default async function BusinessPage() {
       .order('created_at', { ascending: false }),
     supabase
       .from('lender_preferences')
-      .select('id, is_active, capital_pool, min_amount, max_amount, interest_rate')
+      .select('id, is_active, capital_pool, capital_reserved, min_amount, max_amount, interest_rate')
       .eq('business_id', businessProfile.id)
       .single(),
     supabase
@@ -132,6 +134,15 @@ export default async function BusinessPage() {
   const totalLent = activeLoans.reduce((sum, l) => sum + (l.amount || 0), 0);
   const totalCollected = activeLoans.reduce((sum, l) => sum + (l.amount_paid || 0), 0);
 
+  // Calculate capital pool status
+  const lenderPrefs = prefsResult.data;
+  const capitalPool = Number(lenderPrefs?.capital_pool || 0);
+  const capitalReserved = Number(lenderPrefs?.capital_reserved || 0);
+  const capitalAvailable = capitalPool - capitalReserved;
+  const capitalStatus = capitalAvailable >= 0 
+    ? (capitalAvailable > 100 ? '🟢 GOOD' : '🟡 LOW')
+    : '🔴 FROZEN';
+
   // Return the page wrapped with real-time functionality
   return (
     <BusinessDashboardClient userId={user.id}>
@@ -174,6 +185,12 @@ export default async function BusinessPage() {
               </div>
             )}
 
+            {/* Payment Method Missing Banner */}
+            <PaymentMissingBanner 
+              businessProfile={businessProfile} 
+              isDwollaEnabled={isDwollaEnabled}
+            />
+
             {/* Auto-Match Setup Prompt */}
             {!isProfileIncomplete && !hasLenderPrefs && (
               <div className="mb-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 dark:from-yellow-900/20 dark:to-orange-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl">
@@ -198,80 +215,401 @@ export default async function BusinessPage() {
               </div>
             )}
 
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center overflow-hidden">
-                  {businessProfile.logo_url ? (
-                    <img src={businessProfile.logo_url} alt={businessProfile.business_name} className="w-full h-full object-cover" />
-                  ) : (
-                    <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-                  )}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
-                      {businessProfile.business_name}
-                    </h1>
-                    {businessProfile.is_verified && (
-                      <Badge variant="success" size="sm">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Verified
-                      </Badge>
-                    )}
-                    {businessProfile.verification_status === 'pending' && (
-                      <Badge variant="warning" size="sm">
-                        <Clock className="w-3 h-3 mr-1" />
-                        Pending
-                      </Badge>
+            {/* Header - App-style mobile + Desktop layout */}
+            <div className="mb-8">
+              {/* Mobile (app-like) */}
+              <div className="md:hidden">
+                {/* Top row: logo + name + quick status */}
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center overflow-hidden shrink-0">
+                    {businessProfile.logo_url ? (
+                      <img
+                        src={businessProfile.logo_url}
+                        alt={businessProfile.business_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Building2 className="w-7 h-7 text-primary-600 dark:text-primary-400" />
                     )}
                   </div>
-                  <p className="text-neutral-500 dark:text-neutral-400">{businessProfile.business_type}</p>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h1 className="text-xl font-display font-bold text-neutral-900 dark:text-white truncate">
+                        {businessProfile.business_name}
+                      </h1>
+
+                      {/* Status chips (avoid overflowing) */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {businessProfile.is_verified && (
+                          <Badge variant="success" size="sm">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Verified
+                          </Badge>
+                        )}
+                        {businessProfile.verification_status === 'pending' && (
+                          <Badge variant="warning" size="sm">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Pending
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
+                      {businessProfile.business_type}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions: horizontal scroll like an app */}
+                <div className="-mx-4 px-4 mt-4">
+                  <div
+                    className="
+                      flex gap-2 overflow-x-auto pb-2
+                      snap-x snap-mandatory
+                      [-webkit-overflow-scrolling:touch]
+                    "
+                  >
+                    <div className="snap-start shrink-0">
+                      <Link href="/business/analytics">
+                        <Button
+                          variant="outline"
+                          className="
+                            h-11 px-4 rounded-2xl
+                            border-primary-500 text-primary-600 hover:bg-primary-50
+                            dark:border-primary-400 dark:text-primary-400 dark:hover:bg-primary-900/20
+                          "
+                        >
+                          <BarChart3 className="w-4 h-4 mr-2" />
+                          Analytics
+                        </Button>
+                      </Link>
+                    </div>
+
+                    <div className="snap-start shrink-0">
+                      <Link href="/lender/preferences">
+                        <Button
+                          className="
+                            h-11 px-4 rounded-2xl
+                            bg-gradient-to-r from-yellow-500 to-orange-500
+                            hover:from-yellow-600 hover:to-orange-600
+                          "
+                        >
+                          <Zap className="w-4 h-4 mr-2" />
+                          Auto-Match
+                        </Button>
+                      </Link>
+                    </div>
+
+                    <div className="snap-start shrink-0">
+                      <Link href="/business/settings">
+                        <Button variant="outline" className="h-11 px-4 rounded-2xl">
+                          <Settings className="w-4 h-4 mr-2" />
+                          Settings
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+
+                  {/* Optional scroll hint */}
+                  <div className="flex justify-center mt-1">
+                    <div className="h-1.5 w-10 rounded-full bg-neutral-200 dark:bg-neutral-800" />
+                  </div>
                 </div>
               </div>
-              <div className="flex gap-3">
-                <Link href="/lender/preferences">
-                  <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600">
-                    <Zap className="w-4 h-4 mr-2" />
-                    Auto-Match Settings
-                  </Button>
-                </Link>
-                <Link href="/business/settings">
-                  <Button variant="outline">
-                    <Settings className="w-4 h-4 mr-2" />
-                    Business Settings
-                  </Button>
-                </Link>
+
+              {/* Desktop / Tablet */}
+              <div className="hidden md:flex md:items-center md:justify-between gap-4">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center overflow-hidden shrink-0">
+                    {businessProfile.logo_url ? (
+                      <img
+                        src={businessProfile.logo_url}
+                        alt={businessProfile.business_name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white truncate">
+                        {businessProfile.business_name}
+                      </h1>
+
+                      {businessProfile.is_verified && (
+                        <Badge variant="success" size="sm">
+                          <CheckCircle className="w-3 h-3 mr-1" />
+                          Verified
+                        </Badge>
+                      )}
+
+                      {businessProfile.verification_status === 'pending' && (
+                        <Badge variant="warning" size="sm">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Pending
+                        </Badge>
+                      )}
+                    </div>
+
+                    <p className="text-neutral-500 dark:text-neutral-400">{businessProfile.business_type}</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-3">
+                  <Link href="/business/analytics">
+                    <Button
+                      variant="outline"
+                      className="border-primary-500 text-primary-600 hover:bg-primary-50 dark:border-primary-400 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                    >
+                      <BarChart3 className="w-4 h-4 mr-2" />
+                      Analytics
+                    </Button>
+                  </Link>
+
+                  <Link href="/lender/preferences">
+                    <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600">
+                      <Zap className="w-4 h-4 mr-2" />
+                      Auto-Match Settings
+                    </Button>
+                  </Link>
+
+                  <Link href="/business/settings">
+                    <Button variant="outline">
+                      <Settings className="w-4 h-4 mr-2" />
+                      Business Settings
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
 
-            {/* Stats - These will automatically update when data refreshes */}
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-              <StatsCard
-                title="Total Lent"
-                value={formatCurrency(totalLent)}
-                subtitle="Active loans"
-                icon={DollarSign}
-              />
-              <StatsCard
-                title="Collected"
-                value={formatCurrency(totalCollected)}
-                subtitle="Repayments received"
-                icon={TrendingUp}
-              />
-              <StatsCard
-                title="Active Borrowers"
-                value={activeLoans.length}
-                subtitle="Current loans"
-                icon={Users}
-              />
-              <StatsCard
-                title="Pending Matches"
-                value={pendingMatches.length}
-                subtitle={pendingMatches.length > 0 ? "Action needed!" : "No matches"}
-                icon={Target}
-                highlight={pendingMatches.length > 0}
-              />
+            {/* Stats - Mobile app style + Desktop grid */}
+            <div className="mb-8">
+              {/* Mobile: horizontal snap carousel */}
+              <div className="sm:hidden -mx-4 px-4">
+                <div
+                  className="
+                    flex gap-3 overflow-x-auto pb-3
+                    snap-x snap-mandatory
+                    [-webkit-overflow-scrolling:touch]
+                  "
+                >
+                  {/* Capital Pool Status */}
+                  <div className="snap-start shrink-0 w-[85%]">
+                    <Card
+                      className={`p-4 rounded-2xl ${
+                        capitalAvailable < 0
+                          ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                          : capitalAvailable < 100
+                          ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800'
+                          : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between mb-3">
+                        <div
+                          className={`w-11 h-11 rounded-2xl flex items-center justify-center ${
+                            capitalAvailable < 0
+                              ? 'bg-red-100 dark:bg-red-900/30'
+                              : capitalAvailable < 100
+                              ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                              : 'bg-green-100 dark:bg-green-900/30'
+                          }`}
+                        >
+                          <DollarSign
+                            className={`w-5 h-5 ${
+                              capitalAvailable < 0
+                                ? 'text-red-600 dark:text-red-400'
+                                : capitalAvailable < 100
+                                ? 'text-yellow-600 dark:text-yellow-400'
+                                : 'text-green-600 dark:text-green-400'
+                            }`}
+                          />
+                        </div>
+
+                        <Badge
+                          variant={capitalAvailable < 0 ? 'danger' : capitalAvailable < 100 ? 'warning' : 'success'}
+                          size="sm"
+                        >
+                          {capitalStatus}
+                        </Badge>
+                      </div>
+
+                      <div>
+                        <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                          Capital Available
+                        </div>
+                        <div
+                          className={`text-2xl font-bold tracking-tight ${
+                            capitalAvailable < 0
+                              ? 'text-red-700 dark:text-red-300'
+                              : capitalAvailable < 100
+                              ? 'text-yellow-700 dark:text-yellow-300'
+                              : 'text-green-700 dark:text-green-300'
+                          }`}
+                        >
+                          {formatCurrency(capitalAvailable)}
+                        </div>
+
+                        <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+                          Pool: {formatCurrency(capitalPool)} · Reserved: {formatCurrency(capitalReserved)}
+                        </div>
+
+                        {capitalAvailable < 0 && (
+                          <Link href="/lender/preferences" className="block mt-3">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full text-xs border-red-300 text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-xl"
+                            >
+                              <AlertCircle className="w-3 h-3 mr-1" />
+                              Recharge Pool
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Stat cards (mobile: bigger, app-like) */}
+                  <div className="snap-start shrink-0 w-[72%]">
+                    <StatsCard
+                      title="Total Lent"
+                      value={formatCurrency(totalLent)}
+                      subtitle="Active loans"
+                      icon={DollarSign}
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="snap-start shrink-0 w-[72%]">
+                    <StatsCard
+                      title="Collected"
+                      value={formatCurrency(totalCollected)}
+                      subtitle="Repayments received"
+                      icon={TrendingUp}
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="snap-start shrink-0 w-[72%]">
+                    <StatsCard
+                      title="Active Borrowers"
+                      value={activeLoans.length}
+                      subtitle="Current loans"
+                      icon={Users}
+                      className="rounded-2xl"
+                    />
+                  </div>
+
+                  <div className="snap-start shrink-0 w-[72%]">
+                    <StatsCard
+                      title="Pending Matches"
+                      value={pendingMatches.length}
+                      subtitle={pendingMatches.length > 0 ? 'Action needed!' : 'No matches'}
+                      icon={Target}
+                      highlight={pendingMatches.length > 0}
+                      className="rounded-2xl"
+                    />
+                  </div>
+                </div>
+
+                {/* Optional: subtle scroll hint */}
+                <div className="flex justify-center mt-1">
+                  <div className="h-1.5 w-10 rounded-full bg-neutral-200 dark:bg-neutral-800" />
+                </div>
+              </div>
+
+              {/* Tablet/Desktop: grid layout */}
+              <div className="hidden sm:grid grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Capital Pool Status */}
+                <Card
+                  className={`p-4 ${
+                    capitalAvailable < 0
+                      ? 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'
+                      : capitalAvailable < 100
+                      ? 'bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-800'
+                      : 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                        capitalAvailable < 0
+                          ? 'bg-red-100 dark:bg-red-900/30'
+                          : capitalAvailable < 100
+                          ? 'bg-yellow-100 dark:bg-yellow-900/30'
+                          : 'bg-green-100 dark:bg-green-900/30'
+                      }`}
+                    >
+                      <DollarSign
+                        className={`w-5 h-5 ${
+                          capitalAvailable < 0
+                            ? 'text-red-600 dark:text-red-400'
+                            : capitalAvailable < 100
+                            ? 'text-yellow-600 dark:text-yellow-400'
+                            : 'text-green-600 dark:text-green-400'
+                        }`}
+                      />
+                    </div>
+
+                    <Badge
+                      variant={capitalAvailable < 0 ? 'danger' : capitalAvailable < 100 ? 'warning' : 'success'}
+                      size="sm"
+                    >
+                      {capitalStatus}
+                    </Badge>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
+                      Capital Available
+                    </div>
+                    <div
+                      className={`text-xl font-bold ${
+                        capitalAvailable < 0
+                          ? 'text-red-700 dark:text-red-300'
+                          : capitalAvailable < 100
+                          ? 'text-yellow-700 dark:text-yellow-300'
+                          : 'text-green-700 dark:text-green-300'
+                      }`}
+                    >
+                      {formatCurrency(capitalAvailable)}
+                    </div>
+
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                      Pool: {formatCurrency(capitalPool)} · Reserved: {formatCurrency(capitalReserved)}
+                    </div>
+
+                    {capitalAvailable < 0 && (
+                      <Link href="/lender/preferences">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="mt-2 text-xs border-red-300 text-red-700 hover:bg-red-100 dark:hover:bg-red-900/20"
+                        >
+                          <AlertCircle className="w-3 h-3 mr-1" />
+                          Recharge Pool
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </Card>
+
+                <StatsCard title="Total Lent" value={formatCurrency(totalLent)} subtitle="Active loans" icon={DollarSign} />
+                <StatsCard title="Collected" value={formatCurrency(totalCollected)} subtitle="Repayments received" icon={TrendingUp} />
+                <StatsCard title="Active Borrowers" value={activeLoans.length} subtitle="Current loans" icon={Users} />
+                <StatsCard
+                  title="Pending Matches"
+                  value={pendingMatches.length}
+                  subtitle={pendingMatches.length > 0 ? 'Action needed!' : 'No matches'}
+                  icon={Target}
+                  highlight={pendingMatches.length > 0}
+                />
+              </div>
             </div>
 
             {/* Loan Types & Terms */}

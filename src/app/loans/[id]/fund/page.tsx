@@ -58,6 +58,7 @@ export default function FundLoanPage() {
     slug: string;
     name: string;
     account_identifier: string;
+    account_name?: string; // Zelle: recipient's full name
   } | null>(null);
   const [loadingPreferredMethod, setLoadingPreferredMethod] = useState(false);
 
@@ -166,6 +167,7 @@ export default function FundLoanPage() {
           .from('user_payment_methods')
           .select(`
             account_identifier,
+            account_name,
             is_default,
             payment_provider_id (
               slug,
@@ -191,6 +193,7 @@ export default function FundLoanPage() {
             slug: provider.slug as string,
             name: provider.name as string,
             account_identifier: row.account_identifier as string,
+            account_name: (row.account_name as string) || undefined,
           });
           setSelectedApp(provider.slug as string);
         }
@@ -518,13 +521,18 @@ export default function FundLoanPage() {
                 </p>
 
                 {hasPreferredPaymentMethod ? (() => {
-                  const { slug, name, account_identifier } = preferredPaymentMethod!;
+                  const { slug, name, account_identifier, account_name } = preferredPaymentMethod!;
                   const display = getProviderDisplay(slug);
                   const cleanIdentifier = account_identifier
                     .replace(/^\$/, '')
                     .replace(/^@/, '');
                   const displayIdentifier = `${display.prefix}${cleanIdentifier}`;
                   const paymentLink = display.getLink?.(loan.amount, cleanIdentifier);
+
+                  // Zelle: pull full contact info from borrower profile (legacy fields)
+                  const zelleEmail = slug === 'zelle' ? (borrower?.zelle_email || null) : null;
+                  const zellePhone = slug === 'zelle' ? (borrower?.zelle_phone || null) : null;
+                  const zelleName = slug === 'zelle' ? (account_name || borrower?.full_name || null) : null;
 
                   return (
                     <>
@@ -539,12 +547,56 @@ export default function FundLoanPage() {
                           </div>
                           <div className="flex-1">
                             <p className="font-semibold text-neutral-900 dark:text-white">{name}</p>
-                            <p className="text-sm text-neutral-500">{displayIdentifier}</p>
+                            {slug !== 'zelle' && (
+                              <p className="text-sm text-neutral-500">{displayIdentifier}</p>
+                            )}
                           </div>
                           <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full">
                             Preferred
                           </span>
                         </div>
+
+                        {/* Zelle: show full contact details */}
+                        {slug === 'zelle' && (
+                          <div className="mt-3 p-3 bg-[#6D1ED4]/10 dark:bg-[#6D1ED4]/20 rounded-lg border border-[#6D1ED4]/30 space-y-2">
+                            {zelleName && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#6D1ED4] uppercase tracking-wide">Name</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-neutral-900 dark:text-white">{zelleName}</span>
+                                  <button onClick={() => copyToClipboard(zelleName, 'zelle-name')} className="p-1 hover:bg-[#6D1ED4]/20 rounded">
+                                    {copied === 'zelle-name' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-[#6D1ED4]" />}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {zelleEmail && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#6D1ED4] uppercase tracking-wide">Email</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{zelleEmail}</span>
+                                  <button onClick={() => copyToClipboard(zelleEmail, 'zelle-email')} className="p-1 hover:bg-[#6D1ED4]/20 rounded">
+                                    {copied === 'zelle-email' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-[#6D1ED4]" />}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {zellePhone && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold text-[#6D1ED4] uppercase tracking-wide">Phone</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono text-sm text-neutral-800 dark:text-neutral-200">{zellePhone}</span>
+                                  <button onClick={() => copyToClipboard(zellePhone, 'zelle-phone')} className="p-1 hover:bg-[#6D1ED4]/20 rounded">
+                                    {copied === 'zelle-phone' ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3 text-[#6D1ED4]" />}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            <p className="text-xs text-[#6D1ED4]/70 pt-1 border-t border-[#6D1ED4]/20">
+                              Open your bank app → verify name matches → send via Zelle
+                            </p>
+                          </div>
+                        )}
 
                         {/* Amount to send */}
                         <div className="mt-3 p-3 bg-white dark:bg-neutral-800 rounded-lg border border-primary-200 dark:border-primary-700">
@@ -554,31 +606,33 @@ export default function FundLoanPage() {
                           </p>
                         </div>
 
-                        {/* Copy identifier + open app */}
-                        <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => copyToClipboard(displayIdentifier, 'identifier')}
-                            className="flex-1 flex items-center justify-center gap-2 py-2 px-3 border border-neutral-200 dark:border-neutral-600 rounded-lg text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
-                          >
-                            {copied === 'identifier'
-                              ? <><Check className="w-4 h-4 text-green-500" /> Copied!</>
-                              : <><Copy className="w-4 h-4 text-neutral-400" /> Copy {name} ID</>
-                            }
-                          </button>
-
-                          {paymentLink && (
+                        {/* Copy identifier (non-Zelle) + open app */}
+                        {slug !== 'zelle' && (
+                          <div className="mt-3 flex gap-2">
                             <button
                               type="button"
-                              onClick={() => window.open(paymentLink, '_blank')}
-                              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm text-white transition"
-                              style={{ backgroundColor: display.color }}
+                              onClick={() => copyToClipboard(displayIdentifier, 'identifier')}
+                              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 border border-neutral-200 dark:border-neutral-600 rounded-lg text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
                             >
-                              <ExternalLink className="w-4 h-4" />
-                              Open {name}
+                              {copied === 'identifier'
+                                ? <><Check className="w-4 h-4 text-green-500" /> Copied!</>
+                                : <><Copy className="w-4 h-4 text-neutral-400" /> Copy {name} ID</>
+                              }
                             </button>
-                          )}
-                        </div>
+
+                            {paymentLink && (
+                              <button
+                                type="button"
+                                onClick={() => window.open(paymentLink, '_blank')}
+                                className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm text-white transition"
+                                style={{ backgroundColor: display.color }}
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                                Open {name}
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       {/* Transaction Reference */}

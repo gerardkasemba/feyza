@@ -312,7 +312,17 @@ export default function LoanDetailPage() {
       .select(
         `
         *,
-        borrower:users!borrower_id(*),
+        borrower:users!borrower_id(
+          *,
+          payment_methods:user_payment_methods(
+            id,
+            account_identifier,
+            account_name,
+            is_active,
+            is_default,
+            payment_provider:payment_providers(id, name, slug)
+          )
+        ),
         lender:users!lender_id(*),
         business_lender:business_profiles!business_lender_id(*),
         guest_lender:guest_lenders!guest_lender_id(*)
@@ -372,7 +382,17 @@ export default function LoanDetailPage() {
         .select(
           `
           *,
-          borrower:users!borrower_id(*),
+          borrower:users!borrower_id(
+            *,
+            payment_methods:user_payment_methods(
+              id,
+              account_identifier,
+              account_name,
+              is_active,
+              is_default,
+              payment_provider:payment_providers(id, name, slug)
+            )
+          ),
           lender:users!lender_id(*),
           business_lender:business_profiles!business_lender_id(*),
           guest_lender:guest_lenders!guest_lender_id(*)
@@ -1622,7 +1642,7 @@ export default function LoanDetailPage() {
                     const borrowerBankName = (loan as any).borrower_bank_name || (loan.borrower as any)?.bank_name;
                     const borrowerBankMask = (loan as any).borrower_bank_account_mask || (loan.borrower as any)?.bank_account_mask;
 
-                    if (borrowerBankConnected) {
+                    if (isDwollaEnabled && borrowerBankConnected) {
                       return (
                         <div className="mb-4">
                           <div className="bg-green-100 dark:bg-green-900/30 border border-green-300 dark:border-green-700 rounded-xl p-4">
@@ -1653,102 +1673,150 @@ export default function LoanDetailPage() {
                       );
                     }
 
-                    // Fallback to legacy payment methods if no bank connected
-                    const borrower = loan.borrower as any;
-                    const hasLegacyMethod = borrower?.paypal_email || borrower?.cashapp_username || borrower?.venmo_username;
+                    // Fallback to manual payment methods if no bank connected
+                      const borrower = loan.borrower as any;
 
-                    if (hasLegacyMethod) {
-                      const preferred = borrower?.preferred_payment_method;
-                      let methodToShow = preferred;
-                      if (!methodToShow) {
-                        if (borrower?.paypal_email) methodToShow = 'paypal';
-                        else if (borrower?.cashapp_username) methodToShow = 'cashapp';
-                        else if (borrower?.venmo_username) methodToShow = 'venmo';
-                      }
+                      // Check for payment methods in new table OR legacy fields
+                      const paymentMethods = borrower?.payment_methods || [];
+                      const hasNewMethod = paymentMethods.some((m: any) => m.is_active && ['paypal', 'cashapp', 'venmo', 'zelle'].includes(m.payment_provider?.slug));
+                      const hasLegacyMethod = borrower?.paypal_email || borrower?.cashapp_username || borrower?.venmo_username || borrower?.zelle_email || borrower?.zelle_phone;
 
-                      const methodConfigs: Record<
-                        string,
-                        {
+                      if (hasNewMethod || hasLegacyMethod) {
+                        // Prefer default method from new table, fall back to preferred_payment_method or first available
+                        let methodToShow: string | null = null;  // <-- Changed from undefined to null
+                        let methodData: any = null;
+
+                        if (hasNewMethod) {
+                          const defaultMethod = paymentMethods.find((m: any) => m.is_default && m.is_active);
+                          const firstActive = paymentMethods.find((m: any) => m.is_active);
+                          const selectedMethod = defaultMethod || firstActive;
+
+                          if (selectedMethod?.payment_provider?.slug) {
+                            methodToShow = selectedMethod.payment_provider.slug;
+                            methodData = selectedMethod;
+                          }
+                        }
+
+                        if (!methodToShow) {
+                          // Fall back to legacy fields
+                          const preferred = borrower?.preferred_payment_method;
+                          methodToShow = preferred || null;
+                          if (!methodToShow) {
+                            if (borrower?.paypal_email) methodToShow = 'paypal';
+                            else if (borrower?.cashapp_username) methodToShow = 'cashapp';
+                            else if (borrower?.venmo_username) methodToShow = 'venmo';
+                            else if (borrower?.zelle_email || borrower?.zelle_phone) methodToShow = 'zelle';
+                          }
+                        }
+
+                        // Define method configs with proper typing
+                        const methodConfigs: Record<string, {
                           bg: string;
                           icon: React.ReactNode;
                           name: string;
                           value: string | undefined;
+                          accountName?: string;
                           getLink: (amount: number) => string;
-                        }
-                      > = {
-                        paypal: {
-                          bg: 'bg-[#0070ba] dark:bg-[#003087]',
-                          icon: <CreditCard className="w-6 h-6 text-white" />,
-                          name: 'PayPal',
-                          value: borrower?.paypal_email,
-                          getLink: (amount) => {
-                            const handle = borrower?.paypal_email?.includes('@') 
-                              ? borrower?.paypal_email?.split('@')[0] 
-                              : borrower?.paypal_email;
-                            return `https://paypal.me/${handle}/${amount.toFixed(2)}`;
+                        }> = {
+                          paypal: {
+                            bg: 'bg-[#0070ba] dark:bg-[#003087]',
+                            icon: <CreditCard className="w-6 h-6 text-white" />,
+                            name: 'PayPal',
+                            value: methodData?.account_identifier || borrower?.paypal_email,
+                            getLink: (amount) => {
+                              const handle = borrower?.paypal_email?.includes('@')
+                                ? borrower?.paypal_email?.split('@')[0]
+                                : borrower?.paypal_email;
+                              return `https://paypal.me/${handle}/${amount.toFixed(2)}`;
+                            },
                           },
-                        },
-                        cashapp: {
-                          bg: 'bg-[#00D632] dark:bg-[#00A826]',
-                          icon: <span className="text-white font-bold text-2xl">$</span>,
-                          name: 'Cash App',
-                          value: borrower?.cashapp_username,
-                          getLink: (amount) => {
-                            const cashtag = borrower?.cashapp_username?.replace(/^\$/, '').trim();
-                            return `https://cash.app/$${cashtag}/${amount.toFixed(2)}`;
+                          cashapp: {
+                            bg: 'bg-[#00D632] dark:bg-[#00A826]',
+                            icon: <span className="text-white font-bold text-2xl">$</span>,
+                            name: 'Cash App',
+                            value: methodData?.account_identifier || borrower?.cashapp_username,
+                            getLink: (amount) => {
+                              const cashtag = borrower?.cashapp_username?.replace(/^\$/, '').trim();
+                              return `https://cash.app/$${cashtag}/${amount.toFixed(2)}`;
+                            },
                           },
-                        },
-                        venmo: {
-                          bg: 'bg-[#3D95CE] dark:bg-[#2a6a9a]',
-                          icon: <span className="text-white font-bold text-2xl">V</span>,
-                          name: 'Venmo',
-                          value: borrower?.venmo_username,
-                          getLink: (amount) => {
-                            const username = borrower?.venmo_username?.replace(/^@/, '').trim();
-                            const note = encodeURIComponent(`Loan Disbursement - ${loan.purpose || 'Feyza'}`);
-                            return `https://venmo.com/${username}?txn=pay&amount=${amount.toFixed(2)}&note=${note}`;
+                          venmo: {
+                            bg: 'bg-[#3D95CE] dark:bg-[#2a6a9a]',
+                            icon: <span className="text-white font-bold text-2xl">V</span>,
+                            name: 'Venmo',
+                            value: methodData?.account_identifier || borrower?.venmo_username,
+                            getLink: (amount) => {
+                              const username = borrower?.venmo_username?.replace(/^@/, '').trim();
+                              const note = encodeURIComponent(`Loan Disbursement - ${loan.purpose || 'Feyza'}`);
+                              return `https://venmo.com/${username}?txn=pay&amount=${amount.toFixed(2)}&note=${note}`;
+                            },
                           },
-                        },
-                      };
+                          zelle: {
+                            bg: 'bg-[#6D1ED4]',
+                            icon: <span className="text-white font-bold text-2xl">Z</span>,
+                            name: 'Zelle',
+                            value: methodData?.account_identifier || borrower?.zelle_email || borrower?.zelle_phone,
+                            accountName: methodData?.account_name,
+                            getLink: (_amount) => '', // Zelle has no web link
+                          },
+                        };
 
-                      const config = methodConfigs[methodToShow];
-                      if (config && config.value) {
-                        return (
-                          <>
-                            <div className="mb-4">
-                              <div className={`${config.bg} rounded-xl p-4 text-white`}>
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-4">
-                                    <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
-                                      {config.icon}
-                                    </div>
-                                    <div>
-                                      <p className="text-white/80 text-sm">Send via {config.name}</p>
-                                      <p className="font-bold text-xl">{config.value}</p>
+                        // Only proceed if we have a valid method
+                        if (methodToShow && methodConfigs[methodToShow]) {
+                          const config = methodConfigs[methodToShow];
+                          if (config && config.value) {
+                            return (
+                              <>
+                                <div className="mb-4">
+                                  <div className={`${config.bg} rounded-xl p-4 text-white`}>
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-4">
+                                        <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center">
+                                          {config.icon}
+                                        </div>
+                                        <div>
+                                          <p className="text-white/80 text-sm">Send via {config.name}</p>
+                                          <p className="font-bold text-xl">{config.value}</p>
+                                        </div>
+                                      </div>
+                                      {config.getLink(loan.amount) ? (
+                                        <a
+                                          href={config.getLink(loan.amount)}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="px-6 py-3 bg-white text-neutral-900 rounded-lg font-semibold hover:bg-neutral-100 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors flex items-center gap-2"
+                                        >
+                                          Open {config.name} <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                      ) : (
+                                        <div className="text-white/80 text-xs text-right">
+                                          {methodToShow === 'zelle' && config.accountName && (
+                                            <div className="font-semibold mb-1">{config.accountName}</div>
+                                          )}
+                                          {methodToShow === 'zelle' && (borrower?.zelle_email || methodData?.account_identifier?.includes?.('@')) && (
+                                            <div className="mb-0.5">📧 {borrower?.zelle_email || methodData?.account_identifier}</div>
+                                          )}
+                                          {methodToShow === 'zelle' && borrower?.zelle_phone && (
+                                            <div className="mb-1">📱 {borrower.zelle_phone}</div>
+                                          )}
+                                          <div className="text-[10px] opacity-70">Open your bank app</div>
+                                        </div>
+                                      )}
                                     </div>
                                   </div>
-                                  <a
-                                    href={config.getLink(loan.amount)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="px-6 py-3 bg-white text-neutral-900 rounded-lg font-semibold hover:bg-neutral-100 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors flex items-center gap-2"
-                                  >
-                                    Open {config.name} <ExternalLink className="w-4 h-4" />
-                                  </a>
                                 </div>
-                              </div>
-                            </div>
-                            <Button
-                              onClick={() => setShowFundsModal(true)}
-                              className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
-                            >
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              I've Sent the Payment - Upload Proof
-                            </Button>
-                          </>
-                        );
+                                <Button
+                                  onClick={() => setShowFundsModal(true)}
+                                  className="w-full bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  I've Sent the Payment - Upload Proof
+                                </Button>
+                              </>
+                            );
+                          }
+                        }
                       }
-                    }
 
                     // No payment method available
                     return (

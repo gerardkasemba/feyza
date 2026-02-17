@@ -85,6 +85,12 @@ export default function UserPaymentMethodsSettings({
   const [selectedProvider, setSelectedProvider] = useState<PaymentProvider | null>(null);
   const [newIdentifier, setNewIdentifier] = useState('');
 
+  // Zelle-specific multi-field state (email, phone, name)
+  const [zelleFields, setZelleFields] = useState({ email: '', phone: '', name: '' });
+  const [zelleEditFields, setZelleEditFields] = useState({ email: '', phone: '', name: '' });
+  // Zelle secondary contact info from users table (to display alongside account_identifier)
+  const [userZelleInfo, setUserZelleInfo] = useState<{ zelle_email: string | null; zelle_phone: string | null } | null>(null);
+
   useEffect(() => {
     fetchData();
 
@@ -189,6 +195,16 @@ export default function UserPaymentMethodsSettings({
       );
 
       setUserMethods(filteredMethods);
+
+      // For Zelle display: also fetch both contact fields from users table
+      if (filteredMethods.some((m: any) => m.payment_provider?.slug === 'zelle')) {
+        const { data: zelleUserData } = await supabase
+          .from('users')
+          .select('zelle_email, zelle_phone')
+          .eq('id', userId)
+          .single();
+        if (zelleUserData) setUserZelleInfo(zelleUserData);
+      }
     } catch (err: any) {
       console.error('Error fetching payment methods:', err);
       setError(err?.message || 'Failed to load payment methods');
@@ -199,6 +215,93 @@ export default function UserPaymentMethodsSettings({
 
   const getIcon = (iconName: string) => {
     return ICON_MAP[iconName] || CreditCard;
+  };
+
+
+  // ── Zelle multi-field save ─────────────────────────────────────────
+  const saveZelleMethod = async (
+    fields: { email: string; phone: string; name: string },
+    existingMethodId?: string
+  ) => {
+    const primary = fields.email.trim() || fields.phone.trim();
+    if (!primary) { setError('Please enter a Zelle email or phone'); return; }
+    if (!fields.name.trim()) { setError('Please enter a name for Zelle'); return; }
+
+    const zelleProvider = providers.find(p => p.slug === 'zelle');
+    if (!zelleProvider) return;
+
+    setSaving(zelleProvider.id);
+    setError(null);
+
+    try {
+      if (existingMethodId) {
+        const { error } = await supabase
+          .from('user_payment_methods')
+          .update({
+            account_identifier: primary,
+            account_name: fields.name.trim(),
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingMethodId);
+        if (error) throw error;
+      } else {
+        const { data: existing } = await supabase
+          .from('user_payment_methods')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('payment_provider_id', zelleProvider.id)
+          .maybeSingle();
+
+        if (existing) {
+          const { error } = await supabase
+            .from('user_payment_methods')
+            .update({
+              account_identifier: primary,
+              account_name: fields.name.trim(),
+              is_active: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', existing.id);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('user_payment_methods')
+            .insert({
+              user_id: userId,
+              payment_provider_id: zelleProvider.id,
+              account_identifier: primary,
+              account_name: fields.name.trim(),
+              is_active: true,
+              is_default: userMethods.length === 0,
+            });
+          if (error) throw error;
+        }
+      }
+
+      // Sync legacy fields
+      const { error: legacyError } = await supabase
+        .from('users')
+        .update({
+          zelle_email: fields.email.trim() || null,
+          zelle_phone: fields.phone.trim() || null,
+        })
+        .eq('id', userId);
+      if (legacyError) console.error('[Zelle] Legacy sync error:', legacyError);
+
+      await fetchData();
+      setEditingMethod(null);
+      setZelleFields({ email: '', phone: '', name: '' });
+      setZelleEditFields({ email: '', phone: '', name: '' });
+      setShowAddNew(false);
+      setSelectedProvider(null);
+      onUpdate?.();
+    } catch (err: any) {
+      console.error('Error saving Zelle method:', err);
+      setError(err?.message || 'Failed to save Zelle');
+    } finally {
+      setSaving(null);
+    }
   };
 
   const saveMethod = async (providerId: string, identifier: string, existingMethodId?: string) => {
@@ -500,33 +603,95 @@ export default function UserPaymentMethodsSettings({
                     </div>
                     
                     {isEditing ? (
-                      <div className="flex items-center gap-2 mt-1">
-                        <Input
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          placeholder={provider.account_identifier_placeholder || ''}
-                          className="text-sm h-8"
-                          autoFocus
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => saveMethod(provider.id, editValue, method.id)}
-                          disabled={isSaving}
-                        >
-                          {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setEditingMethod(null)}
-                        >
-                          <X className="w-3 h-3" />
-                        </Button>
-                      </div>
+                      provider.slug === 'zelle' ? (
+                        <div className="mt-2 space-y-2">
+                          <Input
+                            value={zelleEditFields.name}
+                            onChange={(e) => setZelleEditFields(f => ({ ...f, name: e.target.value }))}
+                            placeholder="Your full name"
+                            className="text-sm h-8"
+                            autoFocus
+                          />
+                          <Input
+                            value={zelleEditFields.email}
+                            onChange={(e) => setZelleEditFields(f => ({ ...f, email: e.target.value }))}
+                            placeholder="Email address"
+                            type="email"
+                            className="text-sm h-8"
+                          />
+                          <Input
+                            value={zelleEditFields.phone}
+                            onChange={(e) => setZelleEditFields(f => ({ ...f, phone: e.target.value }))}
+                            placeholder="Phone number"
+                            type="tel"
+                            className="text-sm h-8"
+                          />
+                          <p className="text-xs text-neutral-400">Email OR phone required</p>
+                          <div className="flex gap-2">
+                            <Button size="sm" onClick={() => saveZelleMethod(zelleEditFields, method.id)} disabled={isSaving}>
+                              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setEditingMethod(null)}>
+                              <X className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 mt-1">
+                          <Input
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            placeholder={provider.account_identifier_placeholder || ''}
+                            className="text-sm h-8"
+                            autoFocus
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => saveMethod(provider.id, editValue, method.id)}
+                            disabled={isSaving}
+                          >
+                            {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setEditingMethod(null)}
+                          >
+                            <X className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      )
                     ) : (
-                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                        {method.account_identifier}
-                      </p>
+                      <div>
+                        {provider.slug === 'zelle' ? (
+                          <div className="space-y-0.5">
+                            {method.account_name && (
+                              <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                                {method.account_name}
+                              </p>
+                            )}
+                            {(userZelleInfo?.zelle_email || method.account_identifier?.includes('@')) && (
+                              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                                📧 {userZelleInfo?.zelle_email || method.account_identifier}
+                              </p>
+                            )}
+                            {userZelleInfo?.zelle_phone && (
+                              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                                📱 {userZelleInfo.zelle_phone}
+                              </p>
+                            )}
+                            {!userZelleInfo?.zelle_email && !userZelleInfo?.zelle_phone && (
+                              <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                                {method.account_identifier}
+                              </p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                            {method.account_identifier}
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -549,6 +714,14 @@ export default function UserPaymentMethodsSettings({
                       onClick={() => {
                         setEditingMethod(method.id);
                         setEditValue(method.account_identifier);
+                        if (provider.slug === 'zelle') {
+                          const isEmail = method.account_identifier.includes('@');
+                          setZelleEditFields({
+                            email: isEmail ? method.account_identifier : '',
+                            phone: !isEmail ? method.account_identifier : '',
+                            name: method.account_name || '',
+                          });
+                        }
                       }}
                     >
                       <Edit2 className="w-4 h-4" />
@@ -629,17 +802,49 @@ export default function UserPaymentMethodsSettings({
               </div>
 
               <div className="space-y-3">
-                <Input
-                  value={newIdentifier}
-                  onChange={(e) => setNewIdentifier(e.target.value)}
-                  placeholder={selectedProvider.account_identifier_placeholder || ''}
-                  autoFocus
-                />
-
-                {selectedProvider.instructions && (
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {selectedProvider.instructions.split('\n')[0]}
-                  </p>
+                {selectedProvider.slug === 'zelle' ? (
+                  <>
+                    <Input
+                      value={zelleFields.name}
+                      onChange={(e) => setZelleFields(f => ({ ...f, name: e.target.value }))}
+                      placeholder="Your full name (required)"
+                      autoFocus
+                    />
+                    <Input
+                      value={zelleFields.email}
+                      onChange={(e) => setZelleFields(f => ({ ...f, email: e.target.value }))}
+                      placeholder="Email address"
+                      type="email"
+                    />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+                      <span className="text-xs text-neutral-400">OR</span>
+                      <div className="flex-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+                    </div>
+                    <Input
+                      value={zelleFields.phone}
+                      onChange={(e) => setZelleFields(f => ({ ...f, phone: e.target.value }))}
+                      placeholder="Phone number"
+                      type="tel"
+                    />
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      Name is required. Provide email OR phone so borrowers can send payments.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Input
+                      value={newIdentifier}
+                      onChange={(e) => setNewIdentifier(e.target.value)}
+                      placeholder={selectedProvider.account_identifier_placeholder || ''}
+                      autoFocus
+                    />
+                    {selectedProvider.instructions && (
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                        {selectedProvider.instructions.split('\n')[0]}
+                      </p>
+                    )}
+                  </>
                 )}
 
                 <div className="flex gap-2">
@@ -647,6 +852,7 @@ export default function UserPaymentMethodsSettings({
                     variant="outline"
                     onClick={() => {
                       setSelectedProvider(null);
+                      setZelleFields({ email: '', phone: '', name: '' });
                       setShowAddNew(userMethods.length > 0 ? false : true);
                     }}
                     className="flex-1"
@@ -654,8 +860,16 @@ export default function UserPaymentMethodsSettings({
                     Cancel
                   </Button>
                   <Button
-                    onClick={() => saveMethod(selectedProvider.id, newIdentifier)}
-                    disabled={!newIdentifier.trim() || saving === selectedProvider.id}
+                    onClick={() => selectedProvider.slug === 'zelle'
+                      ? saveZelleMethod(zelleFields)
+                      : saveMethod(selectedProvider.id, newIdentifier)
+                    }
+                    disabled={
+                      saving === selectedProvider.id ||
+                      (selectedProvider.slug === 'zelle'
+                        ? !zelleFields.name.trim() || (!zelleFields.email.trim() && !zelleFields.phone.trim())
+                        : !newIdentifier.trim())
+                    }
                     className="flex-1"
                   >
                     {saving === selectedProvider.id ? (

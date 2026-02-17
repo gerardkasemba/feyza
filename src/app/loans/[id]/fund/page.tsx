@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Navbar } from '@/components/layout';
@@ -28,63 +28,6 @@ import {
   X,
 } from 'lucide-react';
 
-// Payment app configuration
-type PaymentAppKey = 'cashapp' | 'venmo' | 'zelle' | 'paypal';
-
-interface PaymentApp {
-  id: PaymentAppKey;
-  name: string;
-  color: string;
-  bgColor: string;
-  textColor: string;
-  icon: string;
-  usernamePrefix: string;
-  getLink: (amount: number, username: string) => string;
-}
-
-const PAYMENT_APPS: Record<PaymentAppKey, PaymentApp> = {
-  cashapp: {
-    id: 'cashapp',
-    name: 'Cash App',
-    color: '#00D632',
-    bgColor: 'bg-[#00D632]',
-    textColor: 'text-white',
-    icon: '$',
-    usernamePrefix: '$',
-    getLink: (amount, username) => `https://cash.app/${username}/${amount}`,
-  },
-  venmo: {
-    id: 'venmo',
-    name: 'Venmo',
-    color: '#008CFF',
-    bgColor: 'bg-[#008CFF]',
-    textColor: 'text-white',
-    icon: 'V',
-    usernamePrefix: '@',
-    getLink: (amount, username) => `https://venmo.com/${username}?txn=pay&amount=${amount}`,
-  },
-  zelle: {
-    id: 'zelle',
-    name: 'Zelle',
-    color: '#6D1ED4',
-    bgColor: 'bg-[#6D1ED4]',
-    textColor: 'text-white',
-    icon: 'Z',
-    usernamePrefix: '',
-    getLink: () => 'zelle://transfer',
-  },
-  paypal: {
-    id: 'paypal',
-    name: 'PayPal',
-    color: '#003087',
-    bgColor: 'bg-[#003087]',
-    textColor: 'text-white',
-    icon: 'P',
-    usernamePrefix: '',
-    getLink: (amount, username) => `https://paypal.me/${username}/${amount}`,
-  },
-};
-
 export default function FundLoanPage() {
   const params = useParams();
   const router = useRouter();
@@ -109,6 +52,14 @@ export default function FundLoanPage() {
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [confirmManualSent, setConfirmManualSent] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
+
+  // Borrower's preferred payment method (from user_payment_methods table)
+  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<{
+    slug: string;
+    name: string;
+    account_identifier: string;
+  } | null>(null);
+  const [loadingPreferredMethod, setLoadingPreferredMethod] = useState(false);
 
   // Check payment providers
   useEffect(() => {
@@ -202,40 +153,56 @@ export default function FundLoanPage() {
     fetchData();
   }, [loanId, router]);
 
-  // Get borrower's payment methods
-  const getBorrowerPaymentMethods = useCallback(() => {
-    if (!loan?.borrower) return [];
-    
-    const methods: { app: PaymentApp; username: string }[] = [];
-    const borrower = loan.borrower;
-    
-    if (borrower.cashapp_username) {
-      methods.push({ 
-        app: PAYMENT_APPS.cashapp, 
-        username: borrower.cashapp_username.replace(/^\$/, '') 
-      });
-    }
-    if (borrower.venmo_username) {
-      methods.push({ 
-        app: PAYMENT_APPS.venmo, 
-        username: borrower.venmo_username.replace(/^@/, '') 
-      });
-    }
-    if (borrower.zelle_email) {
-      methods.push({ 
-        app: PAYMENT_APPS.zelle, 
-        username: borrower.zelle_email 
-      });
-    }
-    if (borrower.paypal_email) {
-      methods.push({ 
-        app: PAYMENT_APPS.paypal, 
-        username: borrower.paypal_email 
-      });
-    }
-    
-    return methods;
-  }, [loan?.borrower]);
+  // Fetch borrower's preferred payment method from user_payment_methods table
+  useEffect(() => {
+    const fetchPreferredMethod = async () => {
+      if (!loan?.borrower?.id) return;
+
+      setLoadingPreferredMethod(true);
+      try {
+        const supabase = createClient();
+
+        const { data: methods } = await supabase
+          .from('user_payment_methods')
+          .select(`
+            account_identifier,
+            is_default,
+            payment_provider_id (
+              slug,
+              name,
+              is_enabled
+            )
+          `)
+          .eq('user_id', loan.borrower.id)
+          .eq('is_active', true)
+          .order('is_default', { ascending: false })
+          .limit(1);
+
+        const row = methods?.[0];
+        if (!row) return;
+
+        // Supabase returns the join as either an object or array depending on key type
+        // Normalise to a plain object safely
+        const providerRaw = row.payment_provider_id;
+        const provider = Array.isArray(providerRaw) ? providerRaw[0] : providerRaw;
+
+        if (provider?.is_enabled) {
+          setPreferredPaymentMethod({
+            slug: provider.slug as string,
+            name: provider.name as string,
+            account_identifier: row.account_identifier as string,
+          });
+          setSelectedApp(provider.slug as string);
+        }
+      } catch (err) {
+        console.error('Error fetching preferred payment method:', err);
+      } finally {
+        setLoadingPreferredMethod(false);
+      }
+    };
+
+    fetchPreferredMethod();
+  }, [loan?.borrower?.id]);
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
@@ -364,18 +331,8 @@ export default function FundLoanPage() {
     }
   };
 
-  const openPaymentApp = (app: PaymentApp, username: string) => {
-    const amount = loan?.amount || 0;
-    if (app.id === 'zelle') {
-      // Zelle doesn't have a web link, just select it
-      setSelectedApp(app.id);
-    } else {
-      window.open(app.getLink(amount, username), '_blank');
-    }
-    setSelectedApp(app.id);
-  };
 
-  if (isLoading || loadingProviders) {
+  if (isLoading || loadingProviders || loadingPreferredMethod) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
         <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
@@ -386,8 +343,18 @@ export default function FundLoanPage() {
   if (!loan) return null;
 
   const borrower = loan.borrower;
-  const borrowerPaymentMethods = getBorrowerPaymentMethods();
-  const hasPaymentMethods = borrowerPaymentMethods.length > 0;
+  const hasPreferredPaymentMethod = !!preferredPaymentMethod;
+
+  // Helper: get icon and display prefix for a payment provider slug
+  const getProviderDisplay = (slug: string) => {
+    const map: Record<string, { prefix: string; icon: string; color: string; getLink?: (amount: number, id: string) => string }> = {
+      cashapp: { prefix: '$', icon: '$', color: '#00D632', getLink: (a, u) => `https://cash.app/${u}/${a}` },
+      venmo:   { prefix: '@', icon: 'V', color: '#008CFF', getLink: (a, u) => `https://venmo.com/${u}?txn=pay&amount=${a}` },
+      zelle:   { prefix: '',  icon: 'Z', color: '#6D1ED4' },
+      paypal:  { prefix: '',  icon: 'P', color: '#003087', getLink: (a, u) => `https://paypal.me/${u}/${a}` },
+    };
+    return map[slug] ?? { prefix: '', icon: '?', color: '#888888' };
+  };
 
   const borrowerBankConnected = loan.borrower_bank_connected || loan.borrower_dwolla_funding_source_url || borrower?.dwolla_funding_source_url;
   const lenderBankConnected = user?.dwolla_funding_source_url;
@@ -547,90 +514,158 @@ export default function FundLoanPage() {
                 </h3>
 
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Choose how to send {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name}:
+                  Send {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name}'s preferred payment method:
                 </p>
 
-                {hasPaymentMethods ? (
-                  <>
-                    {/* Payment App Buttons */}
-                    <div className="grid grid-cols-2 gap-3">
-                      {borrowerPaymentMethods.map(({ app, username }) => (
-                        <button
-                          key={app.id}
-                          type="button"
-                          onClick={() => openPaymentApp(app, username)}
-                          className={`p-4 rounded-xl border-2 transition-all ${
-                            selectedApp === app.id 
-                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
-                              : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div 
-                              className={`w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold`}
-                              style={{ backgroundColor: app.color }}
-                            >
-                              {app.icon}
-                            </div>
-                            <div className="text-left">
-                              <p className="font-medium text-neutral-900 dark:text-white">{app.name}</p>
-                              <p className="text-xs text-neutral-500">{app.usernamePrefix}{username}</p>
-                            </div>
+                {hasPreferredPaymentMethod ? (() => {
+                  const { slug, name, account_identifier } = preferredPaymentMethod!;
+                  const display = getProviderDisplay(slug);
+                  const cleanIdentifier = account_identifier
+                    .replace(/^\$/, '')
+                    .replace(/^@/, '');
+                  const displayIdentifier = `${display.prefix}${cleanIdentifier}`;
+                  const paymentLink = display.getLink?.(loan.amount, cleanIdentifier);
+
+                  return (
+                    <>
+                      {/* Single preferred payment method card */}
+                      <div className="p-4 rounded-xl border-2 border-primary-500 bg-primary-50 dark:bg-primary-900/20">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-lg"
+                            style={{ backgroundColor: display.color }}
+                          >
+                            {display.icon}
                           </div>
-                          {selectedApp === app.id && (
-                            <div className="mt-2 flex items-center gap-1 text-xs text-primary-600">
-                              <CheckCircle className="w-3 h-3" /> Selected
-                            </div>
-                          )}
-                        </button>
-                      ))}
-                    </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-neutral-900 dark:text-white">{name}</p>
+                            <p className="text-sm text-neutral-500">{displayIdentifier}</p>
+                          </div>
+                          <span className="px-2 py-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full">
+                            Preferred
+                          </span>
+                        </div>
 
-                    {/* Amount to Send */}
-                    <div className="p-4 bg-primary-50 dark:bg-primary-900/20 rounded-xl border border-primary-200 dark:border-primary-800">
-                      <p className="text-sm text-primary-700 dark:text-primary-300 font-medium mb-1">Amount to Send:</p>
-                      <p className="text-2xl font-bold text-primary-600">
-                        {formatCurrency(loan.amount, loan.currency)}
-                      </p>
-                    </div>
-
-                    {/* Copy Username */}
-                    {selectedApp && (
-                      <div className="flex items-center justify-between p-3 bg-white dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700">
-                        <div>
-                          <p className="text-xs text-neutral-500">
-                            {PAYMENT_APPS[selectedApp as PaymentAppKey]?.name} Username
-                          </p>
-                          <p className="font-medium text-neutral-900 dark:text-white">
-                            {PAYMENT_APPS[selectedApp as PaymentAppKey]?.usernamePrefix}
-                            {borrowerPaymentMethods.find(m => m.app.id === selectedApp)?.username}
+                        {/* Amount to send */}
+                        <div className="mt-3 p-3 bg-white dark:bg-neutral-800 rounded-lg border border-primary-200 dark:border-primary-700">
+                          <p className="text-xs text-neutral-500 mb-0.5">Amount to Send</p>
+                          <p className="text-2xl font-bold text-primary-600">
+                            {formatCurrency(loan.amount, loan.currency)}
                           </p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const method = borrowerPaymentMethods.find(m => m.app.id === selectedApp);
-                            if (method) copyToClipboard(method.username, 'username');
-                          }}
-                          className="p-2 hover:bg-neutral-100 dark:hover:bg-neutral-700 rounded-lg"
-                        >
-                          {copied === 'username' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-neutral-400" />}
-                        </button>
+
+                        {/* Copy identifier + open app */}
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(displayIdentifier, 'identifier')}
+                            className="flex-1 flex items-center justify-center gap-2 py-2 px-3 border border-neutral-200 dark:border-neutral-600 rounded-lg text-sm hover:bg-neutral-50 dark:hover:bg-neutral-800 transition"
+                          >
+                            {copied === 'identifier'
+                              ? <><Check className="w-4 h-4 text-green-500" /> Copied!</>
+                              : <><Copy className="w-4 h-4 text-neutral-400" /> Copy {name} ID</>
+                            }
+                          </button>
+
+                          {paymentLink && (
+                            <button
+                              type="button"
+                              onClick={() => window.open(paymentLink, '_blank')}
+                              className="flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm text-white transition"
+                              style={{ backgroundColor: display.color }}
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              Open {name}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </>
-                ) : (
-                  /* No payment methods configured */
+
+                      {/* Transaction Reference */}
+                      <Input
+                        label="Transaction ID / Confirmation Number (optional)"
+                        placeholder={`e.g., ${name} confirmation number`}
+                        value={transactionRef}
+                        onChange={(e) => setTransactionRef(e.target.value)}
+                        className="bg-white dark:bg-neutral-800"
+                      />
+
+                      {/* Receipt Upload */}
+                      <div className="space-y-2">
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                          Payment Receipt / Screenshot <span className="text-red-500">*</span>
+                        </label>
+                        
+                        {receiptFile ? (
+                          <div className="relative border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
+                            <div className="flex items-center gap-3">
+                              {receiptPreview ? (
+                                <img src={receiptPreview} alt="Receipt" className="w-16 h-16 object-cover rounded-lg" />
+                              ) : (
+                                <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
+                                  <FileText className="w-8 h-8 text-green-600" />
+                                </div>
+                              )}
+                              <div className="flex-1">
+                                <p className="font-medium text-green-800 dark:text-green-300">{receiptFile.name}</p>
+                                <p className="text-sm text-green-600 dark:text-green-400">
+                                  {(receiptFile.size / 1024).toFixed(1)} KB
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={removeReceipt}
+                                className="p-2 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg"
+                              >
+                                <X className="w-5 h-5 text-green-600" />
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl cursor-pointer hover:border-primary-400 dark:hover:border-primary-500 transition-colors bg-neutral-50 dark:bg-neutral-800/50">
+                            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                              <Upload className="w-8 h-8 mb-2 text-neutral-400" />
+                              <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                                <span className="font-semibold text-primary-600">Click to upload</span> or drag and drop
+                              </p>
+                              <p className="text-xs text-neutral-400">PNG, JPG, PDF up to 10MB</p>
+                            </div>
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*,.pdf"
+                              onChange={handleReceiptUpload}
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Confirmation Checkbox */}
+                      <label className="flex items-start gap-3 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confirmManualSent}
+                          onChange={(e) => setConfirmManualSent(e.target.checked)}
+                          className="w-5 h-5 mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600"
+                        />
+                        <span className="text-sm text-neutral-700 dark:text-neutral-300">
+                          I confirm that I have sent {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name} via {name} ({displayIdentifier})
+                        </span>
+                      </label>
+                    </>
+                  );
+                })() : (
+                  /* No preferred payment method */
                   <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
                     <div className="flex items-start gap-3">
                       <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
                       <div>
                         <p className="font-medium text-amber-800 dark:text-amber-300">
-                          No payment methods set up
+                          No preferred payment method set
                         </p>
                         <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                          {borrower?.full_name} hasn't added their Cash App, Venmo, Zelle, or PayPal info yet. 
-                          Please contact them to get their payment details.
+                          {borrower?.full_name} hasn't set a preferred payment method yet.
+                          Please contact them to get their Cash App, Venmo, or Zelle details.
                         </p>
                         {borrower?.email && (
                           <div className="mt-3 flex items-center gap-2">
@@ -649,79 +684,6 @@ export default function FundLoanPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Transaction Reference */}
-                <Input
-                  label="Transaction ID / Confirmation Number (optional)"
-                  placeholder="e.g., Cash App confirmation number"
-                  value={transactionRef}
-                  onChange={(e) => setTransactionRef(e.target.value)}
-                  className="bg-white dark:bg-neutral-800"
-                />
-
-                {/* Receipt Upload */}
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                    Payment Receipt / Screenshot <span className="text-red-500">*</span>
-                  </label>
-                  
-                  {receiptFile ? (
-                    <div className="relative border-2 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-xl p-4">
-                      <div className="flex items-center gap-3">
-                        {receiptPreview ? (
-                          <img src={receiptPreview} alt="Receipt" className="w-16 h-16 object-cover rounded-lg" />
-                        ) : (
-                          <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center">
-                            <FileText className="w-8 h-8 text-green-600" />
-                          </div>
-                        )}
-                        <div className="flex-1">
-                          <p className="font-medium text-green-800 dark:text-green-300">{receiptFile.name}</p>
-                          <p className="text-sm text-green-600 dark:text-green-400">
-                            {(receiptFile.size / 1024).toFixed(1)} KB
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={removeReceipt}
-                          className="p-2 hover:bg-green-100 dark:hover:bg-green-900/30 rounded-lg"
-                        >
-                          <X className="w-5 h-5 text-green-600" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-neutral-300 dark:border-neutral-600 rounded-xl cursor-pointer hover:border-primary-400 dark:hover:border-primary-500 transition-colors bg-neutral-50 dark:bg-neutral-800/50">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <Upload className="w-8 h-8 mb-2 text-neutral-400" />
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          <span className="font-semibold text-primary-600">Click to upload</span> or drag and drop
-                        </p>
-                        <p className="text-xs text-neutral-400">PNG, JPG, PDF up to 10MB</p>
-                      </div>
-                      <input 
-                        type="file" 
-                        className="hidden" 
-                        accept="image/*,.pdf"
-                        onChange={handleReceiptUpload}
-                      />
-                    </label>
-                  )}
-                </div>
-
-                {/* Confirmation Checkbox */}
-                <label className="flex items-start gap-3 p-4 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={confirmManualSent}
-                    onChange={(e) => setConfirmManualSent(e.target.checked)}
-                    className="w-5 h-5 mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600"
-                  />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                    I confirm that I have sent {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name} 
-                    {selectedApp && ` via ${PAYMENT_APPS[selectedApp as PaymentAppKey]?.name}`}
-                  </span>
-                </label>
               </div>
             )}
 

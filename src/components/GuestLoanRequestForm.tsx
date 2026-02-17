@@ -241,6 +241,11 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
   const [country, setCountry] = useState('');
   const [addressDocumentType, setAddressDocumentType] = useState('');
 
+  // Guest payment method fields (for manual payments)
+  const [guestCashapp, setGuestCashapp] = useState('');
+  const [guestVenmo, setGuestVenmo] = useState('');
+  const [guestZelle, setGuestZelle] = useState('');
+
   // Business lender info for direct applications
   const [businessLenderInfo, setBusinessLenderInfo] = useState<any>(null);
   const [loadingBusinessInfo, setLoadingBusinessInfo] = useState(false);
@@ -1138,22 +1143,39 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
         if (lenderType === 'personal') {
           // GUEST PERSONAL LOAN - Create account and loan directly
           
-          // Step 2: Update user profile with bank info
-          await supabase.from('users').update({
+          // Update user profile with any payment info they provided
+          const userUpdate: any = {
             full_name: guestFullName,
             phone: guestPhone || null,
-            plaid_access_token: bankInfo?.plaid_access_token,
-            dwolla_customer_url: bankInfo?.dwolla_customer_url,
-            dwolla_customer_id: bankInfo?.dwolla_customer_id,
-            dwolla_funding_source_url: bankInfo?.dwolla_funding_source_url,
-            dwolla_funding_source_id: bankInfo?.dwolla_funding_source_id,
-            bank_name: bankInfo?.bank_name,
-            bank_account_mask: bankInfo?.account_mask,
-            bank_connected: !!bankInfo,
-            bank_connected_at: bankInfo ? new Date().toISOString() : null,
-          }).eq('id', newUserId);
+          };
 
-          // Step 3: Create the loan
+          // Add payment method fields if provided
+          if (guestCashapp) userUpdate.cashapp_username = guestCashapp;
+          if (guestVenmo) userUpdate.venmo_username = guestVenmo;
+          if (guestZelle) {
+            if (guestZelle.includes('@')) {
+              userUpdate.zelle_email = guestZelle;
+            } else {
+              userUpdate.zelle_phone = guestZelle;
+            }
+          }
+
+          // Add bank info if connected
+          if (bankInfo) {
+            userUpdate.plaid_access_token = bankInfo.plaid_access_token;
+            userUpdate.dwolla_customer_url = bankInfo.dwolla_customer_url;
+            userUpdate.dwolla_customer_id = bankInfo.dwolla_customer_id;
+            userUpdate.dwolla_funding_source_url = bankInfo.dwolla_funding_source_url;
+            userUpdate.dwolla_funding_source_id = bankInfo.dwolla_funding_source_id;
+            userUpdate.bank_name = bankInfo.bank_name;
+            userUpdate.bank_account_mask = bankInfo.account_mask;
+            userUpdate.bank_connected = !!bankInfo;
+            userUpdate.bank_connected_at = bankInfo ? new Date().toISOString() : null;
+          }
+
+          await supabase.from('users').update(userUpdate).eq('id', newUserId);
+
+          // Create the loan
           const loanData: any = {
             borrower_id: newUserId,
             lender_type: 'personal',
@@ -1173,7 +1195,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             repayment_amount: Math.round(calculatedRepaymentAmount * 100) / 100,
             total_installments: data.totalInstallments,
             start_date: data.startDate,
-            disbursement_method: 'bank_transfer',
+            disbursement_method: requiresBankConnection ? 'bank_transfer' : 'manual',
             borrower_signed: true,
             borrower_signed_at: new Date().toISOString(),
             status: 'pending',
@@ -1197,7 +1219,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           const { data: loan, error: loanError } = await supabase.from('loans').insert(loanData).select().single();
           if (loanError) throw loanError;
 
-          // Step 4: Create payment schedule
+          // Create payment schedule
           const scheduleItems = schedule.map((item) => ({
             loan_id: loan.id,
             due_date: toDateString(item.dueDate),
@@ -1208,7 +1230,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           }));
           await supabase.from('payment_schedule').insert(scheduleItems);
 
-          // Step 5: Create notification for borrower
+          // Create notification for borrower
           await supabase.from('notifications').insert({
             user_id: newUserId,
             type: 'loan_created',
@@ -1218,7 +1240,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             is_read: false,
           });
 
-          // Step 6: Send invite to lender
+          // Send invite to lender
           if (data.inviteEmail || data.invitePhone) {
             await fetch('/api/invite/send', {
               method: 'POST',
@@ -1434,11 +1456,27 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           </div>
 
           <div className="grid md:grid-cols-2 gap-4">
+            {/* Business Lender Card - FIXED */}
             <Card
               hover
-              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${isLoggedIn && (!bankConnected || user?.verification_status !== 'verified') ? 'opacity-50' : ''}`}
+              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${
+                isLoggedIn && requiresBankConnection && !bankConnected ? 'opacity-50' : 
+                isLoggedIn && user?.verification_status !== 'verified' ? 'opacity-50' : ''
+              }`}
               onClick={() => {
-                if (!isLoggedIn || (bankConnected && user?.verification_status === 'verified')) {
+                // For guests: always allow
+                if (!isLoggedIn) {
+                  setLenderType('business');
+                  setValue('lenderType', 'business');
+                  setStepError(null);
+                  return;
+                }
+                
+                // For logged-in users: check conditions
+                const bankConditionMet = !requiresBankConnection || bankConnected;
+                const verificationConditionMet = user?.verification_status === 'verified';
+                
+                if (bankConditionMet && verificationConditionMet) {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -1454,22 +1492,42 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   <Zap className="w-4 h-4 text-yellow-500" />
                 </div>
                 <p className="text-sm text-neutral-500">We'll instantly match you with the best lender</p>
+                {isLoggedIn && requiresBankConnection && !bankConnected && (
+                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
+                    <CreditCard className="w-3 h-3" /> Bank connection required
+                  </p>
+                )}
                 {isLoggedIn && user?.verification_status !== 'verified' && (
                   <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
-                    <Shield className="w-3 h-3" /> Requires verification
+                    <Shield className="w-3 h-3" /> Verification required
                   </p>
                 )}
               </div>
             </Card>
 
+            {/* Personal Lender Card - FIXED */}
             <Card
               hover
-              className={`cursor-pointer transition-all ${lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''}`}
+              className={`cursor-pointer transition-all ${lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${
+                isLoggedIn && requiresBankConnection && !bankConnected ? 'opacity-50' : ''
+              }`}
               onClick={() => {
-                setLenderType('personal');
-                setValue('lenderType', 'personal');
-                setValue('interestRate', 0);
-                setStepError(null);
+                // For guests: always allow
+                if (!isLoggedIn) {
+                  setLenderType('personal');
+                  setValue('lenderType', 'personal');
+                  setValue('interestRate', 0);
+                  setStepError(null);
+                  return;
+                }
+                
+                // For logged-in users: only require bank if Dwolla is enabled
+                if (!requiresBankConnection || bankConnected) {
+                  setLenderType('personal');
+                  setValue('lenderType', 'personal');
+                  setValue('interestRate', 0);
+                  setStepError(null);
+                }
               }}
             >
               <div className="text-center py-6">
@@ -1478,6 +1536,11 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 </div>
                 <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">Friend or Family</h3>
                 <p className="text-sm text-neutral-500">Send an invite to someone you know</p>
+                {isLoggedIn && requiresBankConnection && !bankConnected && (
+                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
+                    <CreditCard className="w-3 h-3" /> Bank connection optional
+                  </p>
+                )}
               </div>
             </Card>
           </div>
@@ -2232,8 +2295,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   <Input 
                     label="Cash App $Cashtag" 
                     placeholder="$username"
-                    value={guestPhone} // reusing for cashtag temporarily
-                    onChange={(e) => setGuestPhone(e.target.value)}
+                    value={guestCashapp}
+                    onChange={(e) => setGuestCashapp(e.target.value)}
+                  />
+                  <Input 
+                    label="Venmo @username" 
+                    placeholder="@username"
+                    value={guestVenmo}
+                    onChange={(e) => setGuestVenmo(e.target.value)}
+                  />
+                  <Input 
+                    label="Zelle Email/Phone" 
+                    placeholder="email@example.com or phone number"
+                    value={guestZelle}
+                    onChange={(e) => setGuestZelle(e.target.value)}
                   />
                 </div>
                 <p className="text-xs text-neutral-500 mt-2">

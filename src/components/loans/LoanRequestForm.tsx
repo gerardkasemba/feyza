@@ -552,11 +552,9 @@ export function LoanRequestForm({
     borrowingLimit.availableAmount != null &&
     amount > borrowingLimit.availableAmount;
 
+  // UPDATED: Removed bank connection check
   const validateStep1 = (): boolean => {
-    if (!userBankConnected) {
-      setStepError('Please connect your Bank account first');
-      return false;
-    }
+    // Bank connection is OPTIONAL - users can use manual payment methods (Cash App, Venmo, Zelle)
     if (!lenderType) {
       setStepError('Please select a lender type');
       return false;
@@ -801,30 +799,12 @@ export function LoanRequestForm({
         </Banner>
       ) : null}
 
-      {/* STEP 1 */}
+      {/* STEP 1 - UPDATED: Removed bank connection requirement */}
       {step === 1 && (
         <div className="space-y-6">
-          {!userBankConnected ? (
-            <Banner
-              tone="warning"
-              icon={CreditCard}
-              title="Connect your bank first"
-              actions={
-                <Button type="button" onClick={onConnectBank} size="sm" className="rounded-xl">
-                  <CreditCard className="w-4 h-4 mr-2" />
-                  Connect bank
-                </Button>
-              }
-            >
-              Bank connection is required before requesting a loan.
-            </Banner>
-          ) : (
-            <Banner tone="success" icon={Check} title="Bank connected">
-              You’re ready to continue.
-            </Banner>
-          )}
-
-          {userBankConnected && !loadingLimit ? (
+          {/* Bank connection is OPTIONAL - users can use manual payment methods (Cash App, Venmo, Zelle) */}
+          
+          {!loadingLimit ? (
             <>
               {!lenderType || lenderType === 'personal' ? (
                 borrowingLimit ? (
@@ -930,15 +910,16 @@ export function LoanRequestForm({
           <SectionHeader title="Who do you want to borrow from?" subtitle="Choose your lender type to get started" />
 
           <div className="grid md:grid-cols-2 gap-4">
+            {/* UPDATED: Removed bank connection check from business lender card */}
             <Card
               hover
               className={[
                 'cursor-pointer transition-all rounded-2xl',
                 lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : '',
-                !userBankConnected || userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : '',
+                userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : '',
               ].join(' ')}
               onClick={() => {
-                if (userBankConnected && userVerificationStatus === 'verified') {
+                if (userVerificationStatus === 'verified') {
                   setLenderType('business');
                   setValue('lenderType', 'business');
                   setStepError(null);
@@ -953,7 +934,7 @@ export function LoanRequestForm({
                   <h3 className="font-semibold text-lg text-neutral-900 dark:text-white">Business lender</h3>
                   <Zap className="w-4 h-4 text-yellow-500" />
                 </div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">We’ll match you with an available lender</p>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400">We'll match you with an available lender</p>
                 {userVerificationStatus !== 'verified' ? (
                   <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 flex items-center justify-center gap-1">
                     <Shield className="w-3 h-3" />
@@ -963,20 +944,18 @@ export function LoanRequestForm({
               </div>
             </Card>
 
+            {/* UPDATED: Removed bank connection check from personal lender card */}
             <Card
               hover
               className={[
                 'cursor-pointer transition-all rounded-2xl',
                 lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : '',
-                !userBankConnected ? 'opacity-50 pointer-events-none' : '',
               ].join(' ')}
               onClick={() => {
-                if (userBankConnected) {
-                  setLenderType('personal');
-                  setValue('lenderType', 'personal');
-                  setValue('interestRate', 0);
-                  setStepError(null);
-                }
+                setLenderType('personal');
+                setValue('lenderType', 'personal');
+                setValue('interestRate', 0);
+                setStepError(null);
               }}
             >
               <div className="text-center py-6">
@@ -989,7 +968,7 @@ export function LoanRequestForm({
             </Card>
           </div>
 
-          {userBankConnected && userVerificationStatus !== 'verified' ? (
+          {userVerificationStatus !== 'verified' ? (
             <Banner
               tone="warning"
               icon={Shield}
@@ -1010,14 +989,14 @@ export function LoanRequestForm({
           ) : null}
 
           <div className="flex justify-end pt-2">
-            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || !userBankConnected} className="rounded-xl">
+            {/* UPDATED: Removed bank connection requirement from button */}
+            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType} className="rounded-xl">
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </div>
       )}
-
       {/* STEP 2 */}
       {step === 2 && (
         <div className="space-y-4">
@@ -1771,6 +1750,7 @@ export function LoanRequestForm({
           </div>
         </div>
       )}
+      
     </form>
   );
 }

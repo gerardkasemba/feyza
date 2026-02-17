@@ -35,6 +35,7 @@ interface PaymentProvider {
   icon_name: string;
   brand_color: string;
   requires_bank_connection: boolean;
+  supported_countries?: string[];
 }
 
 interface UserPaymentMethod {
@@ -88,7 +89,6 @@ export default function UserPaymentMethodsSettings({
     fetchData();
 
     // Subscribe to real-time changes in payment_providers
-    // This ensures UI updates when admin enables/disables providers
     const channel = supabase
       .channel(`user_payment_settings_${userId}`)
       .on(
@@ -105,6 +105,24 @@ export default function UserPaymentMethodsSettings({
         () => {
           console.log('[UserPaymentMethodsSettings] User method changed, refreshing...');
           fetchData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${userId}` },
+        (payload) => {
+          // Check if payment-related fields were updated
+          const updatedFields = payload.new as any;
+          if (
+            updatedFields.cashapp_username !== undefined ||
+            updatedFields.venmo_username !== undefined ||
+            updatedFields.zelle_email !== undefined ||
+            updatedFields.zelle_phone !== undefined ||
+            updatedFields.paypal_email !== undefined
+          ) {
+            console.log('[UserPaymentMethodsSettings] User payment fields updated, refreshing...');
+            fetchData();
+          }
         }
       )
       .subscribe();
@@ -193,12 +211,14 @@ export default function UserPaymentMethodsSettings({
     setError(null);
 
     try {
+      const trimmedIdentifier = identifier.trim();
+      
       if (existingMethodId) {
         // Update existing method by ID
         const { error } = await supabase
           .from('user_payment_methods')
           .update({ 
-            account_identifier: identifier.trim(),
+            account_identifier: trimmedIdentifier,
             is_active: true,
             updated_at: new Date().toISOString(),
           })
@@ -219,7 +239,7 @@ export default function UserPaymentMethodsSettings({
           const { error } = await supabase
             .from('user_payment_methods')
             .update({
-              account_identifier: identifier.trim(),
+              account_identifier: trimmedIdentifier,
               is_active: true,
               updated_at: new Date().toISOString(),
             })
@@ -233,7 +253,7 @@ export default function UserPaymentMethodsSettings({
             .insert({
               user_id: userId,
               payment_provider_id: providerId,
-              account_identifier: identifier.trim(),
+              account_identifier: trimmedIdentifier,
               is_active: true,
               is_default: userMethods.length === 0, // First method is default
             });
@@ -246,18 +266,40 @@ export default function UserPaymentMethodsSettings({
       const provider = providers.find(p => p.id === providerId);
       if (provider) {
         const legacyUpdate: Record<string, string | null> = {};
+        
+        // Map provider slugs to legacy fields
         if (provider.slug === 'cashapp') {
-          legacyUpdate.cashapp_username = identifier.trim();
+          legacyUpdate.cashapp_username = trimmedIdentifier;
         } else if (provider.slug === 'venmo') {
-          legacyUpdate.venmo_username = identifier.trim();
+          legacyUpdate.venmo_username = trimmedIdentifier;
         } else if (provider.slug === 'paypal') {
-          legacyUpdate.paypal_email = identifier.trim();
+          legacyUpdate.paypal_email = trimmedIdentifier;
         } else if (provider.slug === 'zelle') {
-          legacyUpdate.zelle_email = identifier.trim();
+          // For Zelle, we need to determine if it's email or phone
+          if (trimmedIdentifier.includes('@')) {
+            legacyUpdate.zelle_email = trimmedIdentifier;
+          } else if (trimmedIdentifier.replace(/\D/g, '').length >= 10) {
+            // It's a phone number
+            legacyUpdate.zelle_phone = trimmedIdentifier;
+          } else {
+            // Default to email
+            legacyUpdate.zelle_email = trimmedIdentifier;
+          }
         }
 
         if (Object.keys(legacyUpdate).length > 0) {
-          await supabase.from('users').update(legacyUpdate).eq('id', userId);
+          console.log('[UserPaymentMethodsSettings] Updating legacy fields:', legacyUpdate);
+          const { error: legacyError } = await supabase
+            .from('users')
+            .update(legacyUpdate)
+            .eq('id', userId);
+
+          if (legacyError) {
+            console.error('[UserPaymentMethodsSettings] Error updating legacy fields:', legacyError);
+            // Don't throw - this is non-critical
+          } else {
+            console.log('[UserPaymentMethodsSettings] Legacy fields updated successfully');
+          }
         }
       }
 
@@ -293,6 +335,7 @@ export default function UserPaymentMethodsSettings({
       if (method?.payment_provider) {
         const provider = method.payment_provider as PaymentProvider;
         const legacyUpdate: Record<string, null> = {};
+        
         if (provider.slug === 'cashapp') {
           legacyUpdate.cashapp_username = null;
         } else if (provider.slug === 'venmo') {
@@ -301,10 +344,19 @@ export default function UserPaymentMethodsSettings({
           legacyUpdate.paypal_email = null;
         } else if (provider.slug === 'zelle') {
           legacyUpdate.zelle_email = null;
+          legacyUpdate.zelle_phone = null; // Clear both for Zelle
         }
 
         if (Object.keys(legacyUpdate).length > 0) {
-          await supabase.from('users').update(legacyUpdate).eq('id', userId);
+          console.log('[UserPaymentMethodsSettings] Clearing legacy fields:', legacyUpdate);
+          const { error: legacyError } = await supabase
+            .from('users')
+            .update(legacyUpdate)
+            .eq('id', userId);
+
+          if (legacyError) {
+            console.error('[UserPaymentMethodsSettings] Error clearing legacy fields:', legacyError);
+          }
         }
       }
 
@@ -340,10 +392,14 @@ export default function UserPaymentMethodsSettings({
       if (method?.payment_provider) {
         const provider = method.payment_provider as PaymentProvider;
         if (['cashapp', 'venmo', 'paypal'].includes(provider.slug)) {
-          await supabase
+          const { error: legacyError } = await supabase
             .from('users')
             .update({ preferred_payment_method: provider.slug })
             .eq('id', userId);
+
+          if (legacyError) {
+            console.error('[UserPaymentMethodsSettings] Error updating preferred method:', legacyError);
+          }
         }
       }
 

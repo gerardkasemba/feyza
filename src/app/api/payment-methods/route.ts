@@ -1,114 +1,122 @@
 // src/app/api/payment-methods/route.ts
+// FIXED: Handles both ?country=&type= (provider list) and ?loanId= (legacy loan lookup)
 import { NextRequest, NextResponse } from 'next/server'
-import { createServiceRoleClient } from '@/lib/supabase/server'
-
-interface PersonalLender {
-  id: string
-  full_name: string | null
-  email: string | null
-  paypal_email: string | null
-  paypal_connected: boolean | null
-  cashapp_username: string | null
-  venmo_username: string | null
-  zelle_email: string | null
-  zelle_phone: string | null
-  preferred_payment_method: string | null
-}
-
-interface BusinessLender {
-  id: string
-  business_name: string | null
-  contact_email: string | null
-  paypal_email: string | null
-  paypal_connected: boolean | null
-  cashapp_username: string | null
-  venmo_username: string | null
-  zelle_email: string | null
-  zelle_phone: string | null
-  zelle_name: string | null
-  preferred_payment_method: string | null
-}
-
-interface PaymentMethodsResponse {
-  paypal_email: string | null
-  paypal_connected: boolean
-  cashapp_username: string | null
-  venmo_username: string | null
-  zelle_email: string | null
-  zelle_phone: string | null
-  zelle_name: string | null
-  preferred_payment_method: string | null
-  source: 'business' | 'personal' | null
-  lender_name: string | null
-  lender_email: string | null
-  has_payment_methods: boolean
-  available_methods: string[]
-}
+import { createServiceRoleClientDirect } from '@/lib/supabase/server'
 
 /**
- * GET /api/payment-methods?loanId=<uuid>
- * Returns payment methods for the lender (business or personal) for a given loan.
+ * GET /api/payment-methods
  *
- * NOTE: If you also pass other query params (country/type), we ignore them here unless you need them.
+ * Two call patterns:
+ *
+ * 1. Provider list (used by hooks/components):
+ *    ?country=US&type=disbursement|repayment
+ *    ?country=US&provider_type=automated|manual
+ *    Returns: { providers: PaymentProvider[] }
+ *
+ * 2. Lender payment methods for a specific loan (legacy):
+ *    ?loanId=<uuid>
+ *    Returns: { success: true, paymentMethods: { ... } }
  */
 export async function GET(request: NextRequest) {
   try {
     const url = request.nextUrl
     const loanId = url.searchParams.get('loanId')
+    const country = url.searchParams.get('country')
+    const type = url.searchParams.get('type')            // disbursement | repayment
+    const providerType = url.searchParams.get('provider_type') // automated | manual
 
+    const supabase = createServiceRoleClientDirect()
+
+    // ─────────────────────────────────────────────────────────────────
+    // Pattern 1: ?country=&type= or ?country=&provider_type=
+    // Returns list of enabled payment providers
+    // ─────────────────────────────────────────────────────────────────
     if (!loanId) {
-      return NextResponse.json({ error: 'loanId query param is required' }, { status: 400 })
+      let query = supabase
+        .from('payment_providers')
+        .select(
+          'id, slug, name, provider_type, is_enabled, ' +
+          'is_available_for_disbursement, is_available_for_repayment, ' +
+          'account_identifier_label, icon_name, brand_color, instructions, ' +
+          'supported_countries, display_order'
+        )
+        .eq('is_enabled', true)
+        .order('display_order', { ascending: true })
+
+      if (type === 'disbursement') {
+        query = query.eq('is_available_for_disbursement', true)
+      } else if (type === 'repayment') {
+        query = query.eq('is_available_for_repayment', true)
+      }
+
+      if (providerType) {
+        query = query.eq('provider_type', providerType)
+      }
+
+      const { data: providers, error } = await query
+
+      if (error) {
+        console.error('[Payment Methods API] Error fetching providers:', error)
+        return NextResponse.json({ providers: [] }, { status: 200 })
+      }
+
+      let filtered = providers || []
+      if (country) {
+        filtered = filtered.filter((p: any) =>
+          !p.supported_countries ||
+          p.supported_countries.length === 0 ||
+          p.supported_countries.includes(country) ||
+          p.supported_countries.includes('ALL')
+        )
+      }
+
+      const mapped = filtered.map((p: any) => ({
+        id: p.id,
+        slug: p.slug,
+        name: p.name,
+        type: p.provider_type,
+        isAutomated: p.provider_type === 'automated',
+        requiresProof: p.provider_type === 'manual',
+        accountIdentifierLabel: p.account_identifier_label ?? null,
+        brandColor: p.brand_color ?? '#888888',
+        instructions: p.instructions ?? '',
+        iconName: p.icon_name ?? 'CreditCard',
+      }))
+
+      return NextResponse.json({ providers: mapped })
     }
 
-    const supabase = await createServiceRoleClient()
-
+    // ─────────────────────────────────────────────────────────────────
+    // Pattern 2: ?loanId=<uuid>
+    // Returns the lender's payment methods for a specific loan
+    // ─────────────────────────────────────────────────────────────────
     const { data: loan, error: loanError } = await supabase
       .from('loans')
       .select(
-        `
-        id,
-        lender_id,
-        business_lender_id,
+        `id, lender_id, business_lender_id,
         lender:users!lender_id(
-          id,
-          full_name,
-          email,
-          paypal_email,
-          paypal_connected,
-          cashapp_username,
-          venmo_username,
-          zelle_email,
-          zelle_phone,
+          id, full_name, email,
+          paypal_email, paypal_connected,
+          cashapp_username, venmo_username,
+          zelle_email, zelle_phone,
           preferred_payment_method
         ),
         business_lender:business_profiles!business_lender_id(
-          id,
-          business_name,
-          contact_email,
-          paypal_email,
-          paypal_connected,
-          cashapp_username,
-          venmo_username,
-          zelle_email,
-          zelle_phone,
-          zelle_name,
+          id, business_name, contact_email,
+          paypal_email, paypal_connected,
+          cashapp_username, venmo_username,
+          zelle_email, zelle_phone, zelle_name,
           preferred_payment_method
-        )
-      `
+        )`
       )
       .eq('id', loanId)
       .single()
 
-    if (loanError) {
-      console.error('[Payment Methods API] Database error:', loanError)
-      return NextResponse.json({ error: 'Failed to fetch loan details' }, { status: 500 })
-    }
-
-    if (!loan) {
+    if (loanError || !loan) {
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 })
     }
 
-    const paymentMethods: PaymentMethodsResponse = {
+    const paymentMethods: Record<string, any> = {
       paypal_email: null,
       paypal_connected: false,
       cashapp_username: null,
@@ -124,56 +132,55 @@ export async function GET(request: NextRequest) {
       available_methods: [],
     }
 
-    // Business lender
-    if ((loan as any).business_lender_id && (loan as any).business_lender) {
-      const business = (loan as any).business_lender as BusinessLender
+    const loanAny = loan as any
 
-      paymentMethods.paypal_email = business.paypal_email
-      paymentMethods.paypal_connected = !!business.paypal_connected
-      paymentMethods.cashapp_username = business.cashapp_username
-      paymentMethods.venmo_username = business.venmo_username
-      paymentMethods.zelle_email = business.zelle_email
-      paymentMethods.zelle_phone = business.zelle_phone
-      paymentMethods.zelle_name = business.zelle_name || business.business_name
-      paymentMethods.preferred_payment_method = business.preferred_payment_method
-      paymentMethods.source = 'business'
-      paymentMethods.lender_name = business.business_name
-      paymentMethods.lender_email = business.contact_email
+    if (loanAny.business_lender_id && loanAny.business_lender) {
+      const b = loanAny.business_lender
+      Object.assign(paymentMethods, {
+        paypal_email: b.paypal_email,
+        paypal_connected: !!b.paypal_connected,
+        cashapp_username: b.cashapp_username,
+        venmo_username: b.venmo_username,
+        zelle_email: b.zelle_email,
+        zelle_phone: b.zelle_phone,
+        zelle_name: b.zelle_name || b.business_name,
+        preferred_payment_method: b.preferred_payment_method,
+        source: 'business',
+        lender_name: b.business_name,
+        lender_email: b.contact_email,
+      })
+    } else if (loanAny.lender_id && loanAny.lender) {
+      const p = loanAny.lender
+      Object.assign(paymentMethods, {
+        paypal_email: p.paypal_email,
+        paypal_connected: !!p.paypal_connected,
+        cashapp_username: p.cashapp_username,
+        venmo_username: p.venmo_username,
+        zelle_email: p.zelle_email,
+        zelle_phone: p.zelle_phone,
+        zelle_name: p.full_name,
+        preferred_payment_method: p.preferred_payment_method,
+        source: 'personal',
+        lender_name: p.full_name,
+        lender_email: p.email,
+      })
     }
-    // Personal lender
-    else if ((loan as any).lender_id && (loan as any).lender) {
-      const personal = (loan as any).lender as PersonalLender
 
-      paymentMethods.paypal_email = personal.paypal_email
-      paymentMethods.paypal_connected = !!personal.paypal_connected
-      paymentMethods.cashapp_username = personal.cashapp_username
-      paymentMethods.venmo_username = personal.venmo_username
-      paymentMethods.zelle_email = personal.zelle_email
-      paymentMethods.zelle_phone = personal.zelle_phone
-      paymentMethods.zelle_name = personal.full_name
-      paymentMethods.preferred_payment_method = personal.preferred_payment_method
-      paymentMethods.source = 'personal'
-      paymentMethods.lender_name = personal.full_name
-      paymentMethods.lender_email = personal.email
-    }
+    const available: string[] = []
+    if (paymentMethods.paypal_connected && paymentMethods.paypal_email) available.push('paypal')
+    if (paymentMethods.cashapp_username) available.push('cashapp')
+    if (paymentMethods.venmo_username) available.push('venmo')
+    if (paymentMethods.zelle_email || paymentMethods.zelle_phone) available.push('zelle')
 
-    const availableMethods: string[] = []
-    if (paymentMethods.paypal_connected && paymentMethods.paypal_email) availableMethods.push('paypal')
-    if (paymentMethods.cashapp_username) availableMethods.push('cashapp')
-    if (paymentMethods.venmo_username) availableMethods.push('venmo')
-    if (paymentMethods.zelle_email || paymentMethods.zelle_phone) availableMethods.push('zelle')
-
-    paymentMethods.available_methods = availableMethods
-    paymentMethods.has_payment_methods = availableMethods.length > 0
+    paymentMethods.available_methods = available
+    paymentMethods.has_payment_methods = available.length > 0
 
     return NextResponse.json({ success: true, paymentMethods })
+
   } catch (error: any) {
     console.error('[Payment Methods API] Error:', error)
     return NextResponse.json(
-      {
-        error: 'Failed to fetch payment methods',
-        details: process.env.NODE_ENV === 'development' ? error?.message : undefined,
-      },
+      { error: 'Failed to fetch payment methods', providers: [] },
       { status: 500 }
     )
   }

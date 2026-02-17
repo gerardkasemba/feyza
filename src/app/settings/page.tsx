@@ -3,13 +3,13 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Navbar, Footer } from '@/components/layout';
-import { Card, Button, Input, Select } from '@/components/ui';
+import { Card, Button, Input } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
 import { PlaidLinkButton, ConnectedBank, BankConnectionRequired } from '@/components/payments/PlaidLink';
 import UserPaymentMethodsSettings from '@/components/settings/UserPaymentMethodsSettings';
 import { 
   User, Bell, Shield, LogOut, Building, CheckCircle, 
-  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2, MapPin, Smartphone, Wallet, Save
+  AlertCircle, Key, Eye, EyeOff, Globe, Trash2, AtSign, Loader2, MapPin, Smartphone
 } from 'lucide-react';
 
 interface Country {
@@ -67,15 +67,6 @@ function SettingsContent() {
   const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
   const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
 
-  // Payment methods state (for manual payments)
-  const [zelleEmail, setZelleEmail] = useState('');
-  const [zellePhone, setZellePhone] = useState('');
-  const [paypalEmail, setPaypalEmail] = useState('');
-  const [cashappUsername, setCashappUsername] = useState('');
-  const [venmoUsername, setVenmoUsername] = useState('');
-  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState('');
-  const [savingPaymentMethods, setSavingPaymentMethods] = useState(false);
-
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient();
@@ -115,14 +106,6 @@ function SettingsContent() {
           setEmailNotifications(profileData.email_reminders !== false);
           setReminderDays(String(profileData.reminder_days_before || 3));
           setTimezone(profileData.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
-          
-          // Load payment methods
-          setZelleEmail(profileData.zelle_email || '');
-          setZellePhone(profileData.zelle_phone || '');
-          setPaypalEmail(profileData.paypal_email || '');
-          setCashappUsername(profileData.cashapp_username || '');
-          setVenmoUsername(profileData.venmo_username || '');
-          setPreferredPaymentMethod(profileData.preferred_payment_method || '');
         } else {
           setFullName(user.user_metadata?.full_name || '');
           setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
@@ -272,39 +255,6 @@ function SettingsContent() {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleSavePaymentMethods = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingPaymentMethods(true);
-    setMessage(null);
-
-    try {
-      const supabase = createClient();
-      
-      const { error } = await supabase
-        .from('users')
-        .update({
-          zelle_email: zelleEmail || null,
-          zelle_phone: zellePhone || null,
-          paypal_email: paypalEmail || null,
-          cashapp_username: cashappUsername || null,
-          venmo_username: venmoUsername || null,
-          preferred_payment_method: preferredPaymentMethod || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-
-      if (error) throw error;
-      
-      setMessage({ type: 'success', text: 'Payment methods updated successfully!' });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to update payment methods' });
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } finally {
-      setSavingPaymentMethods(false);
     }
   };
 
@@ -794,152 +744,12 @@ function SettingsContent() {
                     </Card>
                   )}
 
-                  {/* Manual Payment Methods Configuration */}
-                  <Card>
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center">
-                        <Wallet className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div>
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Your Payment Methods</h2>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                          Configure where you'll receive loan payments
-                        </p>
-                      </div>
-                    </div>
-
-                    <form onSubmit={handleSavePaymentMethods} className="space-y-6">
-                      <div className="grid md:grid-cols-2 gap-4">
-                        {/* PayPal */}
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                            PayPal Email
-                          </label>
-                          <Input 
-                            type="email"
-                            placeholder="your@email.com"
-                            value={paypalEmail}
-                            onChange={(e) => setPaypalEmail(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Cash App */}
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                            Cash App Username
-                          </label>
-                          <Input 
-                            placeholder="$YourCashtag"
-                            value={cashappUsername}
-                            onChange={(e) => setCashappUsername(e.target.value)}
-                          />
-                        </div>
-
-                        {/* Venmo */}
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                            Venmo Username
-                          </label>
-                          <Input 
-                            placeholder="@YourVenmo"
-                            value={venmoUsername}
-                            onChange={(e) => setVenmoUsername(e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Zelle Section */}
-                      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-4 mt-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <h4 className="font-medium text-neutral-900 dark:text-white">Zelle</h4>
-                          <span className="text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full">
-                            Email OR Phone
-                          </span>
-                        </div>
-                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">
-                          Provide email OR phone number (your name will be shown automatically)
-                        </p>
-                        
-                        <div className="grid md:grid-cols-2 gap-4">
-                          {/* Zelle Email */}
-                          <div>
-                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                              Zelle Email
-                            </label>
-                            <Input 
-                              type="email"
-                              placeholder="email@example.com"
-                              value={zelleEmail}
-                              onChange={(e) => setZelleEmail(e.target.value)}
-                            />
-                          </div>
-
-                          {/* Zelle Phone */}
-                          <div>
-                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                              Zelle Phone
-                            </label>
-                            <Input 
-                              type="tel"
-                              placeholder="+1 (555) 123-4567"
-                              value={zellePhone}
-                              onChange={(e) => setZellePhone(e.target.value)}
-                            />
-                            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                              Include country code (e.g., +1 for US)
-                            </p>
-                          </div>
-                        </div>
-
-                        {/* Zelle Preview */}
-                        {(zelleEmail || zellePhone) && fullName && (
-                          <div className="mt-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-                            <p className="text-xs font-medium text-blue-900 dark:text-blue-300 mb-1">
-                              Borrowers will see:
-                            </p>
-                            <div className="bg-white dark:bg-neutral-900 border rounded p-2 text-sm">
-                              <p className="font-medium">🏦 Zelle</p>
-                              <p className="text-neutral-600 dark:text-neutral-400">
-                                Send to: <strong>{zelleEmail || zellePhone}</strong>
-                              </p>
-                              <p className="text-neutral-600 dark:text-neutral-400">
-                                Name: <strong>{fullName}</strong>
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Preferred Method */}
-                      <div>
-                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                          Preferred Payment Method
-                        </label>
-                        <Select 
-                          value={preferredPaymentMethod}
-                          onChange={(e) => setPreferredPaymentMethod(e.target.value)}
-                          options={[
-                            { value: '', label: 'Select preferred method' },
-                            { value: 'paypal', label: 'PayPal' },
-                            { value: 'cashapp', label: 'Cash App' },
-                            { value: 'venmo', label: 'Venmo' },
-                            { value: 'zelle', label: 'Zelle' },
-                          ]}
-                        />
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                          This method will be shown first to borrowers
-                        </p>
-                      </div>
-
-                      {/* Save Button */}
-                      <div className="flex justify-end">
-                        <Button type="submit" loading={savingPaymentMethods}>
-                          <Save className="w-4 h-4 mr-2" />
-                          Save Payment Methods
-                        </Button>
-                      </div>
-                    </form>
-                  </Card>
+                  {/* Manual Payment Methods - managed by UserPaymentMethodsSettings */}
+                  <UserPaymentMethodsSettings
+                    userId={user?.id}
+                    userCountry={profile?.country || 'US'}
+                    onUpdate={() => setMessage({ type: 'success', text: 'Payment methods updated!' })}
+                  />
 
                   <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
                     <div className="flex items-start gap-3">

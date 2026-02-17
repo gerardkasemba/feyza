@@ -56,3 +56,19 @@ export async function createServiceRoleClient() {
     }
   )
 }
+
+/**
+ * Cookie-free service role client for use in API route handlers.
+ * The standard createServiceRoleClient calls cookies() which can crash
+ * during module evaluation in some Next.js API route contexts.
+ * Use this instead when you don't need session cookie handling.
+ */
+export function createServiceRoleClientDirect() {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { createClient: createSupabaseClient } = require('@supabase/supabase-js')
+  return createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  )
+}

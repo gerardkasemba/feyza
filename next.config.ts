@@ -15,7 +15,24 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'ui-avatars.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'www.feyza.app',  // <-- Add your domain
+      },
+      {
+        protocol: 'https',
+        hostname: 'feyza.app',       // <-- Add non-www version too
+      },
+      // Optional: Add if you're using any other image domains
+      {
+        protocol: 'https',
+        hostname: '**.vercel.app',    // If using Vercel deployment previews
+      },
     ],
+    // Optional: Configure device sizes for responsive images
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    // Optional: Configure image sizes for layout="fixed" or fill
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
 
   // ============================================

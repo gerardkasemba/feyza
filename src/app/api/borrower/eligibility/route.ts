@@ -98,16 +98,53 @@ export async function GET(request: NextRequest) {
 
     const isFirstTimeBorrower = (completedLoansCount || 0) === 0;
 
-    // Get active loans total
-    const { data: activeLoans } = await supabase
+    // ============================================================
+    // UNIVERSAL 75% RULE
+    // A borrower cannot request a new loan until they have paid
+    // at least 75% of every currently active loan.
+    // This applies regardless of lender type (personal or business).
+    // ============================================================
+    const { data: allActiveLoans } = await supabase
       .from('loans')
-      .select('amount, amount_remaining, amount_paid')
+      .select('id, amount, amount_paid, amount_remaining, currency')
       .eq('borrower_id', user.id)
-      .eq('status', 'active');
+      .in('status', ['active', 'pending']); // pending = matched but awaiting funds
 
-    const totalOutstanding = activeLoans?.reduce((sum, l) => sum + (l.amount_remaining || 0), 0) || 0;
-    const totalActiveAmount = activeLoans?.reduce((sum, l) => sum + (l.amount || 0), 0) || 0;
-    const totalPaidOnActive = activeLoans?.reduce((sum, l) => sum + (l.amount_paid || 0), 0) || 0;
+    if (allActiveLoans && allActiveLoans.length > 0) {
+      // Find the loan that is least paid-through
+      let worstLoan = allActiveLoans[0];
+      let worstPct = worstLoan.amount > 0 ? (worstLoan.amount_paid || 0) / worstLoan.amount : 1;
+
+      for (const loan of allActiveLoans) {
+        const pct = loan.amount > 0 ? (loan.amount_paid || 0) / loan.amount : 1;
+        if (pct < worstPct) {
+          worstPct = pct;
+          worstLoan = loan;
+        }
+      }
+
+      if (worstPct < 0.75) {
+        const paidPct = Math.round(worstPct * 100);
+        const paidAmount = worstLoan.amount_paid || 0;
+        const neededAmount = Math.ceil(worstLoan.amount * 0.75);
+        const stillNeeded = Math.max(0, neededAmount - paidAmount);
+
+        return NextResponse.json({
+          canBorrow: false,
+          hasActiveLoan: true,
+          reason: `You must pay at least 75% of your current loan before requesting a new one. You've paid ${paidPct}% ($${paidAmount.toLocaleString()} of $${worstLoan.amount.toLocaleString()}). Pay $${stillNeeded.toLocaleString()} more to unlock new loan requests.`,
+          paidPercentage: paidPct,
+          requiredPercentage: 75,
+          activeLoanId: worstLoan.id,
+          activeLoanAmount: worstLoan.amount,
+          activeLoanPaid: paidAmount,
+          activeLoanRemaining: worstLoan.amount_remaining || 0,
+          stillNeededFor75Pct: stillNeeded,
+        });
+      }
+    }
+    // Derive totals from allActiveLoans already fetched for the 75% check above
+    const totalOutstanding = allActiveLoans?.reduce((sum, l) => sum + (l.amount_remaining || 0), 0) || 0;
 
     const borrowingTier = profile.borrowing_tier || 1;
     const loansAtCurrentTier = profile.loans_at_current_tier || 0;
@@ -115,36 +152,14 @@ export async function GET(request: NextRequest) {
 
     // For BUSINESS lenders: No fixed tier limits - matching happens based on lender preferences
     if (lenderType === 'business') {
-      // Check if borrower has an active business loan and hasn't paid 75%
+      // Check if borrower has an active business loan (for UI display info only — the
+      // 75% gate is already enforced above universally before this branch is reached)
       const { data: activeBusinessLoans } = await supabase
         .from('loans')
         .select('id, amount, amount_paid, amount_remaining, business_lender_id')
         .eq('borrower_id', user.id)
         .eq('status', 'active')
         .not('business_lender_id', 'is', null);
-
-      if (activeBusinessLoans && activeBusinessLoans.length > 0) {
-        // Borrower has active business loan(s)
-        const activeLoan = activeBusinessLoans[0]; // They can only have one at a time
-        const paidPercentage = activeLoan.amount > 0 
-          ? ((activeLoan.amount_paid || 0) / activeLoan.amount) * 100 
-          : 0;
-        
-        if (paidPercentage < 75) {
-          return NextResponse.json({
-            canBorrow: false,
-            reason: `You must pay at least 75% of your current business loan before requesting a new one. Currently paid: ${paidPercentage.toFixed(0)}% ($${(activeLoan.amount_paid || 0).toLocaleString()} of $${activeLoan.amount.toLocaleString()})`,
-            lenderType: 'business',
-            hasActiveBusinessLoan: true,
-            activeBusinessLoanId: activeLoan.id,
-            paidPercentage: Math.round(paidPercentage),
-            requiredPercentage: 75,
-            amountPaid: activeLoan.amount_paid || 0,
-            totalAmount: activeLoan.amount,
-            amountRemaining: activeLoan.amount_remaining || 0,
-          });
-        }
-      }
 
       // Get the range of limits from available business lenders
       const { data: lenderPrefs } = await supabase
@@ -195,23 +210,13 @@ export async function GET(request: NextRequest) {
     }
 
     // For PERSONAL lending: Use tier-based limits
+    // Note: 75% repayment gate is already enforced universally above.
     const maxAmount = TIER_AMOUNTS[borrowingTier] || 150;
 
     // Calculate available amount
     let availableAmount = maxAmount;
     let canBorrow = true;
     let reason = '';
-
-    // For unlimited tier (6) with large outstanding loans
-    if (borrowingTier >= 5 && totalOutstanding >= 2000) {
-      const paidPercentage = totalActiveAmount > 0 ? (totalPaidOnActive / totalActiveAmount) : 0;
-      
-      if (paidPercentage < 0.75) {
-        canBorrow = false;
-        reason = `You must pay at least 75% of your current loans ($${totalActiveAmount.toFixed(2)}) before applying for a new one. Currently paid: ${(paidPercentage * 100).toFixed(0)}%`;
-        availableAmount = 0;
-      }
-    }
 
     // For lower tiers, check if total would exceed limit
     if (borrowingTier < 6 && canBorrow) {
@@ -374,16 +379,6 @@ export async function POST(request: NextRequest) {
       } else if ((totalOutstanding + amount) > maxAmount) {
         canBorrow = false;
         reason = `Total loans would exceed your limit of $${maxAmount}. Available: $${Math.max(0, maxAmount - totalOutstanding).toFixed(2)}`;
-      }
-    }
-
-    // Check 75% rule for large outstanding loans
-    if (borrowingTier >= 5 && totalOutstanding >= 2000 && canBorrow) {
-      const paidPercentage = totalActiveAmount > 0 ? (totalPaidOnActive / totalActiveAmount) : 0;
-      
-      if (paidPercentage < 0.75) {
-        canBorrow = false;
-        reason = `You must pay at least 75% of current loans before borrowing more. Currently paid: ${(paidPercentage * 100).toFixed(0)}%`;
       }
     }
 

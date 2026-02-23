@@ -7,6 +7,7 @@
 
 import { TrustScoreService } from '@/lib/trust-score';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { onVoucheeLoanCompleted } from '@/lib/vouching/accountability';
 
 export interface PaymentCompletedParams {
   supabase: SupabaseClient;
@@ -158,6 +159,13 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
         // Record loan completion for trust score
         await trustService.onLoanCompleted(borrowerId, loanId, Number(loan.amount));
         console.log(`[PaymentHandler] ✅ Loan completion recorded for trust score`);
+
+        // ── Fire voucher consequence pipeline (non-blocking) ──────────────
+        // Every active voucher for this borrower gets +2 pts and their
+        // success rate recalculated. This is the "good outcome" signal.
+        onVoucheeLoanCompleted(supabase, borrowerId, loanId)
+          .then(r => console.log(`[PaymentHandler] Voucher completion pipeline:`, r))
+          .catch(err => console.error(`[PaymentHandler] Voucher pipeline error:`, err));
         // ============================================
         // RELEASE AND INCREASE LENDER CAPITAL
         // ============================================

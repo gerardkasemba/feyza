@@ -83,6 +83,7 @@ export default function MatchReviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
   const [showDeclineModal, setShowDeclineModal] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
@@ -201,11 +202,11 @@ export default function MatchReviewPage() {
           router.push('/lender/matches');
         }
       } else {
-        alert(data.error || 'Action failed');
+        setActionError(data.error || 'Action failed. Please try again.');
       }
     } catch (error) {
       console.error('Action failed:', error);
-      alert('Action failed');
+      setActionError('Something went wrong. Please refresh and try again.');
     } finally {
       setActionLoading(null);
       setShowDeclineModal(false);
@@ -526,6 +527,18 @@ export default function MatchReviewPage() {
               </div>
             </div>
           </Card>
+        )}
+
+               {/* Action Error Banner */}
+        {actionError && (
+          <div className="mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-semibold text-red-700 dark:text-red-300 text-sm">Action failed</p>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-0.5">{actionError}</p>
+            </div>
+            <button type="button" onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 text-lg leading-none">&times;</button>
+          </div>
         )}
 
         {/* Action Buttons */}

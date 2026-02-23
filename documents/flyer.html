@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Feyza Flyers (HTML)</title>
+  <style>
+    :root{
+      /* Feel free to match your Tailwind "primary" more precisely */
+      --p600:#2563eb;  /* primary-600 */
+      --p700:#1d4ed8;  /* primary-700 */
+      --p800:#1e40af;  /* primary-800 */
+      --dark:#0a0a0a;
+      --card:#ffffff;
+      --muted:rgba(255,255,255,.82);
+      --muted2:rgba(255,255,255,.68);
+    }
+
+    * { box-sizing: border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background:#0b1220;
+      color:#fff;
+    }
+
+    /* Page wrapper for preview */
+    .page{
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 28px 16px 60px;
+    }
+
+    .topbar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom: 18px;
+    }
+    .topbar h1{
+      margin:0;
+      font-size: 16px;
+      font-weight: 700;
+      opacity:.9;
+      letter-spacing:.2px;
+    }
+    .hint{
+      font-size: 12px;
+      opacity: .75;
+    }
+
+    /* Grid of flyers */
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 980px){
+      .grid{ grid-template-columns: 1fr; }
+    }
+
+    /* Flyer base: square social-friendly */
+    .flyer{
+      grid-column: span 6;
+      aspect-ratio: 1 / 1;
+      border-radius: 28px;
+      overflow:hidden;
+      position:relative;
+      box-shadow: 0 20px 55px rgba(0,0,0,.35);
+      background: linear-gradient(135deg, var(--p600), var(--p700), var(--p800));
+    }
+    @media (max-width: 980px){
+      .flyer{ grid-column: span 12; }
+    }
+
+    /* subtle radial glow like your homepage */
+    .flyer::before{
+      content:"";
+      position:absolute;
+      inset:-80px;
+      background:
+        radial-gradient(circle at 50% 120%, rgba(255,255,255,.16), transparent 45%),
+        radial-gradient(circle at 10% 10%, rgba(255,255,255,.10), transparent 40%),
+        radial-gradient(circle at 90% 30%, rgba(255,255,255,.08), transparent 40%);
+      opacity:.9;
+      pointer-events:none;
+    }
+
+    .inner{
+      position:absolute;
+      inset:0;
+      padding: 34px;
+      display:flex;
+      flex-direction:column;
+      justify-content:space-between;
+      gap: 18px;
+    }
+
+    .brand{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .logoBox{
+      width: 52px;
+      height: 52px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.10);
+      border: 1px solid rgba(255,255,255,.18);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      backdrop-filter: blur(10px);
+    }
+    .logoBox img{
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+      display:block;
+    }
+    .brandText{
+      line-height: 1.05;
+    }
+    .brandText .name{
+      font-weight: 900;
+      letter-spacing: .2px;
+      font-size: 18px;
+    }
+    .brandText .tag{
+      font-size: 12px;
+      opacity: .8;
+      margin-top: 3px;
+    }
+
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.10);
+      border: 1px solid rgba(255,255,255,.18);
+      width: fit-content;
+      backdrop-filter: blur(10px);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .2px;
+    }
+
+    .headline{
+      margin: 0;
+      font-weight: 950;
+      letter-spacing: -0.5px;
+      line-height: 0.96;
+      font-size: 54px;
+      text-transform: uppercase;
+    }
+    .headline .soft{
+      color: rgba(255,255,255,.86);
+      font-weight: 900;
+      text-transform:none;
+      letter-spacing:-0.2px;
+    }
+    .sub{
+      margin: 12px 0 0;
+      font-size: 18px;
+      line-height: 1.35;
+      color: var(--muted);
+      max-width: 34ch;
+    }
+
+    .bullets{
+      display:flex;
+      flex-wrap:wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .pill{
+      display:flex;
+      align-items:center;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.10);
+      border: 1px solid rgba(255,255,255,.16);
+      font-size: 13px;
+      color: rgba(255,255,255,.92);
+      backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+    .pill .ico{ font-size: 16px; }
+
+    .ctaRow{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap: 12px;
+      margin-top: 6px;
+    }
+    .cta{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: #fff;
+      color: #173a8a;
+      font-weight: 900;
+      text-decoration:none;
+      letter-spacing:.2px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.25);
+    }
+    .cta small{
+      font-weight: 800;
+      opacity: .8;
+      letter-spacing:.1px;
+    }
+    .url{
+      text-align:right;
+      font-weight: 800;
+      color: rgba(255,255,255,.88);
+      font-size: 14px;
+      line-height: 1.1;
+    }
+    .url span{
+      display:block;
+      font-size: 12px;
+      color: var(--muted2);
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Variant: white card section inside flyer (optional) */
+    .card{
+      background: rgba(255,255,255,.10);
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 22px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    /* Print/export helpers */
+    .exportHint{
+      margin-top: 18px;
+      font-size: 12px;
+      opacity: .75;
+      line-height: 1.4;
+    }
+    @media print{
+      body{ background:#fff; color:#000; }
+      .topbar, .exportHint{ display:none; }
+      .page{ padding:0; }
+      .grid{ gap: 0; }
+      .flyer{
+        box-shadow:none;
+        border-radius:0;
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="topbar">
+      <h1>Feyza Flyers (HTML)</h1>
+      <div class="hint">Tip: Right-click → “Save as…” or screenshot. For print: Ctrl/Cmd+P.</div>
+    </div>
+
+    <div class="grid">
+      <!-- FLYER 1 — BORROWERS -->
+      <section class="flyer" aria-label="Flyer 1 - Borrowers">
+        <div class="inner">
+          <div class="brand">
+            <div class="logoBox">
+              <img src="https://www.feyza.app/feyza.svg?dpl=dpl_A6UsaaU1xTshtFKdv8AdyqyBSNXx" alt="Feyza logo">
+            </div>
+            <div class="brandText">
+              <div class="name">Feyza</div>
+              <div class="tag">Trust-based lending</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="badge">🎯 FOR BORROWERS</div>
+            <h2 class="headline" style="margin-top:14px;">
+              BAD CREDIT?<br/>NO CREDIT?<br/>
+              <span class="soft">NO PROBLEM.</span>
+            </h2>
+            <p class="sub">Your credit score doesn’t define you.</p>
+
+            <div class="bullets">
+              <div class="pill"><span class="ico">👥</span>Community vouches</div>
+              <div class="pill"><span class="ico">📈</span>Trust Score growth</div>
+              <div class="pill"><span class="ico">✅</span>Clear repayment</div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="cta" href="https://www.feyza.app" target="_blank" rel="noreferrer">
+              Join Early Access <small>→</small>
+            </a>
+            <div class="url">
+              feyza.app
+              <span>Join the waitlist</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FLYER 2 — LENDERS -->
+      <section class="flyer" aria-label="Flyer 2 - Lenders" style="background: linear-gradient(135deg, #16a34a, var(--p700), var(--p800));">
+        <div class="inner">
+          <div class="brand">
+            <div class="logoBox">
+              <img src="https://www.feyza.app/feyza.svg?dpl=dpl_A6UsaaU1xTshtFKdv8AdyqyBSNXx" alt="Feyza logo">
+            </div>
+            <div class="brandText">
+              <div class="name">Feyza</div>
+              <div class="tag">Trust-based lending</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="badge">💰 FOR LENDERS</div>
+            <h2 class="headline" style="margin-top:14px;">
+              YOU ALREADY LEND.<br/>
+              <span class="soft">NOW DO IT SMARTER.</span>
+            </h2>
+            <p class="sub">Support real people. Track everything.</p>
+
+            <div class="bullets">
+              <div class="pill"><span class="ico">🛡️</span>Verification signals</div>
+              <div class="pill"><span class="ico">⭐</span>Trust Score breakdown</div>
+              <div class="pill"><span class="ico">📅</span>Structured tracking</div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="cta" href="https://www.feyza.app" target="_blank" rel="noreferrer">
+              Become a Founding Lender <small>→</small>
+            </a>
+            <div class="url">
+              feyza.app
+              <span>Join the waitlist</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FLYER 3 — COMMUNITY -->
+      <section class="flyer" aria-label="Flyer 3 - Community" style="background: linear-gradient(135deg, var(--p700), #0ea5e9, var(--p800));">
+        <div class="inner">
+          <div class="brand">
+            <div class="logoBox">
+              <img src="https://www.feyza.app/feyza.svg?dpl=dpl_A6UsaaU1xTshtFKdv8AdyqyBSNXx" alt="Feyza logo">
+            </div>
+            <div class="brandText">
+              <div class="name">Feyza</div>
+              <div class="tag">Community-powered trust</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="badge">🌍 COMMUNITY</div>
+            <h2 class="headline" style="margin-top:14px;">
+              TRUST IS<br/>
+              <span class="soft">STRONGER THAN CREDIT.</span>
+            </h2>
+            <p class="sub">Loans based on character, community, and behavior.</p>
+
+            <div class="card" style="margin-top:16px;">
+              <div class="bullets" style="margin-top:0;">
+                <div class="pill"><span class="ico">👥</span>Vouches</div>
+                <div class="pill"><span class="ico">✅</span>Accountability</div>
+                <div class="pill"><span class="ico">📈</span>Grow over time</div>
+                <div class="pill"><span class="ico">🔍</span>Clear tracking</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="cta" href="https://www.feyza.app" target="_blank" rel="noreferrer">
+              Join the First Cohort <small>→</small>
+            </a>
+            <div class="url">
+              feyza.app
+              <span>Launching soon</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FLYER 4 — MINIMAL COMING SOON -->
+      <section class="flyer" aria-label="Flyer 4 - Coming Soon Minimal" style="background: linear-gradient(135deg, var(--p600), #0b1220, var(--p800));">
+        <div class="inner" style="justify-content:center; text-align:center;">
+          <div class="brand" style="justify-content:center; margin-bottom: 18px;">
+            <div class="logoBox">
+              <img src="https://www.feyza.app/feyza.svg?dpl=dpl_A6UsaaU1xTshtFKdv8AdyqyBSNXx" alt="Feyza logo">
+            </div>
+          </div>
+
+          <div class="badge" style="margin: 0 auto 14px;">🚀 FEYZA</div>
+
+          <h2 class="headline" style="font-size: 72px; margin: 0;">
+            COMING<br/>SOON
+          </h2>
+
+          <p class="sub" style="margin: 14px auto 0; max-width: 40ch;">
+            Trust-based lending.<br/>Early access is open now.
+          </p>
+
+          <div style="margin-top: 22px;">
+            <a class="cta" href="https://www.feyza.app" target="_blank" rel="noreferrer" style="margin: 0 auto;">
+              Join the Waitlist <small>→</small>
+            </a>
+            <div class="url" style="text-align:center; margin-top: 14px;">
+              feyza.app
+              <span>No spam. Just launch updates.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- FLYER 5 — EMOTIONAL VERSION -->
+      <section class="flyer" aria-label="Flyer 5 - Emotional" style="background: linear-gradient(135deg, #ef4444, var(--p700), var(--p800));">
+        <div class="inner">
+          <div class="brand">
+            <div class="logoBox">
+              <img src="https://www.feyza.app/feyza.svg?dpl=dpl_A6UsaaU1xTshtFKdv8AdyqyBSNXx" alt="Feyza logo">
+            </div>
+            <div class="brandText">
+              <div class="name">Feyza</div>
+              <div class="tag">Trust over credit</div>
+            </div>
+          </div>
+
+          <div>
+            <div class="badge">💡 REAL TALK</div>
+            <h2 class="headline" style="margin-top:14px;">
+              ONE MISTAKE<br/>
+              <span class="soft">SHOULDN’T DEFINE</span><br/>
+              YOUR FUTURE.
+            </h2>
+            <p class="sub">
+              Banks look at your past.<br/>
+              We look at your potential.
+            </p>
+
+            <div class="bullets">
+              <div class="pill"><span class="ico">🧭</span>Trust pathway</div>
+              <div class="pill"><span class="ico">👥</span>Community support</div>
+              <div class="pill"><span class="ico">✅</span>Clear repayment</div>
+            </div>
+          </div>
+
+          <div class="ctaRow">
+            <a class="cta" href="https://www.feyza.app" target="_blank" rel="noreferrer">
+              Join Early Access <small>→</small>
+            </a>
+            <div class="url">
+              feyza.app
+              <span>Launching soon</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="exportHint">
+      Want Story format too? Duplicate any flyer and change <code>aspect-ratio</code> to <code>9/16</code> (Instagram Story),
+      or set a fixed size like <code>width:1080px;height:1920px</code>.
+    </div>
+  </div>
+</body>
+</html>

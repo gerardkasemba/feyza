@@ -77,19 +77,9 @@ export interface LoanRequestFormData {
 
 interface BorrowingEligibility {
   canBorrow: boolean;
-  reason: string;
-  lenderType?: 'business' | 'personal';
-  isFirstTimeBorrower?: boolean;
-  maxAvailableFromBusinesses?: number;
-  message?: string;
-  borrowingTier?: number | null;
-  tierName?: string | null;
-  maxAmount?: number | null;
-  availableAmount?: number | null;
-  totalOutstanding: number;
-  loansAtCurrentTier?: number;
-  loansNeededToUpgrade?: number;
-  nextTierAmount?: number | null;
+  reason?: string;
+  isBlocked?: boolean;
+  blockType?: string;
 }
 
 interface LoanRequestFormProps {
@@ -208,6 +198,203 @@ function BackButton({ onClick }: { onClick: () => void }) {
 
 /* ------------------------------- Main Form ------------------------------- */
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Trust Tier Form Card — inline component, self-fetching
+// Shows the borrower's current tier + vouch CTA before they pick a lender type
+// ─────────────────────────────────────────────────────────────────────────────
+const TIER_META: Record<string, { name: string; color: string; bg: string; border: string; progress: string; dot: string }> = {
+  tier_1: { name: 'Low Trust',         color: 'text-neutral-600 dark:text-neutral-300', bg: 'bg-neutral-50 dark:bg-neutral-900/40',     border: 'border-neutral-200 dark:border-neutral-700', progress: 'bg-neutral-400', dot: 'bg-neutral-400' },
+  tier_2: { name: 'Building Trust',    color: 'text-amber-700 dark:text-amber-300',     bg: 'bg-amber-50/60 dark:bg-amber-900/10',      border: 'border-amber-200 dark:border-amber-800/50',  progress: 'bg-amber-500',   dot: 'bg-amber-500'   },
+  tier_3: { name: 'Established Trust', color: 'text-emerald-700 dark:text-emerald-300', bg: 'bg-emerald-50/60 dark:bg-emerald-900/10',  border: 'border-emerald-200 dark:border-emerald-800/50', progress: 'bg-emerald-500', dot: 'bg-emerald-500' },
+  tier_4: { name: 'High Trust',        color: 'text-blue-700 dark:text-blue-300',       bg: 'bg-blue-50/60 dark:bg-blue-900/10',        border: 'border-blue-200 dark:border-blue-800/50',    progress: 'bg-blue-500',    dot: 'bg-blue-500'    },
+};
+
+// ── Borrower Loan Power Card ────────────────────────────────────────────────
+// Shows the borrower what they can request from business lenders based on
+// their current trust tier, plus how much more they'd unlock at the next tier.
+function BorrowerLoanPowerCard() {
+  const [data, setData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/borrower/loan-power')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setData(d); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl border border-neutral-200 dark:border-neutral-700 animate-pulse">
+        <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2 mb-2" />
+        <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded w-2/3" />
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const { tierNumber, tierName, vouchCount, nextTierVouches, businessLenders, nextTier } = data;
+  const tierColors = [
+    '',
+    'from-neutral-50 to-neutral-100 border-neutral-300 dark:from-neutral-900/30 dark:to-neutral-800/40 dark:border-neutral-700',
+    'from-amber-50 to-amber-100 border-amber-300 dark:from-amber-900/20 dark:to-amber-800/30 dark:border-amber-700',
+    'from-emerald-50 to-emerald-100 border-emerald-300 dark:from-emerald-900/20 dark:to-emerald-800/30 dark:border-emerald-700',
+    'from-blue-50 to-blue-100 border-blue-300 dark:from-blue-900/20 dark:to-blue-800/30 dark:border-blue-700',
+  ];
+  const tierTextColors = ['', 'text-neutral-700 dark:text-neutral-300', 'text-amber-700 dark:text-amber-300', 'text-emerald-700 dark:text-emerald-300', 'text-blue-700 dark:text-blue-300'];
+  const bg = tierColors[tierNumber] ?? tierColors[1];
+  const textColor = tierTextColors[tierNumber] ?? tierTextColors[1];
+
+  const maxFmt = businessLenders.maxAmount > 0
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(businessLenders.maxAmount)
+    : null;
+
+  return (
+    <div className={`p-4 rounded-xl border bg-gradient-to-br ${bg} mb-1`}>
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-neutral-500 dark:text-neutral-400 mb-0.5">
+            Your Loan Request Power
+          </p>
+          <p className={`text-base font-bold ${textColor}`}>
+            Tier {tierNumber} — {tierName}
+          </p>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+            {vouchCount} active vouch{vouchCount !== 1 ? 'es' : ''}
+          </p>
+        </div>
+        {maxFmt && (
+          <div className="text-right shrink-0">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Max from business lenders</p>
+            <p className={`text-xl font-black ${textColor}`}>{maxFmt}</p>
+            {businessLenders.minInterestRate !== null && (
+              <p className="text-xs text-neutral-400">from {businessLenders.minInterestRate}% interest</p>
+            )}
+          </div>
+        )}
+        {!maxFmt && (
+          <div className="text-right shrink-0">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Business lenders</p>
+            <p className="text-sm font-semibold text-neutral-400">None active yet</p>
+          </div>
+        )}
+      </div>
+
+      {/* Personal loan note */}
+      <div className="mt-2 pt-2 border-t border-white/50 dark:border-neutral-600/50">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+          💡 <span className="font-medium">Friend &amp; family loans</span> have no tier-based limit — your lender decides the amount.
+        </p>
+      </div>
+
+      {/* Next tier unlock */}
+      {nextTier && nextTierVouches > 0 && (
+        <div className="mt-2 pt-2 border-t border-white/50 dark:border-neutral-600/50">
+          <p className="text-xs text-neutral-600 dark:text-neutral-300">
+            🔓 Get <strong>{nextTierVouches} more vouch{nextTierVouches !== 1 ? 'es' : ''}</strong> to reach {nextTier.tierName}
+            {nextTier.maxAmount > businessLenders.maxAmount && (
+              <> and unlock up to {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(nextTier.maxAmount)}</>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrustTierFormCard() {
+  const [tier, setTier] = React.useState<any>(null);
+  const [open, setOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    fetch('/api/trust/tier')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.tier && setTier(d.tier))
+      .catch(() => {});
+  }, []);
+
+  if (!tier) return null;
+
+  const meta = TIER_META[tier.tier] ?? TIER_META.tier_1;
+  const atMax = tier.tier === 'tier_4';
+  const pct   = atMax ? 100
+    : tier.tier === 'tier_3' ? Math.round(((tier.vouchCount - 6) / 5) * 100)
+    : tier.tier === 'tier_2' ? Math.round(((tier.vouchCount - 3) / 3) * 100)
+    : Math.round((tier.vouchCount / 3) * 100);
+
+  return (
+    <div className={`rounded-2xl border ${meta.border} ${meta.bg} overflow-hidden`}>
+      {/* Header row */}
+      <div className="flex items-center justify-between px-4 pt-4 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-white/70 dark:bg-neutral-900/50 grid place-items-center border border-black/5 dark:border-white/5">
+            <Users className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+          </div>
+          <div>
+            <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium uppercase tracking-wide">Your Trust Tier</p>
+            <p className={`text-sm font-bold ${meta.color}`}>{meta.name} · Tier {tier.tierNumber}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className="text-xs text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 transition"
+        >
+          {open ? 'Hide' : 'Why it matters'}
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      <div className="px-4 pb-3">
+        <div className="flex justify-between text-[11px] text-neutral-500 dark:text-neutral-400 mb-1">
+          <span>{tier.vouchCount} vouch{tier.vouchCount !== 1 ? 'es' : ''}</span>
+          {!atMax && <span>{tier.nextTierVouches} more → Tier {tier.tierNumber + 1}</span>}
+          {atMax && <span>Maximum tier reached ✨</span>}
+        </div>
+        <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${meta.progress}`} style={{ width: `${Math.min(100, Math.max(4, pct))}%` }} />
+        </div>
+      </div>
+
+      {/* Expandable explanation */}
+      {open && (
+        <div className="px-4 pb-4 border-t border-black/5 dark:border-white/5 pt-3 space-y-2">
+          <p className="text-xs font-semibold text-neutral-700 dark:text-neutral-200">Why your tier matters for this loan</p>
+          <ul className="space-y-1.5 text-xs text-neutral-600 dark:text-neutral-400">
+            <li className="flex items-start gap-2">
+              <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${meta.dot}`} />
+              <span><strong>Business lenders</strong> set different interest rates and loan limits for each tier. Higher tier = lower rate + higher cap.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${meta.dot}`} />
+              <span><strong>Your vouches are real people</strong> who have publicly said they trust you. That social proof replaces the need for a credit bureau.</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${meta.dot}`} />
+              <span><strong>Friend/family loans</strong> have no tier restriction — the person you invite decides on their own terms.</span>
+            </li>
+          </ul>
+          {!atMax && (
+            <a
+              href="/vouch/requests"
+              className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-white/60 dark:bg-neutral-900/50 border border-black/5 dark:border-white/5 hover:bg-white dark:hover:bg-neutral-900 transition"
+            >
+              <Users className="w-3.5 h-3.5 text-neutral-500" />
+              <span className="text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                Invite people to vouch for you → unlock Tier {tier.tierNumber + 1}
+              </span>
+              <ChevronRight className="w-3.5 h-3.5 text-neutral-400 ml-auto" />
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function LoanRequestForm({
   businesses,
   preferredLender,
@@ -230,9 +417,7 @@ export function LoanRequestForm({
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [showFullTerms, setShowFullTerms] = useState(false);
 
-  const [borrowingLimit, setBorrowingLimit] = useState<BorrowingEligibility | null>(null);
   const [businessEligibility, setBusinessEligibility] = useState<BorrowingEligibility | null>(null);
-  const [loadingLimit, setLoadingLimit] = useState(true);
 
   const [businessTrust, setBusinessTrust] = useState<{
     maxAmount: number;
@@ -429,15 +614,14 @@ export function LoanRequestForm({
   useEffect(() => {
     const fetchBorrowingLimits = async () => {
       try {
-        const personalResponse = await fetch('/api/borrower/eligibility?lender_type=personal');
-        if (personalResponse.ok) setBorrowingLimit(await personalResponse.json());
-
-        const businessResponse = await fetch('/api/borrower/eligibility?lender_type=business');
-        if (businessResponse.ok) setBusinessEligibility(await businessResponse.json());
+        // Check if user is blocked from borrowing
+        const eligibilityResponse = await fetch('/api/borrower/eligibility');
+        if (eligibilityResponse.ok) {
+          const eligibility = await eligibilityResponse.json();
+          if (!eligibility.canBorrow) setBusinessEligibility({ canBorrow: false, reason: eligibility.reason });
+        }
       } catch (error) {
-        console.error('Failed to fetch borrowing limit:', error);
-      } finally {
-        setLoadingLimit(false);
+        console.error('Failed to check eligibility:', error);
       }
     };
 
@@ -544,23 +728,12 @@ export function LoanRequestForm({
     if (lenderType === 'business' && selectedBusiness) fetchBusinessTrust();
   }, [selectedBusiness, lenderType]);
 
-  const isAmountOverLimit =
-    lenderType === 'personal' &&
-    borrowingLimit &&
-    borrowingLimit.borrowingTier &&
-    borrowingLimit.borrowingTier < 6 &&
-    borrowingLimit.availableAmount != null &&
-    amount > borrowingLimit.availableAmount;
 
   // UPDATED: Removed bank connection check
   const validateStep1 = (): boolean => {
     // Bank connection is OPTIONAL - users can use manual payment methods (Cash App, Venmo, Zelle)
     if (!lenderType) {
       setStepError('Please select a lender type');
-      return false;
-    }
-    if (lenderType === 'personal' && borrowingLimit && !borrowingLimit.canBorrow) {
-      setStepError(borrowingLimit.reason);
       return false;
     }
     if (lenderType === 'business' && businessEligibility && !businessEligibility.canBorrow) {
@@ -595,24 +768,6 @@ export function LoanRequestForm({
       return false;
     }
 
-    if (lenderType === 'personal' && borrowingLimit && borrowingLimit.borrowingTier && borrowingLimit.borrowingTier < 6) {
-      if (borrowingLimit.availableAmount != null && values.amount > borrowingLimit.availableAmount) {
-        if ((borrowingLimit.availableAmount || 0) <= 0) {
-          setStepError(
-            `You've reached your borrowing limit of ${formatCurrency(borrowingLimit.maxAmount || 0)}. Pay off existing loans to borrow more.`
-          );
-        } else {
-          setStepError(`Amount exceeds your available limit. You can borrow up to ${formatCurrency(borrowingLimit.availableAmount)}.`);
-        }
-        return false;
-      }
-      if (borrowingLimit.maxAmount != null && values.amount > borrowingLimit.maxAmount) {
-        setStepError(
-          `Amount exceeds your tier limit of ${formatCurrency(borrowingLimit.maxAmount)}. Complete more loans to increase your limit.`
-        );
-        return false;
-      }
-    }
 
     if (lenderType === 'business' && selectedBusiness && businessTrust) {
       if (!businessTrust.canBorrow) {
@@ -633,16 +788,6 @@ export function LoanRequestForm({
       }
     }
 
-    if (lenderType === 'business' && !selectedBusiness && businessEligibility?.maxAvailableFromBusinesses != null) {
-      if (values.amount > businessEligibility.maxAvailableFromBusinesses) {
-        setStepError(
-          `No business lenders currently support ${formatCurrency(values.amount)}. Try ${formatCurrency(
-            businessEligibility.maxAvailableFromBusinesses
-          )} or less.`
-        );
-        return false;
-      }
-    }
 
     if (!values.totalInstallments || values.totalInstallments < 1) {
       setStepError('Please enter the number of installments');
@@ -804,108 +949,20 @@ export function LoanRequestForm({
         <div className="space-y-6">
           {/* Bank connection is OPTIONAL - users can use manual payment methods (Cash App, Venmo, Zelle) */}
           
-          {!loadingLimit ? (
-            <>
-              {!lenderType || lenderType === 'personal' ? (
-                borrowingLimit ? (
-                  <Card className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-neutral-800 shadow-sm">
-                    <div className="flex items-start justify-between gap-3 mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/70 dark:bg-neutral-900/40 border border-black/5 dark:border-white/10 grid place-items-center">
-                          <Star className="w-5 h-5 text-primary-600 dark:text-primary-300" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400">Personal lending tier</p>
-                          <p className="font-semibold text-neutral-900 dark:text-white">{borrowingLimit.tierName || 'Starter'}</p>
-                        </div>
-                      </div>
-
-                      {!borrowingLimit.canBorrow ? (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-200">
-                          <Lock className="w-3 h-3" />
-                          Limited
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700">
-                      {borrowingLimit.borrowingTier === 6 ? (
-                        <div className="text-center">
-                          <p className="text-sm text-neutral-500 dark:text-neutral-400">Borrowing limit</p>
-                          <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">Unlimited ✨</p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-sm text-neutral-500 dark:text-neutral-400">Available to borrow</span>
-                            <span className="text-lg font-bold text-primary-600 dark:text-primary-400">
-                              {formatCurrency(borrowingLimit.availableAmount || 0)}
-                            </span>
-                          </div>
-                          <div className="h-3 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-primary-500 transition-all"
-                              style={{
-                                width: `${borrowingLimit.maxAmount ? ((borrowingLimit.availableAmount || 0) / borrowingLimit.maxAmount) * 100 : 0}%`,
-                              }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-neutral-400 mt-1">
-                            <span>Outstanding: {formatCurrency(borrowingLimit.totalOutstanding)}</span>
-                            <span>Tier max: {formatCurrency(borrowingLimit.maxAmount || 0)}</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-
-                    {!borrowingLimit.canBorrow && borrowingLimit.reason ? (
-                      <div className="mt-3 rounded-xl border border-red-200 dark:border-red-900/40 bg-red-50 dark:bg-red-900/15 p-3 flex items-start gap-2">
-                        <AlertCircle className="w-4 h-4 text-red-600 mt-0.5" />
-                        <p className="text-sm text-red-700 dark:text-red-200">{borrowingLimit.reason}</p>
-                      </div>
-                    ) : null}
-
-                    {borrowingLimit.borrowingTier && borrowingLimit.borrowingTier < 6 && (borrowingLimit.loansNeededToUpgrade ?? 0) > 0 ? (
-                      <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-700">
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                          <TrendingUp className="w-4 h-4 inline mr-1 text-green-600" />
-                          {borrowingLimit.loansNeededToUpgrade} more loan{(borrowingLimit.loansNeededToUpgrade ?? 0) > 1 ? 's' : ''} to unlock{' '}
-                          {formatCurrency(borrowingLimit.nextTierAmount || 0)}
-                        </p>
-                      </div>
-                    ) : null}
-                  </Card>
-                ) : null
-              ) : null}
-
-              {lenderType === 'business' && businessEligibility ? (
-                <Card className="rounded-2xl border border-green-200 dark:border-green-800 bg-gradient-to-br from-green-50 to-white dark:from-green-900/20 dark:to-neutral-800 shadow-sm">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-white/70 dark:bg-neutral-900/40 border border-black/5 dark:border-white/10 grid place-items-center">
-                      <Building2 className="w-5 h-5 text-green-600 dark:text-green-300" />
-                    </div>
-                    <div>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">Business lender matching</p>
-                      <p className="font-semibold text-neutral-900 dark:text-white">
-                        {businessEligibility.isFirstTimeBorrower ? 'First-time borrower' : 'Returning borrower'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-100 dark:border-neutral-700 text-center">
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">Maximum available from lenders</p>
-                    <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                      {businessEligibility.maxAvailableFromBusinesses ? formatCurrency(businessEligibility.maxAvailableFromBusinesses) : 'No lenders available'}
-                    </p>
-                  </div>
-
-                  {businessEligibility.message ? (
-                    <p className="mt-3 text-sm text-neutral-600 dark:text-neutral-400">{businessEligibility.message}</p>
-                  ) : null}
-                </Card>
-              ) : null}
-            </>
+          {businessEligibility && !businessEligibility.canBorrow ? (
+            <div className="rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-red-800 dark:text-red-300 text-sm">Account restricted</p>
+                <p className="text-sm text-red-700 dark:text-red-400 mt-1">{businessEligibility.reason}</p>
+              </div>
+            </div>
           ) : null}
+
+
+          {/* ── Trust Tier Card ─────────────────────────────────────────── */}
+          <TrustTierFormCard />
+          {/* ─────────────────────────────────────────────────────────────── */}
 
           <SectionHeader title="Who do you want to borrow from?" subtitle="Choose your lender type to get started" />
 
@@ -1184,6 +1241,9 @@ export function LoanRequestForm({
 
           <SectionHeader title="Loan details" subtitle="Set amount and repayment terms." />
 
+          {/* Show loan power when requesting from business lenders */}
+          {lenderType === 'business' && <BorrowerLoanPowerCard />}
+
           {lenderType === 'business' && selectedBusiness && (selectedBusiness as any).default_interest_rate > 0 ? (
             <Banner tone="info" icon={Info} title="Business lender pricing">
               <div className="text-sm">
@@ -1277,27 +1337,13 @@ export function LoanRequestForm({
                 placeholder="1000"
                 min="1"
                 max={
-                  lenderType === 'personal' && borrowingLimit?.borrowingTier !== 6
-                    ? borrowingLimit?.availableAmount || undefined
-                    : lenderType === 'business' && selectedBusiness && businessTrust
-                      ? businessTrust.maxAmount
-                      : undefined
+                  lenderType === 'business' && selectedBusiness && businessTrust
+                    ? businessTrust.maxAmount
+                    : undefined
                 }
                 {...register('amount', { valueAsNumber: true })}
               />
 
-              {lenderType === 'personal' && borrowingLimit && borrowingLimit.borrowingTier && borrowingLimit.borrowingTier < 6 ? (
-                <p className={['text-xs mt-1', isAmountOverLimit ? 'text-red-600 dark:text-red-400 font-medium' : 'text-neutral-500 dark:text-neutral-400'].join(' ')}>
-                  {isAmountOverLimit ? (
-                    <>
-                      <AlertCircle className="w-3 h-3 inline mr-1" />
-                      Exceeds your limit. Max: {formatCurrency(borrowingLimit.availableAmount || 0)}
-                    </>
-                  ) : (
-                    <>Available: {formatCurrency(borrowingLimit.availableAmount || 0)}</>
-                  )}
-                </p>
-              ) : null}
 
               {lenderType === 'business' && selectedBusiness && businessTrust ? (
                 <p
@@ -1329,12 +1375,6 @@ export function LoanRequestForm({
                 </p>
               ) : null}
 
-              {lenderType === 'business' && !selectedBusiness && businessEligibility?.maxAvailableFromBusinesses != null ? (
-                <p className="text-xs mt-1 text-green-600 dark:text-green-400">
-                  <Info className="w-3 h-3 inline mr-1" />
-                  Max available from lenders: {formatCurrency(businessEligibility.maxAvailableFromBusinesses || 0)}
-                </p>
-              ) : null}
             </div>
 
             <Select label="Currency *" options={currencyOptions} {...register('currency')} />

@@ -308,7 +308,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
         // Get business profile
         const { data: businessData } = await supabase
           .from('business_profiles')
-          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, min_loan_amount, max_loan_amount, first_time_borrower_amount')
+          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, first_time_borrower_amount')
           .eq('id', businessLenderId)
           .single();
         
@@ -316,26 +316,52 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           setBusinessLenderInfo(businessData);
           console.log('[GuestLoanForm] Business lender info loaded:', businessData);
           
-          // Get lender preferences for accurate settings
+          // Get lender preferences for interest rate settings
           const { data: prefs } = await supabase
             .from('lender_preferences')
-            .select('interest_rate, interest_type, min_amount, max_amount, first_time_borrower_limit')
+            .select('interest_rate, interest_type, min_amount, first_time_borrower_limit, allow_first_time_borrowers')
             .eq('business_id', businessLenderId)
             .single();
-          
+
+          // Fetch lender_tier_policies to get the correct per-tier max amounts.
+          // Guests are unknown tier — use tier_1 (lowest) as the cap.
+          // business_profiles.user_id links to lender_tier_policies.lender_id.
+          const { data: businessProfile } = await supabase
+            .from('business_profiles')
+            .select('user_id')
+            .eq('id', businessLenderId)
+            .single();
+
+          let guestCap = prefs?.first_time_borrower_limit ?? 500;
+
+          if (businessProfile?.user_id) {
+            const { data: tier1Policy } = await supabase
+              .from('lender_tier_policies')
+              .select('max_loan_amount')
+              .eq('lender_id', businessProfile.user_id)
+              .eq('tier_id', 'tier_1')
+              .eq('is_active', true)
+              .single();
+
+            if (tier1Policy?.max_loan_amount) {
+              // Use the lower of tier_1 max and first_time_borrower_limit
+              guestCap = prefs?.first_time_borrower_limit
+                ? Math.min(tier1Policy.max_loan_amount, prefs.first_time_borrower_limit)
+                : tier1Policy.max_loan_amount;
+            }
+          }
+
+          setMaxLoanAmount(guestCap);
+          console.log('[GuestLoanForm] Guest cap (tier_1 / first-time):', guestCap);
+
           // Pre-fill interest rate and type
           if (prefs) {
             setValue('interestRate', prefs.interest_rate || 0);
             setValue('interestType', prefs.interest_type || 'simple');
-            // Set max loan amount from lender preferences
-            setMaxLoanAmount(prefs.max_amount || 10000);
             console.log('[GuestLoanForm] Using lender preferences:', prefs);
           } else if (businessData.default_interest_rate) {
             setValue('interestRate', businessData.default_interest_rate || 0);
             setValue('interestType', businessData.interest_type || 'simple');
-            // Set max loan amount from business profile
-            setMaxLoanAmount(businessData.max_loan_amount || 10000);
-            console.log('[GuestLoanForm] Using business defaults');
           }
         }
       } catch (err) {
@@ -357,7 +383,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       try {
         const { data: businessData } = await supabase
           .from('business_profiles')
-          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, slug, min_loan_amount, max_loan_amount, first_time_borrower_amount')
+          .select('id, business_name, tagline, logo_url, default_interest_rate, interest_type, slug, user_id, first_time_borrower_amount')
           .eq('slug', businessSlug)
           .single();
         
@@ -366,13 +392,35 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           setValue('lenderType', 'business');
           console.log('[GuestLoanForm] Business loaded from slug:', businessData);
           
-          // Get preferences
+          // Get preferences for interest rate
           const { data: prefs } = await supabase
             .from('lender_preferences')
-            .select('interest_rate, interest_type, min_amount, max_amount, first_time_borrower_limit')
+            .select('interest_rate, interest_type, min_amount, first_time_borrower_limit, allow_first_time_borrowers')
             .eq('business_id', businessData.id)
             .single();
-          
+
+          // Fetch tier_1 policy for the guest cap (business_profiles.user_id → lender_tier_policies.lender_id)
+          let guestCap = prefs?.first_time_borrower_limit ?? 500;
+
+          if (businessData.user_id) {
+            const { data: tier1Policy } = await supabase
+              .from('lender_tier_policies')
+              .select('max_loan_amount')
+              .eq('lender_id', businessData.user_id)
+              .eq('tier_id', 'tier_1')
+              .eq('is_active', true)
+              .single();
+
+            if (tier1Policy?.max_loan_amount) {
+              guestCap = prefs?.first_time_borrower_limit
+                ? Math.min(tier1Policy.max_loan_amount, prefs.first_time_borrower_limit)
+                : tier1Policy.max_loan_amount;
+            }
+          }
+
+          setMaxLoanAmount(guestCap);
+          setValue('lenderType', 'business');
+
           if (prefs) {
             setValue('interestRate', prefs.interest_rate || 0);
             setValue('interestType', prefs.interest_type || 'simple');
@@ -1797,7 +1845,9 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 helperText={
                   presetMaxAmount 
                     ? `Maximum available: $${presetMaxAmount.toLocaleString()}`
-                    : `Maximum: ${formatCurrency(maxLoanAmount)}`
+                    : (businessLenderId || businessSlug)
+                      ? `First-time limit: ${formatCurrency(maxLoanAmount)}`
+                      : `Maximum: ${formatCurrency(maxLoanAmount)}`
                 }
               />
             </div>

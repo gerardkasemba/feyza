@@ -33,6 +33,7 @@ import {
   CreditCard as PayIcon,
   TrendingUp as TrackIcon,
   LogIn,
+  Star
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -271,6 +272,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
   
   const baseItems: MenuItem[] = [
     { href: '/dashboard', label: 'Dashboard', icon: Home },
+    { href: '/vouch/requests', label: 'Vouch', icon: Star },
     // { href: '/profile', label: 'My Profile', icon: User },
     { href: '/settings', label: 'Settings', icon: Settings },
   ];
@@ -287,7 +289,7 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
   
   // Add common items
   baseItems.push(
-    { href: '/help', label: 'Help & Support', icon: HelpCircle },
+    // { href: '/help', label: 'Help & Support', icon: HelpCircle },
     { type: 'divider' },
     { label: 'Sign Out', icon: LogOut, onClick: handleSignOut, danger: true } as ActionItem
   );

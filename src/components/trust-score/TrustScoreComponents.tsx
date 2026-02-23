@@ -734,12 +734,34 @@ interface VouchButtonProps {
 export function VouchButton({ targetUserId, targetName, onVouchComplete, className = '' }: VouchButtonProps) {
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+  const [eligibilityError, setEligibilityError] = useState<{ message: string; code: string } | null>(null);
   const [formData, setFormData] = useState({
     vouch_type: 'character',
     relationship: 'friend',
     known_years: 1,
     message: '',
   });
+
+  const handleOpenModal = async () => {
+    // Pre-check eligibility before showing the form — better UX than failing at submit
+    setEligibilityLoading(true);
+    setEligibilityError(null);
+    try {
+      const res = await fetch('/api/vouches/eligibility');
+      const data = await res.json();
+      if (!data.eligible) {
+        setEligibilityError({ message: data.reason, code: data.code });
+        setShowModal(true); // Open modal in blocked state to show clear explanation
+        return;
+      }
+    } catch {
+      // Non-blocking — let server validation catch it at submit if this fails
+    } finally {
+      setEligibilityLoading(false);
+    }
+    setShowModal(true);
+  };
 
   const handleVouch = async () => {
     setLoading(true);
@@ -759,6 +781,9 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
       if (response.ok) {
         setShowModal(false);
         onVouchComplete?.();
+      } else if (data?.vouching_blocked) {
+        // Eligibility gate fired at server — update UI state
+        setEligibilityError({ message: data.error, code: data.code || 'vouching_locked' });
       } else {
         alert(data?.error || 'Failed to create vouch');
       }
@@ -772,9 +797,15 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setShowModal(true)} className={className}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleOpenModal}
+        disabled={eligibilityLoading}
+        className={className}
+      >
         <UserPlus className="w-4 h-4 mr-2" />
-        Vouch for {targetName.split(' ')[0]}
+        {eligibilityLoading ? 'Checking…' : `Vouch for ${targetName.split(' ')[0]}`}
       </Button>
 
       {showModal ? (
@@ -809,9 +840,35 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
             <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/20 p-3">
               <div className="flex items-start gap-2 text-[13px] text-amber-900 dark:text-amber-200">
                 <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                By vouching, you’re putting your reputation on the line.
+                By vouching, you’re putting your reputation on the line. If they default, your trust score drops and your vouching ability may be suspended.
               </div>
             </div>
+
+            {/* Eligibility error */}
+            {eligibilityError && (
+              <div className="mt-3 rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="text-xl shrink-0">
+                    {eligibilityError.code === 'account_too_new' ? '⏳' :
+                     eligibilityError.code === 'profile_incomplete' ? '👤' : '🔒'}
+                  </span>
+                  <div>
+                    <p className="font-bold text-red-700 dark:text-red-300 text-sm mb-1">
+                      {eligibilityError.code === 'account_too_new' ? 'Account too new to vouch' :
+                       eligibilityError.code === 'profile_incomplete' ? 'Complete your profile first' :
+                       'Vouching suspended'}
+                    </p>
+                    <p className="text-red-600 dark:text-red-400 text-xs leading-relaxed">{eligibilityError.message}</p>
+                    {eligibilityError.code === 'profile_incomplete' && (
+                      <a href="/profile" className="inline-block mt-2 text-xs font-semibold text-red-700 dark:text-red-300 underline">Go to profile →</a>
+                    )}
+                    {eligibilityError.code === 'vouching_locked' && (
+                      <a href="/vouch/requests" className="inline-block mt-2 text-xs font-semibold text-red-700 dark:text-red-300 underline">View my vouching record →</a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 space-y-4">
               <div>
@@ -868,7 +925,7 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
                 </Button>
                 <Button
                   onClick={handleVouch}
-                  disabled={loading}
+                  disabled={loading || !!eligibilityError}
                   className="rounded-2xl bg-purple-600 hover:bg-purple-700"
                 >
                   {loading ? 'Creating…' : 'Create vouch'}

@@ -31,9 +31,13 @@ export async function POST(
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
-    // Only allow cancellation of pending loans
-    if (loan.status !== 'pending') {
-      return NextResponse.json({ error: 'Only pending loans can be cancelled' }, { status: 400 });
+    // Allow cancellation as long as no money has moved:
+    // pending / pending_funds = lender not yet involved
+    // active + !funds_sent   = lender accepted but hasn't sent payment yet
+    const moneyMoved = loan.status === 'active' && loan.funds_sent;
+    const notCancellable = !['pending', 'pending_funds', 'active'].includes(loan.status) || moneyMoved;
+    if (notCancellable) {
+      return NextResponse.json({ error: 'Cannot cancel after funds have been sent' }, { status: 400 });
     }
 
     // Verify user is the borrower

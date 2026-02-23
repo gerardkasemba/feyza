@@ -6,12 +6,14 @@ import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Input, Select } from '@/components/ui';
 import { PlaidLinkButton, ConnectedBank } from '@/components/payments/PlaidLink';
+import { LenderSimplePolicyConfig } from '@/components/loans/LenderSimplePolicyConfig';
+import { TrustTierExplainer } from '@/components/trust-score/TrustTierExplainer';
 import { createClient } from '@/lib/supabase/client';
 import { 
   ArrowLeft, Building2, Percent, CreditCard, Bell, Shield, 
   CheckCircle, AlertCircle, Save, Trash2, Upload, Image as ImageIcon,
   Eye, EyeOff, Pause, Play, Globe, MapPin, Users, DollarSign,
-  Link2, Copy, ExternalLink, Landmark, Loader2, Building, Wallet, Zap
+  Link2, Copy, ExternalLink, Landmark, Loader2, Building, Wallet, Zap, Star
 } from 'lucide-react';
 
 const US_STATES = [
@@ -117,7 +119,7 @@ function BusinessSettingsContent() {
   // Sync activeTab with URL param
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['profile', 'lending', 'payments', 'visibility', 'account'].includes(tabParam)) {
+    if (tabParam && ['profile', 'lending', 'trust-tiers', 'payments', 'visibility', 'account'].includes(tabParam)) {
       setActiveTab(tabParam);
     }
   }, [searchParams]);
@@ -143,11 +145,6 @@ function BusinessSettingsContent() {
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Lending settings - NOW STORED IN lender_preferences TABLE
-  const [defaultInterestRate, setDefaultInterestRate] = useState('0');
-  const [interestType, setInterestType] = useState('simple');
-  const [minLoanAmount, setMinLoanAmount] = useState('');
-  const [maxLoanAmount, setMaxLoanAmount] = useState('');
-  const [firstTimeBorrowerAmount, setFirstTimeBorrowerAmount] = useState('50');
   const [capitalPool, setCapitalPool] = useState('10000');
   const [autoMatchEnabled, setAutoMatchEnabled] = useState(false);
 
@@ -241,11 +238,6 @@ function BusinessSettingsContent() {
 
     if (lenderPrefs) {
       // Map lender_preferences fields to business settings state
-      setDefaultInterestRate(lenderPrefs.interest_rate?.toString() || '0');
-      setInterestType(lenderPrefs.interest_type || 'simple');
-      setMinLoanAmount(lenderPrefs.min_amount?.toString() || '');
-      setMaxLoanAmount(lenderPrefs.max_amount?.toString() || '');
-      setFirstTimeBorrowerAmount(lenderPrefs.first_time_borrower_limit?.toString() || '50');
       setCapitalPool(lenderPrefs.capital_pool?.toString() || '10000');
       setAutoMatchEnabled(lenderPrefs.is_active || false);
     }
@@ -440,12 +432,6 @@ function BusinessSettingsContent() {
         .upsert({
           business_id: business.id,
           user_id: null, // Business lender
-          interest_rate: parseFloat(defaultInterestRate),
-          interest_type: interestType,
-          min_amount: parseFloat(minLoanAmount) || 50,
-          max_amount: parseFloat(maxLoanAmount) || 5000,
-          first_time_borrower_limit: parseFloat(firstTimeBorrowerAmount) || 50,
-          allow_first_time_borrowers: true, // Business lenders accept first-timers
           capital_pool: parseFloat(capitalPool) || 0,
           is_active: autoMatchEnabled,
           auto_accept: false, // Always require manual approval for business
@@ -668,6 +654,7 @@ function BusinessSettingsContent() {
   const tabs = [
     { id: 'profile', label: 'Business Profile', icon: Building2 },
     { id: 'lending', label: 'Lending Settings', icon: Percent },
+    { id: 'trust-tiers', label: 'Trust Tiers', icon: Star },
     { id: 'payments', label: 'Payments', icon: CreditCard },
     { id: 'visibility', label: 'Public Profile', icon: Globe },
     { id: 'account', label: 'Account', icon: Shield },
@@ -850,53 +837,8 @@ function BusinessSettingsContent() {
                       )}
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-4 mb-4">
-                      <Input label="Default Interest Rate (%)" type="number" step="0.01" min="0" max="100" value={defaultInterestRate} onChange={(e) => setDefaultInterestRate(e.target.value)} helperText="Annual percentage rate" />
-                      <Select label="Interest Type" value={interestType} onChange={(e) => setInterestType(e.target.value)} options={[{ value: 'simple', label: 'Simple Interest' }, { value: 'compound', label: 'Compound Interest' }]} />
-                    </div>
 
-                    <div className="grid md:grid-cols-2 gap-4 mb-6">
-                      <Input label="Minimum Loan ($)" type="number" min="1" value={minLoanAmount} onChange={(e) => setMinLoanAmount(e.target.value)} />
-                      <Input label="Maximum Loan ($)" type="number" min="1" value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} />
-                    </div>
-
-                    {/* Graduated Trust System */}
-                    <div className="border-t border-neutral-200 dark:border-neutral-700 pt-6 mt-6">
-                      <h3 className="font-semibold text-neutral-900 dark:text-white mb-2 flex items-center gap-2">
-                        <Shield className="w-5 h-5 text-primary-500" />
-                        First-Time Borrower Limits
-                      </h3>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">
-                        New borrowers must complete 3 loans at this amount before they can borrow larger amounts from you.
-                      </p>
-
-                      <div className="grid md:grid-cols-2 gap-4 mb-4">
-                        <Input 
-                          label="First-Time Borrower Amount ($)" 
-                          type="number" 
-                          min="1" 
-                          value={firstTimeBorrowerAmount} 
-                          onChange={(e) => setFirstTimeBorrowerAmount(e.target.value)}
-                          helperText="Maximum amount for new borrowers"
-                        />
-                        <div className="flex items-end pb-6">
-                          <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                            <p className="font-medium">After 3 successful loans:</p>
-                            <p>Unlocks up to ${maxLoanAmount || '5000'}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 mb-6">
-                        <h4 className="font-medium text-amber-800 dark:text-amber-300 mb-2">How it works:</h4>
-                        <ul className="text-sm text-amber-700 dark:text-amber-400 space-y-1">
-                          <li>• New borrowers can only borrow up to ${firstTimeBorrowerAmount || '50'}</li>
-                          <li>• After completing 3 loans at this amount, they "graduate"</li>
-                          <li>• Graduated borrowers can borrow up to your maximum (${maxLoanAmount || '5000'})</li>
-                          <li>• If a borrower defaults, their trust resets</li>
-                        </ul>
-                      </div>
-                    </div>
+                    
 
                     <div className="flex justify-end">
                       <Button type="submit" loading={saving}>
@@ -906,6 +848,16 @@ function BusinessSettingsContent() {
                     </div>
                   </Card>
                 </form>
+              )}
+
+              {/* Trust Tiers Tab */}
+              {activeTab === 'trust-tiers' && (
+                <div className="space-y-6">
+                  <TrustTierExplainer defaultExpanded={true} />
+                  <Card>
+                    <LenderSimplePolicyConfig />
+                  </Card>
+                </div>
               )}
 
               {/* Payments Tab */}

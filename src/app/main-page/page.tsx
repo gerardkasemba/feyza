@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { Navbar, Footer } from '@/components/layout';
 import GuestLoanRequestForm from '@/components/GuestLoanRequestForm';
-import TypingAnimation from '@/components/TypingAnimation';
 import {
   ArrowRight,
   Shield,
@@ -21,400 +20,513 @@ import {
   Sparkles,
   CreditCard,
   Calendar,
+  X,
+  ChevronRight,
 } from 'lucide-react';
+
+// ─── Tier system  vouch-based (the real data) ──────────────────────────────
+const TRUST_TIERS = [
+  {
+    tier: 'tier_1',
+    number: 1,
+    label: 'Low Trust',
+    vouches: '0 – 2 vouches',
+    description: 'Starting point. Access to basic loan amounts from lenders who accept new borrowers.',
+    unlocks: 'Entry access',
+    color: 'neutral',
+  },
+  {
+    tier: 'tier_2',
+    number: 2,
+    label: 'Building Trust',
+    vouches: '3 – 5 vouches',
+    description: 'Your community is backing you. More lenders become available, higher limits unlock.',
+    unlocks: '3+ vouches',
+    color: 'blue',
+  },
+  {
+    tier: 'tier_3',
+    number: 3,
+    label: 'Established Trust',
+    vouches: '6 – 10 vouches',
+    description: 'A strong community signal. Lenders compete for your business at this tier.',
+    unlocks: '6+ vouches',
+    color: 'amber',
+  },
+  {
+    tier: 'tier_4',
+    number: 4,
+    label: 'High Trust',
+    vouches: '11+ vouches',
+    description: 'The highest tier. Maximum limits, best rates, full access to all lenders.',
+    unlocks: '11+ vouches',
+    color: 'green',
+  },
+];
+
+// Trust score components (the 0-100 metric  separate from tier)
+const TRUST_SCORE_COMPONENTS = [
+  { label: 'Payment History', weight: '40%', desc: 'On-time payments build your score', icon: CheckCircle, color: 'green' },
+  { label: 'Loan Completion', weight: '25%', desc: 'Finishing loans matters', icon: Star, color: 'amber' },
+  { label: 'Community Vouches', weight: '15%', desc: 'Who backs you up', icon: Users, color: 'blue' },
+  { label: 'Verification', weight: '10%', desc: 'ID confirmed, real person', icon: Shield, color: 'purple' },
+  { label: 'Platform Tenure', weight: '10%', desc: 'Time as active member', icon: Clock, color: 'neutral' },
+];
 
 export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
       <Navbar user={null} />
 
-      <section className="relative overflow-hidden bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800 dark:from-primary-800 dark:via-primary-900 dark:to-neutral-950">
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.1),transparent)]" />
-        </div>
+      {/* ══════════════════════════════════════════════════════════
+          HERO  The Declaration
+      ══════════════════════════════════════════════════════════ */}
+      <section className="relative overflow-hidden bg-neutral-950">
+        {/* Dot grid */}
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '28px 28px' }}
+        />
+        {/* Green ambient */}
+        <div className="absolute bottom-0 left-1/4 w-[600px] h-[400px] bg-green-500/8 rounded-full blur-[100px] pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 relative">
-          {/* ✅ IMPORTANT: items-start instead of items-center */}
-          <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-start">
-            
-            {/* Left: Main Message */}
-            {/* ✅ FIXED TYPO: items-start pb-12 (space added) */}
-            <div className="flex flex-col items-start pb-12">
-              
-              {/* Badge */}
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 rounded-full mb-6">
-                <Sparkles className="w-4 h-4 text-white" />
-                <span className="text-sm font-semibold text-white">Not Another P2P Platform</span>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 relative">
+          <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-start">
+
+            {/* Left  Manifesto */}
+            <div className="lg:col-span-7 flex flex-col">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full mb-7 self-start">
+                <Sparkles className="w-3.5 h-3.5 text-green-400" />
+                <span className="text-xs font-bold text-green-400 tracking-wide uppercase">No Credit Check</span>
               </div>
 
-              {/* Headline */}
-              <h1 className="text-4xl sm:text-7xl lg:text-6xl font-display font-bold text-white mb-6 leading-tight">
-                Bad Credit?
+              <h1 className="font-display font-black text-white leading-[1.05] tracking-tight mb-6"
+                style={{ fontSize: 'clamp(2.8rem, 6vw, 5rem)' }}>
+                Your credit score
                 <br />
-                No Credit?
+                <span className="text-neutral-500 line-through decoration-red-500 decoration-[3px]">defines you.</span>
                 <br />
-                <span className="text-primary-200">No Problem.</span>
+                <span className="text-green-400">We disagree.</span>
               </h1>
 
-              <p className="text-lg sm:text-xl lg:text-2xl text-white/90 mb-8 leading-relaxed max-w-2xl">
-                We don't check credit scores. We check your <strong className="text-white">community</strong> and let you{' '}
-                <strong className="text-white">prove yourself</strong>.
+              <p className="text-lg text-neutral-400 leading-relaxed mb-8 max-w-lg">
+                Banks judge you by a three-digit number calculated by an algorithm that's never met you. We built something different  a system where{' '}
+                <strong className="text-white">your community vouches for you</strong>, and your actions prove the rest.
               </p>
 
-              {/* Trust Section */}
-              <div className="w-full max-w-xl bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl p-6 mb-8">
-                <h3 className="text-lg font-bold text-white mb-4">Build Trust Two Ways:</h3>
-
-                <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4 text-white" />
+              {/* Two-column value props */}
+              <div className="grid grid-cols-2 gap-3 mb-8 max-w-lg">
+                {[
+                  { icon: Ban, label: 'No credit check', sub: 'Ever.' },
+                  { icon: Users, label: 'Community vouching', sub: 'Real people back you' },
+                  { icon: TrendingUp, label: 'Tier system', sub: 'Grow your access' },
+                  { icon: Zap, label: 'Fast decisions', sub: 'Under 24 hours' },
+                ].map(({ icon: Icon, label, sub }) => (
+                  <div key={label} className="flex items-start gap-3 p-3.5 rounded-xl bg-neutral-900 border border-neutral-800">
+                    <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Icon className="w-3.5 h-3.5 text-green-400" />
                     </div>
                     <div>
-                      <p className="font-semibold text-white">Get people to vouch for you</p>
-                      <p className="text-sm text-white/80">Friends, family, community members stake their reputation</p>
+                      <p className="text-sm font-semibold text-white leading-tight">{label}</p>
+                      <p className="text-[11px] text-neutral-500">{sub}</p>
                     </div>
                   </div>
-
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                      <TrendingUp className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-white">Start small, prove yourself</p>
-                      <p className="text-sm text-white/80">Repay on time, build trust score, unlock bigger loans</p>
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
 
-              {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
-                <Link href="/auth/signup" className="w-full sm:w-auto">
-                  <Button size="lg" className="w-full sm:w-auto bg-white text-primary-700 hover:bg-primary-50 font-semibold">
-                    Get Started
-                    <ArrowRight className="w-5 h-5 ml-2" />
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Link href="/auth/signup">
+                  <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold">
+                    Get Started  It's Free
+                    <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
-
-                <Link href="/how-vouching-works" className="w-full sm:w-auto">
-                  <Button
-                    size="lg"
-                    variant="outline"
-                    className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10 backdrop-blur-sm"
-                  >
-                    How It Works
+                <Link href="/how-vouching-works">
+                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-neutral-700 text-neutral-300 hover:bg-neutral-900">
+                    How Vouching Works
                   </Button>
                 </Link>
               </div>
             </div>
 
-            {/* Right: Loan Request Form */}
-            <div className="lg:sticky lg:top-24 self-start">
-              <div className="rounded-2xl border border-white/20 bg-white dark:bg-neutral-900 shadow-2xl p-6 backdrop-blur-sm">
-                <div className="flex items-start gap-3 mb-5">
-                  <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
-                    <Zap className="w-5 h-5 text-primary-600 dark:text-primary-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-neutral-900 dark:text-white">Request a Loan</p>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">No credit check, no account needed to start</p>
+            {/* Right  Guest Form */}
+            <div className="lg:col-span-5 lg:sticky lg:top-24">
+              <div className="rounded-2xl border border-neutral-800 bg-neutral-900 overflow-hidden shadow-2xl">
+                <div className="px-6 pt-5 pb-4 border-b border-neutral-800">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center">
+                      <Zap className="w-4.5 h-4.5 text-green-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-white text-sm">Request a Loan</p>
+                      <p className="text-xs text-neutral-500">No account needed · No credit check</p>
+                    </div>
                   </div>
                 </div>
-
-                <GuestLoanRequestForm />
+                <div className="p-6">
+                  <GuestLoanRequestForm />
+                </div>
               </div>
             </div>
+
           </div>
         </div>
       </section>
 
-
-      {/* THE PROBLEM - TRADITIONAL LENDING FAILS */}
-      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/50">
+      {/* ══════════════════════════════════════════════════════════
+          THE INDICTMENT  Credit Scores Are Broken
+          Visual tone: cold, clinical, machine-like
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-              Why Traditional Lending Fails You
+
+          {/* Header */}
+          <div className="max-w-2xl mb-12">
+            <p className="text-xs font-bold tracking-[0.3em] text-neutral-500 uppercase mb-3">
+              The Problem
+            </p>
+            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4 leading-tight">
+              A three-digit number
+              <br />
+              <span className="text-neutral-400 dark:text-neutral-500">decided your future.</span>
             </h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-3xl mx-auto">
-              The credit score system locks out millions of trustworthy people
+            <p className="text-neutral-600 dark:text-neutral-400 text-lg">
+              The credit score system was built in 1989  before the internet, before smartphones, before most of us were born. Yet it still determines whether you can pay your rent or fix your car.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 max-w-7xl mx-auto mb-12">
+          {/* The three failures */}
+          <div className="grid md:grid-cols-3 gap-5 mb-10">
             {[
               {
+                label: 'One mistake. Punished for years.',
+                body: 'Miss a payment during a crisis? The algorithm marks you for 7 years. No context. No appeal. No second chance.',
                 icon: Ban,
-                title: 'Bad Credit = Rejected',
-                description: 'One past mistake? Banks reject you for years. No second chances, no context.',
               },
               {
+                label: 'Never borrowed? You\'re invisible.',
+                body: 'Young, new to the country, or just careful with money? To a bank, no credit history means no trustworthiness. Circular logic.',
                 icon: AlertCircle,
-                title: 'No Credit = Invisible',
-                description: 'Never borrowed before? Young? New to area? To banks, you don\'t exist.',
               },
               {
-                icon: Ban,
-                title: 'Emergency? Too Bad',
-                description: 'Car breaks down? Medical bill? Banks take weeks. Payday loans charge 400%+ APR.',
+                label: 'Emergency? The system laughs.',
+                body: 'Car breaks down, medical bill arrives. Banks take weeks and still say no. Payday lenders charge 300–400% APR. Take it or leave it.',
+                icon: X,
               },
-            ].map((problem) => (
-              <div
-                key={problem.title}
-                className="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-red-200 dark:border-red-900/40"
-              >
-                <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center mb-4">
-                  <problem.icon className="w-6 h-6 text-red-600 dark:text-red-400" />
+            ].map(({ label, body, icon: Icon }) => (
+              <div key={label} className="p-6 rounded-2xl bg-white dark:bg-neutral-900 border border-red-100 dark:border-red-900/30">
+                <div className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
+                  <Icon className="w-5 h-5 text-red-500 dark:text-red-400" />
                 </div>
-                <h3 className="text-xl font-bold text-neutral-900 dark:text-white mb-2">{problem.title}</h3>
-                <p className="text-neutral-600 dark:text-neutral-400">{problem.description}</p>
+                <h3 className="font-bold text-neutral-900 dark:text-white mb-2 text-sm">{label}</h3>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">{body}</p>
               </div>
             ))}
           </div>
 
-          {/* The Broken System */}
-          <div className="max-w-4xl mx-auto bg-white dark:bg-neutral-900 rounded-2xl border-2 border-red-200 dark:border-red-900/40 p-8">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center shrink-0">
-                <Ban className="w-6 h-6 text-red-600 dark:text-red-400" />
+          {/* The verdict */}
+          <div className="p-8 rounded-2xl bg-neutral-900 dark:bg-neutral-950 border border-neutral-800 max-w-4xl">
+            <div className="flex items-start gap-5">
+              <div className="w-12 h-12 rounded-2xl bg-neutral-800 flex items-center justify-center flex-shrink-0">
+                <span className="text-xl">⚖️</span>
               </div>
               <div>
-                <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-3">
-                  You're Not a Number
-                </h3>
-                <p className="text-neutral-600 dark:text-neutral-400 text-lg">
-                  Credit scores measure your financial past. They ignore your character, your community, 
-                  your current situation, and your commitment to repay. <strong>There's a better way.</strong>
+                <h3 className="text-lg font-bold text-white mb-2">The score doesn't know you.</h3>
+                <p className="text-neutral-400 leading-relaxed">
+                  A credit score measures your relationship with debt. It says nothing about your character, your work ethic, your community, or your commitment to the people you owe. It treats every missed payment the same  whether it happened during a medical crisis or a moment of irresponsibility.{' '}
+                  <strong className="text-white">There has to be a better signal.</strong>
                 </p>
               </div>
             </div>
           </div>
+
         </div>
       </section>
 
-      {/* THE FEYZA WAY - TRUST SCORE */}
+      {/* ══════════════════════════════════════════════════════════
+          THE FEYZA SIGNAL  Vouching
+          Visual tone: warm, human, community
+      ══════════════════════════════════════════════════════════ */}
       <section className="py-20 bg-white dark:bg-neutral-950">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
-              <Sparkles className="w-4 h-4 text-green-600 dark:text-green-400" />
-              <span className="text-sm font-semibold text-green-700 dark:text-green-400">The Feyza Way</span>
+
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+
+            {/* Left */}
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-full mb-6">
+                <Sparkles className="w-3.5 h-3.5 text-green-600 dark:text-green-400" />
+                <span className="text-xs font-bold text-green-700 dark:text-green-400 tracking-wide uppercase">The Feyza Signal</span>
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-6 leading-tight">
+                Who vouches for you
+                <br />
+                <span className="text-green-600 dark:text-green-400">is more powerful</span>
+                <br />
+                than any algorithm.
+              </h2>
+              <p className="text-neutral-600 dark:text-neutral-400 text-lg leading-relaxed mb-8">
+                When someone puts their reputation on the line for you  a friend, a family member, a community elder  that says more about your character than three digits ever could. We built our entire system around this.
+              </p>
+
+              <div className="space-y-4 mb-8">
+                {[
+                  { title: 'No financial risk to your voucher', sub: 'They stake their reputation, not their money. They cannot be sued or lose anything.' },
+                  { title: 'Vouches unlock higher tiers', sub: 'Each tier unlocks larger loan amounts from more lenders. More vouches, more access.' },
+                  { title: 'Vouchers have skin in the game', sub: 'A poor vouch reflects on them too. People only vouch for people they genuinely trust.' },
+                ].map(({ title, sub }) => (
+                  <div key={title} className="flex items-start gap-3.5">
+                    <div className="w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <CheckCircle className="w-3 h-3 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-neutral-900 dark:text-white text-sm">{title}</p>
+                      <p className="text-sm text-neutral-500 dark:text-neutral-500 mt-0.5">{sub}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Link href="/how-vouching-works">
+                <Button className="bg-green-600 hover:bg-green-700 text-white font-bold">
+                  How Vouching Works <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </Link>
             </div>
-            <h2 className="text-4xl sm:text-7xl font-display font-bold text-neutral-900 dark:text-white mb-6">
-              We Check <span className="text-primary-600 dark:text-primary-400">Trust</span>, Not Credit
+
+            {/* Right  Comparison: old vs new */}
+            <div className="space-y-3">
+              <p className="text-xs font-bold tracking-[0.25em] text-neutral-400 uppercase mb-5">Credit score vs Feyza</p>
+
+              {[
+                { label: 'What it measures', old: 'Your debt payment history', feyza: 'Your community trust + behavior' },
+                { label: 'New to credit?', old: 'Invisible. Rejected.', feyza: 'Start at Tier 1, build from there' },
+                { label: 'Past mistakes', old: 'Counted against you for 7 years', feyza: 'Addressed through community vouches' },
+                { label: 'Who decides', old: 'An algorithm', feyza: 'Real people who know you' },
+                { label: 'How to improve', old: 'Wait. Or pay for credit repair.', feyza: 'Get vouched. Build your track record.' },
+                { label: 'Emergency access', old: 'Denied or 400% APR payday loans', feyza: 'Same-day request, 24hr decision' },
+              ].map(({ label, old, feyza }) => (
+                <div key={label} className="grid grid-cols-12 gap-2 text-sm">
+                  <div className="col-span-3 text-xs text-neutral-400 py-3 font-medium">{label}</div>
+                  <div className="col-span-4 px-3 py-2.5 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900/20 text-red-600 dark:text-red-400 text-xs leading-tight flex items-center">
+                    {old}
+                  </div>
+                  <div className="col-span-5 px-3 py-2.5 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-100 dark:border-green-900/30 text-green-700 dark:text-green-400 text-xs leading-tight flex items-center font-medium">
+                    {feyza}
+                  </div>
+                </div>
+              ))}
+
+              <div className="grid grid-cols-12 gap-2 pt-2">
+                <div className="col-span-3" />
+                <div className="col-span-4 text-center">
+                  <span className="text-[10px] text-red-400 font-bold tracking-wide uppercase">Old System</span>
+                </div>
+                <div className="col-span-5 text-center">
+                  <span className="text-[10px] text-green-500 font-bold tracking-wide uppercase">Feyza</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════
+          TRUST TIERS  The Four-Tier System
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-20 bg-neutral-950">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="text-center mb-12">
+            <p className="text-xs font-bold tracking-[0.3em] text-neutral-500 uppercase mb-3">The Tier System</p>
+            <h2 className="text-3xl sm:text-4xl font-display font-bold text-white mb-4 leading-tight">
+              More vouches. Higher tier.
+              <br />
+              <span className="text-green-400">Bigger loans.</span>
             </h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-3xl mx-auto">
-              Your Trust Score (0-100) replaces credit scores. Build it your way.
+            <p className="text-neutral-400 max-w-xl mx-auto">
+              Your tier determines what loan amounts lenders will approve. It's based entirely on how many active vouches you have. No waiting. No scoring algorithm. Just people backing you.
             </p>
           </div>
 
-          {/* Trust Score Components */}
-          <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-6 mb-16">
-            {[
-              {
-                component: 'Payment History',
-                weight: '40%',
-                description: 'Repay on time, score goes up',
-                icon: CheckCircle,
-                color: 'primary',
-              },
-              {
-                component: 'Completion',
-                weight: '25%',
-                description: 'Finish loans successfully',
-                icon: Star,
-                color: 'amber',
-              },
-              {
-                component: 'Community Vouches',
-                weight: '15%',
-                description: 'People vouch for you',
-                icon: Users,
-                color: 'green',
-              },
-              {
-                component: 'Verification',
-                weight: '10%',
-                description: 'ID verified, real person',
-                icon: Shield,
-                color: 'blue',
-              },
-              {
-                component: 'Platform Tenure',
-                weight: '10%',
-                description: 'Time as active member',
-                icon: Clock,
-                color: 'purple',
-              },
-            ].map((item) => {
-              const colorClasses = {
-                primary: 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400',
-                amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
-                green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
-                blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
-                purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
-              };
+          <div className="grid md:grid-cols-4 gap-4 mb-8">
+            {TRUST_TIERS.map((tier, i) => {
+              const colors = {
+                neutral: { ring: 'border-neutral-700', bg: 'bg-neutral-900', badge: 'bg-neutral-700 text-neutral-300', dot: 'bg-neutral-500' },
+                blue: { ring: 'border-blue-500/30', bg: 'bg-blue-950/20', badge: 'bg-blue-500/15 text-blue-300', dot: 'bg-blue-400' },
+                amber: { ring: 'border-amber-500/30', bg: 'bg-amber-950/20', badge: 'bg-amber-500/15 text-amber-300', dot: 'bg-amber-400' },
+                green: { ring: 'border-green-500/40', bg: 'bg-green-950/20', badge: 'bg-green-500/15 text-green-300', dot: 'bg-green-400' },
+              }[tier.color] ?? { ring: 'border-neutral-700', bg: 'bg-neutral-900', badge: 'bg-neutral-700 text-neutral-300', dot: 'bg-neutral-500' };
 
               return (
-                <div
-                  key={item.component}
-                  className="bg-neutral-50 dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 hover:shadow-lg transition-shadow"
-                >
-                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${colorClasses[item.color as keyof typeof colorClasses]}`}>
-                    <item.icon className="w-6 h-6" />
+                <div key={tier.tier}
+                  className={`relative rounded-2xl border p-5 ${colors.ring} ${colors.bg} ${i === 3 ? 'ring-1 ring-green-500/20' : ''}`}>
+                  {i === 3 && (
+                    <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full bg-green-500 text-[10px] font-bold text-white whitespace-nowrap">
+                      Highest Access
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className={`w-2 h-2 rounded-full ${colors.dot}`} />
+                    <span className="text-[10px] font-bold tracking-widest text-neutral-500 uppercase">Tier {tier.number}</span>
                   </div>
-                  <div className="font-bold text-neutral-900 dark:text-white mb-1">{item.component}</div>
-                  <div className="text-2xl font-bold text-primary-600 dark:text-primary-400 mb-2">{item.weight}</div>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">{item.description}</p>
+                  <h3 className="font-bold text-white text-base mb-1">{tier.label}</h3>
+                  <div className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold mb-3 ${colors.badge}`}>
+                    {tier.vouches}
+                  </div>
+                  <p className="text-xs text-neutral-400 leading-relaxed">{tier.description}</p>
                 </div>
               );
             })}
           </div>
 
-          {/* Two Paths */}
-          <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-            {/* Path 1: Community Vouching */}
-            <div className="bg-gradient-to-br from-green-50 to-primary-50 dark:from-green-900/20 dark:to-primary-900/20 rounded-2xl p-8 border-2 border-green-400 dark:border-green-600">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-14 h-14 bg-green-100 dark:bg-green-900/40 rounded-xl flex items-center justify-center">
-                  <Users className="w-7 h-7 text-green-600 dark:text-green-400" />
+          <p className="text-center text-xs text-neutral-600 max-w-lg mx-auto">
+            Tiers update automatically as you receive vouches. Lenders set their own limits per tier  the more lenders available at your tier, the better your options.
+          </p>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════
+          TRUST SCORE  The 0–100 Metric
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-20 bg-white dark:bg-neutral-950">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+
+            <div>
+              <p className="text-xs font-bold tracking-[0.3em] text-neutral-400 uppercase mb-3">Trust Score</p>
+              <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4 leading-tight">
+                A score that actually
+                <br />
+                <span className="text-primary-600 dark:text-primary-400">reflects who you are.</span>
+              </h2>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-8 leading-relaxed">
+                Alongside your tier, you have a Trust Score from 0–100. It's visible to lenders and tells a richer story than any credit score ever could  because it accounts for <em>behavior</em>, not just payment history.
+              </p>
+              <div className="p-5 rounded-2xl bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-4">Your score is built from</p>
+                <div className="space-y-3">
+                  {TRUST_SCORE_COMPONENTS.map((c) => {
+                    const colorMap = {
+                      green: 'bg-green-500',
+                      amber: 'bg-amber-400',
+                      blue: 'bg-blue-500',
+                      purple: 'bg-purple-500',
+                      neutral: 'bg-neutral-500',
+                    };
+                    const widthMap = { '40%': 'w-[40%]', '25%': 'w-[25%]', '15%': 'w-[15%]', '10%': 'w-[10%]' };
+                    return (
+                      <div key={c.label}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{c.label}</span>
+                          <span className="text-sm font-bold text-neutral-900 dark:text-white">{c.weight}</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-neutral-200 dark:bg-neutral-800 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${colorMap[c.color as keyof typeof colorMap]} ${widthMap[c.weight as keyof typeof widthMap]}`} />
+                        </div>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">{c.desc}</p>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-neutral-900 dark:text-white">Path 1: Get Vouched</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">15% of your trust score</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-7 rounded-2xl bg-gradient-to-br from-green-50 to-white dark:from-green-900/15 dark:to-neutral-900 border border-green-100 dark:border-green-900/30">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                    <Users className="w-6 h-6 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-neutral-900 dark:text-white">Trust Tier</p>
+                    <p className="text-xs text-neutral-500">Determines your loan limit access</p>
+                  </div>
+                </div>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3 leading-relaxed">
+                  Your tier (1–4) is based on how many active vouches you have. This is what lenders use to determine how much they'll lend you.
+                </p>
+                <div className="flex items-center gap-2 text-sm font-semibold text-green-700 dark:text-green-400">
+                  More vouches → Higher tier → Bigger loans
+                  <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
 
-              <p className="text-neutral-700 dark:text-neutral-300 mb-6">
-                Have friends, family, or community members vouch for your character. They stake their reputation (not money) to support you.
-              </p>
-
-              <ul className="space-y-3 mb-6">
-                {[
-                  'No financial risk to vouchers',
-                  'They cannot be sued or lose money',
-                  'Boosts your trust score immediately',
-                  'Shows lenders you have support',
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
-                    <span className="text-neutral-700 dark:text-neutral-300">{item}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/how-vouching-works">
-                <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
-                  How Vouching Works →
-                </Button>
-              </Link>
-            </div>
-
-            {/* Path 2: Prove Yourself */}
-            <div className="bg-gradient-to-br from-blue-50 to-primary-50 dark:from-blue-900/20 dark:to-primary-900/20 rounded-2xl p-8 border-2 border-blue-400 dark:border-blue-600">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/40 rounded-xl flex items-center justify-center">
-                  <TrendingUp className="w-7 h-7 text-blue-600 dark:text-blue-400" />
+              <div className="p-7 rounded-2xl bg-gradient-to-br from-blue-50 to-white dark:from-blue-900/15 dark:to-neutral-900 border border-blue-100 dark:border-blue-900/30">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                    <TrendingUp className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="font-bold text-neutral-900 dark:text-white">Trust Score</p>
+                    <p className="text-xs text-neutral-500">Lenders see your full picture</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-2xl font-bold text-neutral-900 dark:text-white">Path 2: Prove Yourself</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">65% from payment & completion</p>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3 leading-relaxed">
+                  Your 0–100 score shows lenders your full track record  payments made, loans completed, how long you've been on the platform.
+                </p>
+                <div className="flex items-center gap-2 text-sm font-semibold text-blue-700 dark:text-blue-400">
+                  Pay on time → Score rises → Better terms
+                  <ChevronRight className="w-4 h-4" />
                 </div>
               </div>
-
-              <p className="text-neutral-700 dark:text-neutral-300 mb-6">
-                Start small, repay on time, complete loans successfully. Your actions build trust more than any credit score could.
-              </p>
-
-              <ul className="space-y-3 mb-6">
-                {[
-                  'Begin with smaller loan amounts',
-                  'Make payments on time consistently',
-                  'Complete loans successfully',
-                  'Unlock bigger amounts as trust grows',
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2">
-                    <CheckCircle className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 shrink-0" />
-                    <span className="text-neutral-700 dark:text-neutral-300">{item}</span>
-                  </li>
-                ))}
-              </ul>
-
-              <Link href="/auth/signup">
-                <Button className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white">
-                  Start Building Trust →
-                </Button>
-              </Link>
             </div>
-          </div>
-
-          {/* Both Paths Work Together */}
-          <div className="mt-12 max-w-4xl mx-auto bg-primary-50 dark:bg-primary-900/20 rounded-2xl border border-primary-200 dark:border-primary-800 p-8 text-center">
-            <h3 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">
-              Best Results? Do Both
-            </h3>
-            <p className="text-lg text-neutral-700 dark:text-neutral-300">
-              Get people to vouch for you <strong>AND</strong> prove yourself with on-time payments. 
-              Your trust score grows faster, lenders trust you more, you unlock bigger loans sooner.
-            </p>
           </div>
         </div>
       </section>
 
-      {/* HOW IT WORKS - ACTUAL FLOW */}
-      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/50">
+      {/* ══════════════════════════════════════════════════════════
+          HOW IT WORKS  4 Steps
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-              How Feyza Works
+
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-3">
+              From request to funded
             </h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400">
-              From request to repayment in four steps
+            <p className="text-neutral-500 dark:text-neutral-400 max-w-lg mx-auto">
+              Four steps. No credit check. No weeks of waiting.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-4 gap-8">
+          <div className="grid md:grid-cols-4 gap-6">
             {[
               {
-                step: '01',
-                title: 'Request a Loan',
-                description: 'Tell us how much you need and why. No credit check, takes 2 minutes.',
+                n: '01', title: 'Request a Loan',
+                body: 'Tell us how much you need and why. Takes two minutes. No credit check.',
                 icon: CreditCard,
               },
               {
-                step: '02',
-                title: 'Get Matched',
-                description: 'We match you with lenders automatically. Or invite someone you know to fund it.',
-                icon: Building2,
-              },
-              {
-                step: '03',
-                title: 'Build Trust',
-                description: 'Get vouches from your community and/or start with a smaller amount to prove yourself.',
+                n: '02', title: 'Get Vouched',
+                body: 'Invite friends, family, or community members to vouch for you. Each vouch raises your tier and opens more lenders.',
                 icon: Users,
               },
               {
-                step: '04',
-                title: 'Repay & Grow',
-                description: 'Make payments on time (auto-pay available). Your trust score grows. Unlock bigger loans.',
+                n: '03', title: 'Get Matched',
+                body: 'We match you with lenders whose tier policies fit your current standing. Or invite someone you know personally.',
+                icon: Building2,
+              },
+              {
+                n: '04', title: 'Repay & Grow',
+                body: 'Make payments on time  auto-pay available. Your trust score builds. Lenders trust you more. The cycle rewards the trustworthy.',
                 icon: TrendingUp,
               },
-            ].map((item, index) => (
-              <div key={item.step} className="relative">
+            ].map((step, i, arr) => (
+              <div key={step.n} className="relative">
                 <div className="bg-white dark:bg-neutral-900 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 h-full">
-                  <div className="w-12 h-12 bg-primary-100 dark:bg-primary-900/30 rounded-xl flex items-center justify-center mb-4">
-                    <item.icon className="w-6 h-6 text-primary-600 dark:text-primary-400" />
+                  <div className="w-10 h-10 rounded-xl bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center mb-4">
+                    <step.icon className="w-5 h-5 text-primary-600 dark:text-primary-400" />
                   </div>
-                  <div className="text-4xl font-display font-bold text-primary-100 dark:text-primary-900/30 mb-2">
-                    {item.step}
-                  </div>
-                  <h3 className="text-lg font-bold text-neutral-900 dark:text-white mb-2">{item.title}</h3>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">{item.description}</p>
+                  <div className="text-3xl font-display font-black text-neutral-100 dark:text-neutral-800 mb-2">{step.n}</div>
+                  <h3 className="font-bold text-neutral-900 dark:text-white mb-2">{step.title}</h3>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">{step.body}</p>
                 </div>
-                {index < 3 && (
-                  <div className="hidden md:block absolute top-1/2 -right-4 transform -translate-y-1/2 z-10">
-                    <ArrowRight className="w-6 h-6 text-primary-300 dark:text-primary-700" />
+                {i < arr.length - 1 && (
+                  <div className="hidden md:block absolute top-1/2 -right-3 transform -translate-y-1/2 z-10">
+                    <ArrowRight className="w-5 h-5 text-neutral-300 dark:text-neutral-700" />
                   </div>
                 )}
               </div>
@@ -423,156 +535,99 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* TWO WAYS TO GET FUNDED */}
+      {/* ══════════════════════════════════════════════════════════
+          TWO WAYS TO GET FUNDED
+      ══════════════════════════════════════════════════════════ */}
       <section className="py-20 bg-white dark:bg-neutral-950">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-              Two Ways to Get Funded
+
+          <div className="text-center mb-14">
+            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-3">
+              Two ways to get funded
             </h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-3xl mx-auto">
-              Get matched with verified business lenders or invite someone you know
+            <p className="text-neutral-500 dark:text-neutral-400 max-w-xl mx-auto">
+              Matched to a verified business lender, or invite someone you already know.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8">
-            {/* Business Lenders */}
-            <div className="bg-gradient-to-br from-primary-50 to-white dark:from-primary-900/20 dark:to-neutral-900 rounded-2xl p-8 border border-primary-200 dark:border-primary-800">
-              <div className="w-16 h-16 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mb-6">
-                <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+            <div className="rounded-2xl border border-primary-100 dark:border-primary-900/30 bg-gradient-to-br from-primary-50 to-white dark:from-primary-950/30 dark:to-neutral-900 p-8">
+              <div className="w-14 h-14 bg-primary-100 dark:bg-primary-900/30 rounded-2xl flex items-center justify-center mb-5">
+                <Building2 className="w-7 h-7 text-primary-600 dark:text-primary-400" />
               </div>
-              <h3 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-                Business Lenders
-              </h3>
-              <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-                We automatically match your request with verified business lenders based on your loan amount, 
-                trust score, and their lending preferences. No browsing required.
+              <h3 className="text-xl font-display font-bold text-neutral-900 dark:text-white mb-3">Business Lenders</h3>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-5 text-sm leading-relaxed">
+                We automatically match your request with verified business lenders whose tier policies match your current standing. Their loan limits are set per-tier  the higher your tier, the more they'll offer.
               </p>
-              <ul className="space-y-3">
-                {['Automatic matching', 'Multiple lender options', 'Clear terms & rates', 'Auto-pay & reminders'].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-neutral-700 dark:text-neutral-300">
-                    <CheckCircle className="w-5 h-5 text-primary-500 dark:text-primary-400" />
-                    {item}
+              <ul className="space-y-2.5 mb-6">
+                {['Automatic matching by your tier', 'Multiple lenders may compete for you', 'Clear terms and rates upfront', 'Auto-pay and smart payment scheduling'].map((item) => (
+                  <li key={item} className="flex items-center gap-2.5 text-sm text-neutral-700 dark:text-neutral-300">
+                    <CheckCircle className="w-4 h-4 text-primary-500 dark:text-primary-400 flex-shrink-0" /> {item}
                   </li>
                 ))}
               </ul>
-              <div className="mt-8">
-                <Link href="/auth/signup">
-                  <Button className="w-full sm:w-auto">
-                    Get Matched
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
+              <Link href="/auth/signup">
+                <Button className="w-full sm:w-auto">Get Matched <ArrowRight className="w-4 h-4 ml-1.5" /></Button>
+              </Link>
             </div>
 
-            {/* Personal Lenders */}
-            <div className="bg-gradient-to-br from-green-50 to-white dark:from-green-900/20 dark:to-neutral-900 rounded-2xl p-8 border border-green-200 dark:border-green-800">
-              <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mb-6">
-                <Heart className="w-8 h-8 text-green-600 dark:text-green-400" />
+            <div className="rounded-2xl border border-green-100 dark:border-green-900/30 bg-gradient-to-br from-green-50 to-white dark:from-green-950/30 dark:to-neutral-900 p-8">
+              <div className="w-14 h-14 bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mb-5">
+                <Heart className="w-7 h-7 text-green-600 dark:text-green-400" />
               </div>
-              <h3 className="text-2xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-                Friends & Family
-              </h3>
-              <p className="text-neutral-600 dark:text-neutral-400 mb-6">
-                Invite someone you trust to fund your loan directly. They don't need an account. 
-                Feyza tracks everything so your relationship stays clean.
+              <h3 className="text-xl font-display font-bold text-neutral-900 dark:text-white mb-3">Friends & Family</h3>
+              <p className="text-neutral-600 dark:text-neutral-400 mb-5 text-sm leading-relaxed">
+                Invite someone you trust to fund your loan directly. They don't need a Feyza account. We track everything, send reminders, and keep your relationship clean  because mixing money and relationships should come with a safety net.
               </p>
-              <ul className="space-y-3">
-                {['No account required for lender', 'Email invite system', 'Clear payment tracking', 'Preserve relationships'].map((item) => (
-                  <li key={item} className="flex items-center gap-3 text-neutral-700 dark:text-neutral-300">
-                    <CheckCircle className="w-5 h-5 text-green-500 dark:text-green-400" />
-                    {item}
+              <ul className="space-y-2.5 mb-6">
+                {['No account needed for your lender', 'Email invite system', 'Clear payment tracking for both sides', 'Preserve the relationship  we handle the awkward part'].map((item) => (
+                  <li key={item} className="flex items-center gap-2.5 text-sm text-neutral-700 dark:text-neutral-300">
+                    <CheckCircle className="w-4 h-4 text-green-500 dark:text-green-400 flex-shrink-0" /> {item}
                   </li>
                 ))}
               </ul>
-              <div className="mt-8">
-                <Link href="/borrower/request">
-                  <Button
-                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white"
-                  >
-                    Invite a Lender
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
+              <Link href="/borrower/request">
+                <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
+                  Invite a Lender <ArrowRight className="w-4 h-4 ml-1.5" />
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      {/* FEATURES THAT HELP YOU SUCCEED */}
-      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/50">
+      {/* ══════════════════════════════════════════════════════════
+          FEATURES STRIP
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-16 bg-neutral-50 dark:bg-neutral-900/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl sm:text-4xl font-display font-bold text-neutral-900 dark:text-white mb-4">
-              We Help You Succeed
-            </h2>
-            <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              Tools to make repayment easy and build your trust score
-            </p>
+          <div className="text-center mb-10">
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-neutral-900 dark:text-white">Built to help you succeed</h2>
           </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[
-              {
-                icon: Calendar,
-                title: 'SmartSchedule™',
-                description: 'Payment plan based on YOUR payday, not random dates. Avoid rent week, align with income.',
-                color: 'primary',
-              },
-              {
-                icon: Zap,
-                title: 'Auto-Pay',
-                description: 'Connect your bank account. Payments happen automatically. Never miss a due date.',
-                color: 'blue',
-              },
-              {
-                icon: Clock,
-                title: 'Payment Reminders',
-                description: 'Email reminders before each payment. Track upcoming, completed, and remaining payments.',
-                color: 'amber',
-              },
-              {
-                icon: Shield,
-                title: 'Manual Payments Too',
-                description: 'Prefer Cash App, Venmo, PayPal? Upload proof of payment. We track it all.',
-                color: 'green',
-              },
-              {
-                icon: TrendingUp,
-                title: 'Trust Score Tracking',
-                description: 'Watch your trust score grow in real-time. See exactly what improves it.',
-                color: 'purple',
-              },
-              {
-                icon: Users,
-                title: 'Guest Access',
-                description: 'Even if you borrowed without an account, you can track everything and make payments.',
-                color: 'pink',
-              },
-            ].map((feature) => {
-              const colorClasses: Record<string, string> = {
+              { icon: Calendar, title: 'SmartSchedule™', body: 'Payment dates built around your payday  not random calendar dates. Never pay during rent week again.', color: 'primary' },
+              { icon: Zap, title: 'Auto-Pay', body: 'Connect your bank. Payments happen automatically on due dates. Never miss, never stress.', color: 'blue' },
+              { icon: Clock, title: 'Payment Reminders', body: 'Email reminders before every payment. Full visibility into upcoming, completed, and remaining amounts.', color: 'amber' },
+              { icon: Shield, title: 'Manual Payments', body: 'Prefer Cash App, Venmo, or bank transfer? Upload proof. We track and confirm everything.', color: 'green' },
+              { icon: TrendingUp, title: 'Live Trust Score', body: 'Watch your score move in real time. See exactly what improves it and what doesn\'t.', color: 'purple' },
+              { icon: Users, title: 'Guest Access', body: 'Borrowed without an account? You can still track your loan, make payments, and build your history.', color: 'neutral' },
+            ].map((f) => {
+              const colorMap: Record<string, string> = {
                 primary: 'bg-primary-100 dark:bg-primary-900/30 text-primary-600 dark:text-primary-400',
                 blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
                 amber: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
                 green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
                 purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
-                pink: 'bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400',
+                neutral: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400',
               };
-
               return (
-                <div
-                  key={feature.title}
-                  className="p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 hover:shadow-lg transition-shadow"
-                >
-                  <div className={`w-12 h-12 ${colorClasses[feature.color]} rounded-xl flex items-center justify-center mb-4`}>
-                    <feature.icon className="w-6 h-6" />
+                <div key={f.title} className="p-5 rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800">
+                  <div className={`w-10 h-10 rounded-xl ${colorMap[f.color]} flex items-center justify-center mb-3`}>
+                    <f.icon className="w-5 h-5" />
                   </div>
-                  <h3 className="text-xl font-display font-semibold text-neutral-900 dark:text-white mb-2">
-                    {feature.title}
-                  </h3>
-                  <p className="text-neutral-600 dark:text-neutral-300">{feature.description}</p>
+                  <h3 className="font-bold text-neutral-900 dark:text-white mb-1.5">{f.title}</h3>
+                  <p className="text-sm text-neutral-500 dark:text-neutral-400 leading-relaxed">{f.body}</p>
                 </div>
               );
             })}
@@ -580,49 +635,53 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* FINAL CTA */}
-      <section className="py-20 bg-gradient-to-br from-primary-600 via-primary-700 to-primary-800 dark:from-primary-800 dark:via-primary-900 dark:to-neutral-950">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-7xl font-display font-bold text-white mb-6">
-            Your Trust Score Matters More
+      {/* ══════════════════════════════════════════════════════════
+          FINAL CTA  The Close
+      ══════════════════════════════════════════════════════════ */}
+      <section className="py-24 bg-neutral-950 relative overflow-hidden">
+        <div
+          className="absolute inset-0 opacity-[0.04]"
+          style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '28px 28px' }}
+        />
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-green-500/8 rounded-full blur-[100px]" />
+        </div>
+
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center relative">
+          <p className="text-xs font-bold tracking-[0.3em] text-neutral-500 uppercase mb-4">The Bottom Line</p>
+          <h2 className="font-display font-black text-white leading-[1.05] mb-6 tracking-tight"
+            style={{ fontSize: 'clamp(2.2rem, 5.5vw, 4rem)' }}>
+            You are not
             <br />
-            <span className="text-primary-200">Than Your Credit Score</span>
+            your credit score.
+            <br />
+            <span className="text-green-400">You never were.</span>
           </h2>
-          <p className="text-xl text-white/90 mb-10 max-w-3xl mx-auto">
-            Stop letting past mistakes or lack of history hold you back. Build trust, get approved, unlock bigger loans.
+          <p className="text-neutral-400 text-lg mb-10 max-w-2xl mx-auto leading-relaxed">
+            Stop letting a 1989 algorithm decide your financial future. Build trust with your community. Prove yourself with your actions. Unlock the lending you actually deserve.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
             <Link href="/auth/signup">
-              <Button size="lg" className="w-full sm:w-auto bg-white text-primary-700 hover:bg-primary-50 font-semibold text-lg px-8">
-                Get Started Now
+              <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold text-base px-8">
+                Get Started  It's Free
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>
             <Link href="/how-vouching-works">
-              <Button
-                size="lg"
-                variant="outline"
-                className="w-full sm:w-auto border-white/30 text-white hover:bg-white/10 backdrop-blur-sm text-lg px-8"
-              >
-                Learn More
+              <Button size="lg" variant="outline" className="w-full sm:w-auto border-neutral-700 text-neutral-300 hover:bg-neutral-900 text-base px-8">
+                Learn How It Works
               </Button>
             </Link>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-6 text-white/80">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>No credit check</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>Start small, grow big</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-5 h-5" />
-              <span>Community vouching</span>
-            </div>
+          <div className="flex flex-wrap justify-center gap-6 text-neutral-600 text-sm">
+            {['No credit check', 'Start at any tier', 'Community-backed', 'Free to join'].map((t) => (
+              <div key={t} className="flex items-center gap-2">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                <span>{t}</span>
+              </div>
+            ))}
           </div>
         </div>
       </section>

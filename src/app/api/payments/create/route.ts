@@ -129,7 +129,14 @@ export async function POST(request: NextRequest) {
 
     // If loan is completed, update borrower's tier progress
     if (newStatus === 'completed') {
-      await updateBorrowerTierProgress(supabase, user.id, loan.amount);
+      // Increment total_loans_completed (tier upgrade logic removed — trust tier is vouch-based)
+      const { data: borrowerStats } = await supabase.from('users')
+        .select('total_loans_completed').eq('id', user.id).single();
+      if (borrowerStats) {
+        await supabase.from('users')
+          .update({ total_loans_completed: (borrowerStats.total_loans_completed || 0) + 1 })
+          .eq('id', user.id);
+      }
     }
 
     // Update borrower rating
@@ -268,52 +275,4 @@ async function updateBorrowerRating(supabase: any, userId: string) {
       borrower_rating_updated_at: new Date().toISOString(),
     })
     .eq('id', userId);
-}
-
-async function updateBorrowerTierProgress(supabase: any, userId: string, loanAmount: number) {
-  const { data: user } = await supabase
-    .from('users')
-    .select('borrowing_tier, loans_at_current_tier, total_loans_completed')
-    .eq('id', userId)
-    .single();
-
-  if (!user) return;
-
-  const currentTier = user.borrowing_tier || 1;
-  const loansAtTier = (user.loans_at_current_tier || 0) + 1;
-  const totalCompleted = (user.total_loans_completed || 0) + 1;
-
-  const updates: Record<string, any> = {
-    loans_at_current_tier: loansAtTier,
-    total_loans_completed: totalCompleted,
-  };
-
-  // Check for tier upgrade (need 3 loans at current tier)
-  // Tier 5 -> 6 requires completing a $2000+ loan
-  if (currentTier < 5 && loansAtTier >= 3) {
-    updates.borrowing_tier = currentTier + 1;
-    updates.loans_at_current_tier = 0;
-    updates.max_borrowing_amount = getTierAmount(currentTier + 1);
-  } else if (currentTier === 5 && loanAmount >= 2000) {
-    updates.borrowing_tier = 6;
-    updates.loans_at_current_tier = 0;
-    updates.max_borrowing_amount = 999999;
-  }
-
-  await supabase
-    .from('users')
-    .update(updates)
-    .eq('id', userId);
-}
-
-function getTierAmount(tier: number): number {
-  const amounts: Record<number, number> = {
-    1: 150,
-    2: 300,
-    3: 600,
-    4: 1200,
-    5: 2000,
-    6: 999999,
-  };
-  return amounts[tier] || 150;
 }

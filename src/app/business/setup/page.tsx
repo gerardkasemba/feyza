@@ -118,6 +118,8 @@ export default function BusinessSetupPage() {
   const [contactPhone, setContactPhone] = useState('');
   
   // Step 3: Interest rate settings
+
+    // Step 3: Interest rate settings
   const [defaultInterestRate, setDefaultInterestRate] = useState('0');
   const [interestType, setInterestType] = useState('simple');
   const [minLoanAmount, setMinLoanAmount] = useState('50');
@@ -136,10 +138,6 @@ export default function BusinessSetupPage() {
   const [isDwollaEnabled, setIsDwollaEnabled] = useState(false);
   const [loadingPaymentProviders, setLoadingPaymentProviders] = useState(true);
 
-  const interestTypeOptions = [
-    { value: 'simple', label: 'Simple Interest' },
-    { value: 'compound', label: 'Compound Interest' },
-  ];
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -240,20 +238,7 @@ export default function BusinessSetupPage() {
     return true;
   };
 
-  const validateStep3 = () => {
-    const rate = parseFloat(defaultInterestRate);
-    if (rate < 0 || rate > 100) {
-      setError('Interest rate must be between 0 and 100');
-      return false;
-    }
-    const minAmount = parseFloat(minLoanAmount) || 0;
-    const maxAmount = parseFloat(maxLoanAmount) || 0;
-    if (minAmount > maxAmount) {
-      setError('Minimum loan amount cannot exceed maximum');
-      return false;
-    }
-    return true;
-  };
+  const validateStep3 = () => true; // tier policies handle per-tier limits
 
   const validateStep4 = () => {
     // Only require bank connection if Dwolla is enabled
@@ -336,10 +321,6 @@ export default function BusinessSetupPage() {
           annual_revenue_range: annualRevenueRange || null,
           contact_email: contactEmail || null,
           contact_phone: contactPhone || null,
-          default_interest_rate: parseFloat(defaultInterestRate) || 0,
-          interest_type: interestType,
-          min_loan_amount: parseFloat(minLoanAmount) || 50,
-          max_loan_amount: parseFloat(maxLoanAmount) || 5000,
           profile_completed: true,
           is_verified: false,
           verification_status: 'pending',
@@ -359,12 +340,6 @@ export default function BusinessSetupPage() {
           business_id: businessProfile.id,
           // Note: don't set user_id - constraint requires either user_id OR business_id, not both
           is_active: false,
-          interest_rate: parseFloat(defaultInterestRate) || 0,
-          interest_type: interestType,
-          min_amount: parseFloat(minLoanAmount) || 50,
-          max_amount: parseFloat(maxLoanAmount) || 5000,
-          first_time_borrower_limit: parseFloat(firstTimeBorrowerLimit) || 500,
-          allow_first_time_borrowers: true,
           auto_accept: false,
           preferred_currency: 'USD',
           min_borrower_rating: 'neutral',
@@ -561,53 +536,32 @@ export default function BusinessSetupPage() {
 
             {step === 3 && (
               <div className="space-y-4 animate-fade-in">
-                <button 
-                  type="button" 
-                  onClick={() => { setStep(2); setError(null); }} 
+                <button
+                  type="button"
+                  onClick={() => { setStep(2); setError(null); }}
                   className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300 mb-2"
                 >
                   <ChevronLeft className="w-4 h-4" />Back
                 </button>
                 <div className="flex items-center gap-2 mb-4">
-                  <Percent className="w-5 h-5 text-primary-600 dark:text-primary-500" />
+                  <Shield className="w-5 h-5 text-primary-600 dark:text-primary-500" />
                   <h3 className="font-semibold text-neutral-900 dark:text-white">Lending Settings</h3>
                 </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300">
-                        Default Interest Rate (%)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setShowCalculator(true)}
-                        className="p-1 text-primary-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-primary-900/30 rounded-lg transition-colors"
-                        title="Calculate interest rate"
-                      >
-                        <Calculator className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={defaultInterestRate}
-                      onChange={(e) => setDefaultInterestRate(e.target.value)}
-                      placeholder="e.g., 15"
-                      className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:bg-neutral-800 dark:text-white"
-                    />
-                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">Annual percentage rate</p>
-                  </div>
-                  <Select label="Interest Type" value={interestType} onChange={(e) => setInterestType(e.target.value)} options={interestTypeOptions} />
-                </div>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <Input label="Min Loan Amount ($)" type="number" min="1" value={minLoanAmount} onChange={(e) => setMinLoanAmount(e.target.value)} placeholder="e.g., 50" />
-                  <Input label="Max Loan Amount ($)" type="number" min="1" value={maxLoanAmount} onChange={(e) => setMaxLoanAmount(e.target.value)} placeholder="e.g., 5000" />
-                </div>
-                <Input label="First-Time Borrower Limit ($)" type="number" min="1" value={firstTimeBorrowerLimit} onChange={(e) => setFirstTimeBorrowerLimit(e.target.value)} placeholder="e.g., 500" helperText="Maximum amount for borrowers with no repayment history" />
-                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
-                  <p className="text-sm text-blue-800 dark:text-blue-300"><strong>Note:</strong> These are your default settings. You can customize them further in Lender Preferences after setup.</p>
+                <div className="bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800 rounded-xl p-5">
+                  <h4 className="font-semibold text-primary-900 dark:text-primary-200 mb-2">
+                    ✅ Interest rates &amp; loan limits are now set by Trust Tier
+                  </h4>
+                  <p className="text-sm text-primary-700 dark:text-primary-300 mb-4">
+                    Instead of global min/max amounts and interest rates, you set per-tier policies
+                    after setup in <strong>Lender Settings \u2192 Trust Tiers</strong>.
+                    Tier 1 (lowest trust) gets stricter limits; Tier 4 (highest trust) gets your best rate.
+                  </p>
+                  <ul className="text-sm text-primary-700 dark:text-primary-300 space-y-1.5">
+                    <li>🎯 <strong>Tier 1</strong> (0–2 vouches) — e.g. $200 max, 20% rate</li>
+                    <li>📈 <strong>Tier 2</strong> (3–5 vouches) — e.g. $500 max, 15% rate</li>
+                    <li>✅ <strong>Tier 3</strong> (6–10 vouches) — e.g. $1 500 max, 12% rate</li>
+                    <li>💪 <strong>Tier 4</strong> (11+ vouches) — e.g. $5 000 max, 8% rate</li>
+                  </ul>
                 </div>
                 <div className="pt-4 flex justify-end">
                   <Button type="button" onClick={goToNextStep}>Continue<ChevronRight className="w-4 h-4 ml-1" /></Button>

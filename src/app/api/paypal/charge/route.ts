@@ -188,17 +188,29 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', scheduleId);
 
-    // Update loan totals
-    const newAmountPaid = loan.amount_paid + scheduleItem.amount;
-    const newAmountRemaining = loan.amount_remaining - scheduleItem.amount;
-    const isCompleted = newAmountRemaining <= 0;
+    // Sum ALL paid schedule items (authoritative, not incremental)
+    const { data: allScheduleItems } = await supabase
+      .from('payment_schedule')
+      .select('id, amount, is_paid')
+      .eq('loan_id', loan.id);
+
+    const totalScheduled = allScheduleItems?.length ?? 0;
+    const paidItems = allScheduleItems?.filter((s: any) => s.is_paid) ?? [];
+    const allPaymentsPaid = totalScheduled > 0 && paidItems.length === totalScheduled;
+
+    const newAmountPaid = paidItems.reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
+    const loanTotal = (loan.total_amount && loan.total_amount > 0) ? loan.total_amount : loan.amount;
+    const newAmountRemaining = Math.max(0, loanTotal - newAmountPaid);
+    const isCompleted = allPaymentsPaid || newAmountRemaining <= 0.50;
 
     await supabase
       .from('loans')
       .update({
-        amount_paid: newAmountPaid,
-        amount_remaining: Math.max(0, newAmountRemaining),
+        amount_paid: isCompleted ? loanTotal : newAmountPaid,
+        amount_remaining: isCompleted ? 0 : newAmountRemaining,
         status: isCompleted ? 'completed' : loan.status,
+        last_payment_at: new Date().toISOString(),
+        completed_at: isCompleted ? new Date().toISOString() : null,
       })
       .eq('id', loan.id);
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { onVoucheeDefaultResolved } from '@/lib/vouching/accountability';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const RESTRICTION_DAYS = 90;
@@ -94,6 +95,13 @@ export async function POST(request: NextRequest) {
     const restrictionEndsAt = new Date(now.getTime() + RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
 
     console.log(`[DebtClearance] Debt cleared for borrower ${borrower.id}. Starting 90-day restriction.`);
+
+    // ── Notify vouchers that this default has been resolved (non-blocking) ─
+    // This may unlock vouchers who had their vouching ability suspended
+    // because of this specific default.
+    onVoucheeDefaultResolved(serviceSupabase, borrower.id, loan_id)
+      .then(() => console.log(`[DebtClearance] Voucher unlock pipeline complete`))
+      .catch(err => console.error(`[DebtClearance] Voucher unlock error:`, err));
 
     // Update borrower - still blocked but with restriction end date
     await serviceSupabase

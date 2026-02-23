@@ -6,6 +6,8 @@ import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Input } from '@/components/ui';
 import { formatCurrency } from '@/lib/utils';
 import { createClient } from '@/lib/supabase/client';
+import { LenderSimplePolicyConfig } from '@/components/loans/LenderSimplePolicyConfig';
+import { TrustTierExplainer } from '@/components/trust-score/TrustTierExplainer';
 import {
   Settings,
   DollarSign,
@@ -13,18 +15,16 @@ import {
   Shield,
   Zap,
   Bell,
-  TrendingUp,
   CheckCircle,
   AlertCircle,
-  Info,
   Wallet,
   Clock,
-  Star,
-  UserPlus,
   CreditCard,
   MapPin,
   Save,
   Loader2,
+  Star,
+  Info
 } from 'lucide-react';
 
 interface Country {
@@ -63,10 +63,7 @@ interface Preferences {
   is_active: boolean;
   auto_accept: boolean;
   min_amount: number;
-  max_amount: number;
   preferred_currency: string;
-  interest_rate: number;
-  interest_type: string;
   countries: string[];
   states: string[];
   min_borrower_rating: string;
@@ -77,8 +74,6 @@ interface Preferences {
   notify_on_match: boolean;
   notify_email: boolean;
   notify_sms: boolean;
-  first_time_borrower_limit: number;
-  allow_first_time_borrowers: boolean;
 }
 
 function LenderPreferencesContent() {
@@ -107,10 +102,7 @@ function LenderPreferencesContent() {
     is_active: true,
     auto_accept: false,
     min_amount: 50,
-    max_amount: 5000,
     preferred_currency: 'USD',
-    interest_rate: 10,
-    interest_type: 'simple',
     countries: [],
     states: [],
     min_borrower_rating: 'neutral',
@@ -121,9 +113,9 @@ function LenderPreferencesContent() {
     notify_on_match: true,
     notify_email: true,
     notify_sms: false,
-    first_time_borrower_limit: 500,
-    allow_first_time_borrowers: true,
   });
+  // null = preferences never saved; false = loaded but no record; true = record exists
+  const [preferencesExist, setPreferencesExist] = useState<boolean | null>(null);
 
   useEffect(() => {
     fetchUserAndPreferences();
@@ -204,13 +196,14 @@ function LenderPreferencesContent() {
       if (response.ok) {
         const data = await response.json();
         setIsBusinessLender(data.isBusinessLender);
+        setPreferencesExist(!!data.preferences);
         if (data.preferences) {
-          setPreferences({
-            ...preferences,
+          setPreferences((prev) => ({
+            ...prev,
             ...data.preferences,
             countries: data.preferences.countries || [],
             states: data.preferences.states || [],
-          });
+          }));
         }
       }
     } catch (err) {
@@ -350,10 +343,10 @@ function LenderPreferencesContent() {
 
   const tabs = [
     { id: 'matching', label: 'Matching', icon: Zap },
-    { id: 'loan-terms', label: 'Loan Terms', icon: DollarSign },
     { id: 'borrower-criteria', label: 'Borrower Criteria', icon: Shield },
     { id: 'geography', label: 'Geography', icon: Globe },
     ...(isBusinessLender ? [{ id: 'loan-types', label: 'Loan Types', icon: CreditCard }] : []),
+    { id: 'tier-policies', label: 'Trust Tiers', icon: Star },
     { id: 'notifications', label: 'Notifications', icon: Bell },
   ];
 
@@ -389,6 +382,23 @@ function LenderPreferencesContent() {
             <div className="mb-6 p-4 rounded-xl flex items-center gap-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
               <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
               <span className="text-red-700 dark:text-red-300">{error}</span>
+            </div>
+          )}
+
+          {/* Complete your profile banner - shown when preferences have never been saved */}
+          {preferencesExist === false && (
+            <div className="mb-6 p-4 bg-primary-50 dark:bg-primary-900/20 border border-primary-300 dark:border-primary-700 rounded-xl flex items-start gap-4">
+              <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Settings className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-primary-900 dark:text-primary-200 mb-1">
+                  👋 Complete your lender profile
+                </h3>
+                <p className="text-sm text-primary-700 dark:text-primary-300">
+                  You haven’t saved your lending preferences yet. Set your capital pool, borrower criteria, and trust tier policies so borrowers can be matched to you.
+                </p>
+              </div>
             </div>
           )}
 
@@ -508,108 +518,39 @@ function LenderPreferencesContent() {
                       </div>
                     </Card>
 
-                    {/* Save Button */}
-                    <div className="flex justify-end">
-                      <Button type="submit" loading={saving}>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Preferences
-                      </Button>
-                    </div>
-                  </div>
-                )}
-
-                {/* LOAN TERMS TAB */}
-                {activeTab === 'loan-terms' && (
-                  <div className="space-y-6">
-                    {/* Amount Range */}
+                    {/* Minimum Loan Amount */}
                     <Card>
-                      <div className="flex items-center gap-3 mb-6">
-                        <DollarSign className="w-5 h-5 text-green-500" />
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Loan Amount Range</h2>
+                      <div className="flex items-center gap-3 mb-4">
+                        <DollarSign className="w-5 h-5 text-primary-500" />
+                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Minimum Loan Amount</h2>
                       </div>
-
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                            Minimum Amount
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-neutral-400">$</span>
-                            <input
-                              type="number"
-                              value={preferences.min_amount}
-                              onChange={(e) => setPreferences(p => ({ ...p, min_amount: parseFloat(e.target.value) || 0 }))}
-                              className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
-                              min="0"
-                            />
-                          </div>
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+                          Minimum amount you will lend
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-neutral-400">$</span>
+                          <input
+                            type="number"
+                            value={preferences.min_amount}
+                            onChange={(e) => setPreferences(p => ({ ...p, min_amount: parseFloat(e.target.value) || 0 }))}
+                            className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
+                            min="0"
+                          />
                         </div>
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                            Maximum Amount
-                          </label>
-                          <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-neutral-400">$</span>
-                            <input
-                              type="number"
-                              value={preferences.max_amount}
-                              onChange={(e) => setPreferences(p => ({ ...p, max_amount: parseFloat(e.target.value) || 0 }))}
-                              className="w-full pl-8 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
-                              min="0"
-                            />
-                          </div>
-                        </div>
+                        <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
+                          Loan requests below this amount will not be matched to you.
+                          Maximum amounts are now set per-tier in your Trust Tier policies.
+                        </p>
                       </div>
                     </Card>
 
-                    {/* Interest Rate */}
+                    {/* Term Range */}
                     <Card>
-                      <div className="flex items-center gap-3 mb-6">
-                        <TrendingUp className="w-5 h-5 text-blue-500" />
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Interest Rate</h2>
-                      </div>
-
-                      <div className="grid md:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                            Annual Interest Rate (%)
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              value={preferences.interest_rate}
-                              onChange={(e) => setPreferences(p => ({ ...p, interest_rate: parseFloat(e.target.value) || 0 }))}
-                              className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
-                              min="0"
-                              max="100"
-                              step="0.5"
-                            />
-                            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-neutral-500 dark:text-neutral-400">%</span>
-                          </div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                            Interest Type
-                          </label>
-                          <select
-                            value={preferences.interest_type}
-                            onChange={(e) => setPreferences(p => ({ ...p, interest_type: e.target.value }))}
-                            className="w-full px-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
-                          >
-                            <option value="simple">Simple Interest</option>
-                            <option value="compound">Compound Interest</option>
-                          </select>
-                        </div>
-                      </div>
-                    </Card>
-
-                    {/* Term Length */}
-                    <Card>
-                      <div className="flex items-center gap-3 mb-6">
-                        <Clock className="w-5 h-5 text-purple-500" />
+                      <div className="flex items-center gap-3 mb-4">
+                        <Clock className="w-5 h-5 text-primary-500" />
                         <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">Loan Term Range</h2>
                       </div>
-
                       <div className="grid md:grid-cols-2 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -637,7 +578,7 @@ function LenderPreferencesContent() {
                         </div>
                       </div>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-3">
-                        Approximately {Math.floor(preferences.min_term_weeks / 4.33)} - {Math.floor(preferences.max_term_weeks / 4.33)} months
+                        Approximately {Math.floor(preferences.min_term_weeks / 4.33)}–{Math.floor(preferences.max_term_weeks / 4.33)} months
                       </p>
                     </Card>
 
@@ -702,96 +643,6 @@ function LenderPreferencesContent() {
                             }`} />
                           </button>
                         </div>
-                      </div>
-                    </Card>
-
-                    {/* First-Time Borrower Settings */}
-                    <Card>
-                      <div className="flex items-center gap-3 mb-4">
-                        <UserPlus className="w-5 h-5 text-green-500" />
-                        <h2 className="text-lg font-semibold text-neutral-900 dark:text-white">First-Time Borrower Settings</h2>
-                      </div>
-                      
-                      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4 mb-6">
-                        <p className="text-sm text-blue-700 dark:text-blue-300">
-                          <strong>💡 What is a first-time borrower?</strong> Someone who has never completed a loan on Feyza before. 
-                          Set limits to manage your risk when lending to new users.
-                        </p>
-                      </div>
-
-                      <div className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
-                          <div>
-                            <p className="font-medium text-neutral-900 dark:text-white">Accept First-Time Borrowers</p>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                              Allow loan requests from users with no repayment history
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setPreferences(p => ({ ...p, allow_first_time_borrowers: !p.allow_first_time_borrowers }))}
-                            className={`relative w-14 h-8 rounded-full transition-colors ${
-                              preferences.allow_first_time_borrowers ? 'bg-primary-500' : 'bg-neutral-300 dark:bg-neutral-600'
-                            }`}
-                          >
-                            <div className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow transition-transform ${
-                              preferences.allow_first_time_borrowers ? 'translate-x-7' : 'translate-x-1'
-                            }`} />
-                          </button>
-                        </div>
-
-                        {preferences.allow_first_time_borrowers && (
-                          <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
-                            <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
-                              Maximum Loan for First-Time Borrowers
-                            </label>
-                            <div className="relative">
-                              <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                              <input
-                                type="number"
-                                value={preferences.first_time_borrower_limit}
-                                onChange={(e) => setPreferences(p => ({ 
-                                  ...p, 
-                                  first_time_borrower_limit: Math.min(parseFloat(e.target.value) || 0, p.max_amount) 
-                                }))}
-                                className="w-full pl-12 pr-4 py-2.5 border border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white rounded-xl focus:ring-2 focus:ring-primary-500"
-                                min="0"
-                                max={preferences.max_amount}
-                                step="50"
-                              />
-                            </div>
-                            <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-                              First-time borrowers can request up to <strong className="text-neutral-900 dark:text-white">${preferences.first_time_borrower_limit.toLocaleString()}</strong>. 
-                              Repeat borrowers with good history can request up to <strong className="text-neutral-900 dark:text-white">${preferences.max_amount.toLocaleString()}</strong>.
-                            </p>
-                            
-                            <div className="flex flex-wrap gap-2 mt-3">
-                              {[100, 250, 500, 1000].map((amount) => (
-                                <button
-                                  key={amount}
-                                  type="button"
-                                  onClick={() => setPreferences(p => ({ ...p, first_time_borrower_limit: amount }))}
-                                  className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                                    preferences.first_time_borrower_limit === amount
-                                      ? 'bg-green-500 text-white'
-                                      : 'bg-white dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-600'
-                                  }`}
-                                >
-                                  ${amount}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {!preferences.allow_first_time_borrowers && (
-                          <div className="p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
-                            <p className="text-sm text-amber-700 dark:text-amber-300">
-                              <strong>⚠️ Note:</strong> You won't be matched with first-time borrowers. 
-                              This significantly reduces your potential matches but may lower risk.
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </Card>
 
@@ -997,6 +848,16 @@ function LenderPreferencesContent() {
                         Save Loan Types
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {/* TRUST TIER POLICIES TAB */}
+                {activeTab === 'tier-policies' && (
+                  <div className="space-y-6">
+                    <TrustTierExplainer defaultExpanded={true} />
+                    <Card>
+                      <LenderSimplePolicyConfig />
+                    </Card>
                   </div>
                 )}
 

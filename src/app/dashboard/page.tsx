@@ -4,8 +4,7 @@ import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Card, Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui';
 import { StatsCard, BorrowerTrustCard, IncomeProfileCard, DashboardClient } from '@/components/dashboard';
-import { TrustScoreCard, VouchRequestCard } from '@/components/trust-score';
-import { DashboardBorrowingLimit } from '@/components/dashboard/DashboardBorrowingLimit';
+import { TrustScoreCard, VouchRequestCard, SimpleTrustTierCard } from '@/components/trust-score';
 import { LoanCard } from '@/components/loans';
 import { PaymentSetupBanner } from '@/components/payments';
 import { formatCurrency } from '@/lib/utils';
@@ -23,6 +22,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Camera,
+  Layers,
 } from 'lucide-react';
 
 // Use ISR with revalidation for better performance
@@ -45,6 +45,7 @@ export default async function DashboardPage() {
     borrowedLoansResult,
     lentLoansResult,
     businessProfileResult,
+    tierPolicyResult,
   ] = await Promise.all([
     supabase.from('users').select('*').eq('id', user.id).single(),
     supabase
@@ -71,12 +72,19 @@ export default async function DashboardPage() {
       .select('id, business_name, profile_completed, is_verified, verification_status, slug, public_profile_enabled')
       .eq('user_id', user.id)
       .single(),
+    supabase
+      .from('lender_tier_policies')
+      .select('id', { count: 'exact', head: true })
+      .eq('lender_id', user.id),
   ]);
 
   const profile = profileResult.data;
   let borrowedLoans = borrowedLoansResult.data || [];
   let lentLoans = lentLoansResult.data || [];
   const businessProfile = businessProfileResult.data;
+  const tierPolicyCount = tierPolicyResult?.count ?? 0;
+  const businessNeedsTierSetup =
+    businessProfile?.verification_status === 'approved' && tierPolicyCount === 0;
 
   // Fetch business loans if user has a business profile
   if (businessProfile) {
@@ -456,6 +464,33 @@ export default async function DashboardPage() {
             </div>
           )}
 
+          {/* Trust Tier Setup Banner (approved businesses with no tier policies yet) */}
+          {businessNeedsTierSetup && (
+            <div className="mb-6 p-5 bg-gradient-to-r from-primary-50 to-emerald-50 dark:from-primary-900/20 dark:to-emerald-900/20 border border-primary-200 dark:border-primary-700 rounded-2xl">
+              <div className="flex items-start gap-4">
+                <div className="w-11 h-11 bg-primary-100 dark:bg-primary-900/40 rounded-2xl flex items-center justify-center flex-shrink-0">
+                  <Layers className="w-5 h-5 text-primary-600 dark:text-primary-400" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-primary-900 dark:text-primary-100 mb-1">
+                    Set up your Trust Tier rates
+                  </h3>
+                  <p className="text-sm text-primary-700 dark:text-primary-300 mb-3">
+                    Trust Tiers let you set different interest rates and loan limits based on how many people
+                    have vouched for a borrower. It’s Feyza’s social credit system — your edge over every
+                    other lender. Without it, you’re not visible to tier-matched borrowers.
+                  </p>
+                  <Link href="/business/settings?tab=trust-tiers">
+                    <Button size="sm">
+                      <Layers className="w-4 h-4 mr-2" />
+                      Configure Trust Tiers
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Business Profile Rejected Banner */}
           {businessProfile && businessProfile.verification_status === 'rejected' && (
             <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
@@ -561,7 +596,7 @@ export default async function DashboardPage() {
 
           {/* Borrowing Limit, Trust Level & Income Profile Row */}
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-            <DashboardBorrowingLimit />
+            <SimpleTrustTierCard />
             <div data-tutorial="trust-score">
               <TrustScoreCard showDetails={false} showVouches={true} className="lg:col-span-1" />
             </div>

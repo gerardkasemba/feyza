@@ -223,20 +223,13 @@ export async function POST(
         lenderEmail = business?.contact_email || null;
       }
 
-      // Calculate interest based on lender's rate
+      // Calculate interest.
+      // DB constraint check_total_interest requires: total_interest = amount * (rate / 100)
+      // when uses_apr_calculation = false (flat rate, not annualized APR).
       const loanAmount = loan.amount || 0;
       const totalInstallments = loan.total_installments || 1;
-      const repaymentFrequency = loan.repayment_frequency || 'monthly';
       
-      let weeksPerPeriod = 4;
-      if (repaymentFrequency === 'weekly') weeksPerPeriod = 1;
-      else if (repaymentFrequency === 'biweekly') weeksPerPeriod = 2;
-      else if (repaymentFrequency === 'monthly') weeksPerPeriod = 4;
-      
-      const totalWeeks = totalInstallments * weeksPerPeriod;
-      const loanTermYears = totalWeeks / 52;
-      
-      const totalInterest = Math.round((loanAmount * (interestRate / 100) * loanTermYears) * 100) / 100;
+      const totalInterest = Math.round(loanAmount * (interestRate / 100) * 100) / 100;
       const totalAmount = Math.round((loanAmount + totalInterest) * 100) / 100;
       const repaymentAmount = Math.round((totalAmount / totalInstallments) * 100) / 100;
 
@@ -251,9 +244,10 @@ export async function POST(
         repayment_amount: repaymentAmount,
         amount_remaining: totalAmount,
         invite_accepted: true,
+        uses_apr_calculation: false, // Satisfies check_total_interest constraint (flat rate)
         lender_signed: true,
         lender_signed_at: new Date().toISOString(),
-        funds_sent: false, // Lender hasn't paid borrower yet
+        funds_sent: false,
       };
 
       if (match.lender_user_id) {

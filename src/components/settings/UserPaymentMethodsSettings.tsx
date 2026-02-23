@@ -138,6 +138,20 @@ export default function UserPaymentMethodsSettings({
     };
   }, [userId, userCountry]);
 
+  // GUARD: Ensure public.users row exists before inserting into user_payment_methods.
+  // If it's missing, user_payment_methods_user_id_fkey fires.
+  const ensureUserRow = async () => {
+    const res = await fetch('/api/auth/user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fullName: '', userType: 'individual' }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to verify your account before saving.');
+    }
+  };
+
   const fetchData = async () => {
     setLoading(true);
     setError(null);
@@ -234,6 +248,7 @@ export default function UserPaymentMethodsSettings({
     setError(null);
 
     try {
+      await ensureUserRow(); // FK guard
       if (existingMethodId) {
         const { error } = await supabase
           .from('user_payment_methods')
@@ -314,6 +329,7 @@ export default function UserPaymentMethodsSettings({
     setError(null);
 
     try {
+      await ensureUserRow(); // FK guard
       const trimmedIdentifier = identifier.trim();
       
       if (existingMethodId) {

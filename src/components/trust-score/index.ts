@@ -9,3 +9,5 @@ export {
   VouchRequestCard,
   InlineVouchPrompt
 } from './VouchRequestCard';
+
+export { SimpleTrustTierCard } from './SimpleTrustTierCard';

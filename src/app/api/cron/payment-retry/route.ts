@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { onVoucheeLoanDefaulted } from '@/lib/vouching/accountability';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const MAX_RETRIES = 3;
@@ -249,7 +250,17 @@ export async function POST(request: NextRequest) {
           
           // Notify lender
           await notifyLenderOfDefault(supabase, loan, borrower, payment, totalDebt);
-          
+
+          // ── Fire voucher consequence pipeline (non-blocking) ─────────────
+          // All active vouchers for this borrower receive:
+          //   - Trust score penalty (-10 pts)
+          //   - Success rate downgrade
+          //   - Potential vouching lock if they hit 2+ active defaults
+          //   - Urgent email notification
+          onVoucheeLoanDefaulted(supabase, borrower.id, payment.loan_id)
+            .then(r => console.log(`[PaymentRetry] Voucher default pipeline:`, r))
+            .catch(err => console.error(`[PaymentRetry] Voucher pipeline error:`, err));
+
           results.borrowersBlocked++;
           results.notificationsSent += 2;
           

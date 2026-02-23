@@ -207,7 +207,10 @@ export default function LoanDetailPage() {
   const isBorrower = loan?.borrower_id === user?.id;
   const isLender = loan?.lender_id === user?.id || (loan?.business_lender && (loan.business_lender as any).user_id === user?.id);
 
-  const progress = getLoanProgress(loan?.amount_paid || 0, loan?.amount || 0);
+  // Use total_amount (principal + interest) as the progress denominator.
+  // loan.amount is principal-only; repayments track against total_amount.
+  const progressTotal = (loan?.total_amount && loan.total_amount > 0) ? loan.total_amount : (loan?.amount || 0);
+  const progress = getLoanProgress(loan?.amount_paid || 0, progressTotal);
 
   const otherParty = isBorrower ? loan?.lender : loan?.borrower;
   const isPersonalLoan = loan?.lender_type === 'personal';
@@ -1348,6 +1351,35 @@ export default function LoanDetailPage() {
             </Link>
 
             <div className="flex items-center gap-2">
+              {/* Reconcile balance if loan is active but all payments are paid */}
+              {loan.status === 'active' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="px-2 sm:px-3 text-amber-600 border-amber-200 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-900/20"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/loans/reconcile', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ loan_id: loan.id }),
+                      });
+                      const data = await res.json();
+                      if (data.reconciled) {
+                        showToast({ type: 'success', title: 'Balance corrected', message: `Updated to ${data.now.status}` });
+                      }
+                      await refetchLoan();
+                      await refetchSchedule();
+                    } catch (e) {
+                      showToast({ type: 'error', title: 'Recalculation failed', message: 'Please try again' });
+                    }
+                  }}
+                  title="Recalculate balance from payment history"
+                >
+                  <RefreshCw className="w-4 h-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Recalculate</span>
+                </Button>
+              )}
               <Button
                 variant="outline"
                 size="sm"

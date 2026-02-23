@@ -95,38 +95,96 @@ export async function POST(request: NextRequest) {
     if (rpcError) {
       console.log('Database function not available, using fallback query:', rpcError.message);
       
-      // Fallback: Query lender_preferences directly
-      const { data: lenderPrefs, error: prefsError } = await supabase
-        .from('lender_preferences')
-        .select(`
-          id,
-          user_id,
-          business_id,
-          capital_pool,
-          capital_reserved,
-          auto_accept,
-          interest_rate,
-          min_amount,
-          max_amount,
-          countries,
-          states,
-          allow_first_time_borrowers,
-          first_time_borrower_limit
-        `)
+      // INDIVIDUAL lenders: match via lender_tier_policies
+      let borrowerTier = 'tier_1';
+      const { data: borrowerRow } = await supabase
+        .from('users').select('trust_tier').eq('id', loan.borrower_id).single();
+      if (borrowerRow?.trust_tier) borrowerTier = borrowerRow.trust_tier;
+
+      const { data: tierPolicies } = await supabase
+        .from('lender_tier_policies')
+        .select('lender_id, interest_rate, max_loan_amount')
+        .eq('tier_id', borrowerTier)
         .eq('is_active', true)
+        .gte('max_loan_amount', loan.amount)
+        .neq('lender_id', loan.borrower_id);
+
+      const indivLenderIds = (tierPolicies ?? []).map((p: any) => p.lender_id);
+      let indivPrefs: any[] = [];
+      if (indivLenderIds.length > 0) {
+        const { data: ipRows } = await supabase
+          .from('lender_preferences')
+          .select('id, user_id, capital_pool, capital_reserved, auto_accept, min_amount, min_term_weeks, max_term_weeks, countries, states, user:users!user_id(full_name, email)')
+          .eq('is_active', true).is('business_id', null)
+          .in('user_id', indivLenderIds).gte('capital_pool', loan.amount);
+        indivPrefs = (ipRows ?? []).map((lp: any) => {
+          const policy = (tierPolicies ?? []).find((p: any) => p.lender_id === lp.user_id);
+          return { ...lp, business_id: null,
+            interest_rate: policy?.interest_rate ?? 10,
+            max_amount: policy?.max_loan_amount ?? 0,
+            allow_first_time_borrowers: true,
+            first_time_borrower_limit: policy?.max_loan_amount ?? 0 };
+        });
+      }
+
+      // BUSINESS lenders: use tier policies when configured, else fall back to global max_amount
+      // Step A: fetch all business lender prefs with enough capital and floor coverage
+      const { data: bizPrefsRaw, error: prefsError } = await supabase
+        .from('lender_preferences')
+        .select(`id, user_id, business_id, capital_pool, capital_reserved,
+          auto_accept, interest_rate, min_amount, max_amount,
+          countries, states, allow_first_time_borrowers, first_time_borrower_limit,
+          business:business_profiles!business_id(id, business_name, contact_email, user_id)`)
+        .eq('is_active', true).not('business_id', 'is', null)
         .gte('capital_pool', loan.amount)
         .lte('min_amount', loan.amount)
-        .gte('max_amount', loan.amount)
-        .limit(50); // Prevent scanning all lenders
+        .limit(50);
 
       if (prefsError) {
         console.error('Fallback query error:', prefsError);
-        await supabase
-          .from('loans')
-          .update({ match_status: 'no_match' })
-          .eq('id', loan_id);
+        await supabase.from('loans').update({ match_status: 'no_match' }).eq('id', loan_id);
         return NextResponse.json({ error: 'Matching failed: ' + prefsError.message }, { status: 500 });
       }
+
+      // Step B: check which business lenders have tier policies
+      const bizUserIds = (bizPrefsRaw ?? []).map((lp: any) => lp.user_id).filter(Boolean);
+      let bizTierPolicies: any[] = [];
+      let bizUsersWithTierPolicies: string[] = [];
+      if (bizUserIds.length > 0) {
+        const { data: btp } = await supabase
+          .from('lender_tier_policies')
+          .select('lender_id, tier_id, interest_rate, max_loan_amount, is_active')
+          .in('lender_id', bizUserIds);
+        bizTierPolicies = btp ?? [];
+        bizUsersWithTierPolicies = [...new Set(bizTierPolicies.map((p: any) => p.lender_id))];
+      }
+
+      // Step C: filter and merge tier data into business prefs
+      const bizPrefs = (bizPrefsRaw ?? []).filter((lp: any) => {
+        if (!bizUsersWithTierPolicies.includes(lp.user_id)) {
+          // No tier policies: match by global max_amount (backward compat)
+          return loan.amount <= (lp.max_amount ?? 0);
+        }
+        // Has tier policies: require active policy for borrower's tier covering the amount
+        const pol = bizTierPolicies.find(
+          (p: any) => p.lender_id === lp.user_id && p.tier_id === borrowerTier && p.is_active
+        );
+        return pol && loan.amount <= pol.max_loan_amount;
+      }).map((lp: any) => {
+        const pol = bizTierPolicies.find(
+          (p: any) => p.lender_id === lp.user_id && p.tier_id === borrowerTier && p.is_active
+        );
+        return {
+          ...lp,
+          interest_rate: pol ? pol.interest_rate : lp.interest_rate,
+          max_amount: pol ? pol.max_loan_amount : lp.max_amount,
+          allow_first_time_borrowers: true,
+          first_time_borrower_limit: pol ? pol.max_loan_amount : lp.max_amount,
+        };
+      });
+
+      const lenderPrefs = [...indivPrefs, ...bizPrefs];
+
 
       console.log(`[Matching] Found ${lenderPrefs?.length || 0} potential lenders before filtering`);
       
@@ -551,8 +609,31 @@ export async function POST(request: NextRequest) {
     if (bestMatch.auto_accept) {
       // AUTO-ACCEPT: Instantly assign the loan
       console.log('Auto-accepting loan...');
-      const result = await assignLoanToLender(supabase, loan, bestMatch, bestMatchRecord?.id, true);
-      
+      try {
+        await assignLoanToLender(supabase, loan, bestMatch, bestMatchRecord?.id, true);
+      } catch (assignErr: any) {
+        console.error('[Matching] Auto-accept failed:', assignErr);
+        // Mark match as failed so lender can still manually accept
+        if (bestMatchRecord?.id) {
+          await supabase
+            .from('loan_matches')
+            .update({ status: 'pending' }) // Keep pending so lender can review
+            .eq('id', bestMatchRecord.id);
+        }
+        await supabase
+          .from('loans')
+          .update({ match_status: 'matching' })
+          .eq('id', loan_id);
+        return NextResponse.json({
+          error: 'Auto-accept failed: ' + (assignErr.message || 'Unknown error'),
+          status: 'auto_accept_failed',
+          // Surface the match link so lender can manually review
+          manual_review_url: bestMatchRecord?.id
+            ? `${process.env.NEXT_PUBLIC_APP_URL || ''}/lender/matches/${bestMatchRecord.id}`
+            : null,
+        }, { status: 500 });
+      }
+
       return NextResponse.json({
         success: true,
         status: 'auto_accepted',
@@ -564,10 +645,19 @@ export async function POST(request: NextRequest) {
         loan_id,
       });
     } else {
-      // MANUAL: Notify lender and wait for response
-      await notifyLenderOfMatch(supabase, loan, bestMatch, bestMatchRecord?.id);
+      // MANUAL: Broadcast to ALL matched lenders simultaneously.
+      // Each gets an email with their own unique match link.
+      // The first to accept wins the loan.
+      console.log(`[Matching] Broadcasting to ${matches.length} matched lender(s)...`);
 
-      // Update loan with current match
+      await Promise.allSettled(
+        matches.map((match: MatchResult, index: number) => {
+          const matchRecord = createdMatches?.[index];
+          return notifyLenderOfMatch(supabase, loan, match, matchRecord?.id);
+        })
+      );
+
+      // Update loan status
       await supabase
         .from('loans')
         .update({ 
@@ -577,10 +667,13 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', loan_id);
 
+      // Notify borrower that their loan is in review
+      await notifyBorrowerLoanQueued(supabase, loan, matches.length);
+
       return NextResponse.json({
         success: true,
         status: 'pending_acceptance',
-        message: `Loan offered to ${bestMatch.lender_name}. Waiting for response (24h timeout).`,
+        message: `Loan sent to ${matches.length} lender(s). Waiting for response (24h timeout).`,
         match: {
           lender_name: bestMatch.lender_name,
           match_score: bestMatch.match_score,
@@ -605,41 +698,32 @@ async function assignLoanToLender(
 ) {
   console.log('Assigning loan to lender:', { loanId: loan.id, match, isAutoAccept });
   
-  // Calculate interest based on lender's rate
+  // Calculate interest based on lender's rate.
+  // The DB constraint check_total_interest requires:
+  //   total_interest = amount * (interest_rate / 100)   [when uses_apr_calculation = false]
+  // This is a FLAT rate (e.g. 20% on $100 = $20 total interest regardless of term).
   const lenderInterestRate = match.interest_rate || 0;
   const loanAmount = loan.amount || 0;
   const totalInstallments = loan.total_installments || 1;
-  const repaymentFrequency = loan.repayment_frequency || 'monthly';
-  
-  // Calculate loan term in years for interest calculation
-  let weeksPerPeriod = 4; // monthly default
-  if (repaymentFrequency === 'weekly') weeksPerPeriod = 1;
-  else if (repaymentFrequency === 'biweekly') weeksPerPeriod = 2;
-  else if (repaymentFrequency === 'monthly') weeksPerPeriod = 4;
-  
-  const totalWeeks = totalInstallments * weeksPerPeriod;
-  const loanTermYears = totalWeeks / 52;
-  
-  // Calculate total interest (simple interest: Principal × Rate × Time)
-  const totalInterest = Math.round((loanAmount * (lenderInterestRate / 100) * loanTermYears) * 100) / 100;
+
+  const totalInterest = Math.round(loanAmount * (lenderInterestRate / 100) * 100) / 100;
   const totalAmount = Math.round((loanAmount + totalInterest) * 100) / 100;
   const repaymentAmount = Math.round((totalAmount / totalInstallments) * 100) / 100;
-  
-  console.log('Interest calculation:', { 
-    lenderInterestRate, 
-    loanAmount, 
-    totalInstallments, 
-    loanTermYears, 
-    totalInterest, 
+
+  console.log('Interest calculation:', {
+    lenderInterestRate,
+    loanAmount,
+    totalInstallments,
+    totalInterest,
     totalAmount,
-    repaymentAmount 
+    repaymentAmount,
   });
 
   // For auto-accept: The loan is matched but lender hasn't explicitly signed yet.
   // They'll sign when they fund the loan.
   // lender_signed should only be true after lender explicitly reviews and funds.
   const updateData: any = {
-    status: isAutoAccept ? 'pending' : 'active', // Auto-accept stays pending until lender funds
+    status: isAutoAccept ? 'pending' : 'active',
     match_status: 'matched',
     matched_at: new Date().toISOString(),
     interest_rate: lenderInterestRate,
@@ -648,12 +732,11 @@ async function assignLoanToLender(
     repayment_amount: repaymentAmount,
     amount_remaining: totalAmount,
     invite_accepted: true,
-    // For auto-accept: Don't mark as signed yet - lender will sign when they fund
-    // For manual accept: Lender explicitly accepted, so they've effectively signed
+    uses_apr_calculation: false, // Required: tells check_total_interest to expect flat-rate formula
     lender_signed: !isAutoAccept,
     lender_signed_at: !isAutoAccept ? new Date().toISOString() : null,
-    funds_sent: false, // Lender hasn't paid borrower yet
-    auto_matched: isAutoAccept, // Track that this was auto-matched
+    funds_sent: false,
+    auto_matched: isAutoAccept,
   };
 
   if (match.lender_user_id) {
@@ -779,258 +862,13 @@ async function reserveLenderCapital(supabase: any, match: MatchResult, amount: n
   }
 }
 
-// Helper: Notify lender of a match
+// Helper: Notify a single lender of a pending match opportunity
+// Called in broadcast mode — all matched lenders receive this simultaneously.
 async function notifyLenderOfMatch(supabase: any, loan: any, match: MatchResult, matchId: string | undefined) {
-  console.log(`[Matching] ========== NOTIFY LENDER START ==========`);
-  console.log(`[Matching] Loan ID: ${loan.id}, Amount: ${loan.currency} ${loan.amount}`);
-  console.log(`[Matching] Match ID: ${matchId}`);
-  console.log(`[Matching] Match data:`, JSON.stringify({
-    lender_user_id: match.lender_user_id, 
-    lender_business_id: match.lender_business_id,
-    lender_name: match.lender_name,
-    lender_email: match.lender_email,
-    auto_accept: match.auto_accept,
-  }, null, 2));
+  console.log(`[Matching] Notifying lender: ${match.lender_name}, matchId: ${matchId}`);
 
-  // Get lender email - use match.lender_email as fallback
+  // Resolve authoritative email & name
   let lenderEmail: string | null = match.lender_email || null;
-  let lenderName = match.lender_name;
-
-  if (match.lender_user_id) {
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('email, full_name')
-      .eq('id', match.lender_user_id)
-      .single();
-    if (userError) {
-      console.error(`[Matching] Failed to fetch user ${match.lender_user_id}:`, userError);
-    } else if (user) {
-      lenderEmail = user.email || lenderEmail;
-      lenderName = user.full_name || lenderName;
-    }
-  } else if (match.lender_business_id) {
-    const { data: business, error: bizError } = await supabase
-      .from('business_profiles')
-      .select('contact_email, business_name')
-      .eq('id', match.lender_business_id)
-      .single();
-    if (bizError) {
-      console.error(`[Matching] Failed to fetch business ${match.lender_business_id}:`, bizError);
-    } else if (business) {
-      lenderEmail = business.contact_email || lenderEmail;
-      lenderName = business.business_name || lenderName;
-    }
-  }
-
-  console.log(`[Matching] Will send email to: ${lenderEmail}, name: ${lenderName}`);
-
-  if (lenderEmail) {
-    const reviewUrl = `${APP_URL}/lender/matches/${matchId}`;
-
-    try {
-      await sendEmail({
-        to: lenderEmail,
-        subject: `🎯 New Loan Match: ${loan.currency} ${loan.amount.toLocaleString()}`,
-        html: `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      </head>
-
-      <body style="margin:0; padding:0; background:#ffffff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; color:#333;">
-        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-          <tr>
-            <td align="center" style="padding:20px;">
-              <!-- CARD -->
-              <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="border-radius:16px; overflow:hidden; border:1px solid #bbf7d0;">
-
-                <!-- HEADER -->
-                <tr>
-                  <td style="background:linear-gradient(135deg,#059669,#047857); padding:30px;">
-                    <table width="100%" role="presentation">
-                      <tr>
-                        <td align="center" style="padding-bottom:20px;">
-                          <img
-                            src="https://feyza.app/feyza.png"
-                            alt="Feyza"
-                            height="40"
-                            style="display:block; border:0; outline:none; text-decoration:none;"
-                          />
-                        </td>
-                      </tr>
-                      <tr>
-                        <td align="center">
-                          <h1 style="margin:0; color:#ffffff; font-size:26px; font-weight:600;">
-                            🎯 You've Been Matched!
-                          </h1>
-                          <p style="margin:10px 0 0; color:rgba(255,255,255,0.9); font-size:16px;">
-                            New Loan Opportunity
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-
-                <!-- BODY -->
-                <tr>
-                  <td style="background:#f0fdf4; padding:30px;">
-                    <p style="font-size:18px; color:#065f46; margin:0 0 20px;">
-                      Hi ${lenderName}! 👋
-                    </p>
-
-                    <p style="color:#065f46; margin:0 0 20px;">
-                      A borrower matches your lending preferences. Here are the details:
-                    </p>
-
-                    <!-- LOAN CARD -->
-                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#ffffff; border:1px solid #bbf7d0; border-radius:12px; margin:20px 0;">
-                      <tr>
-                        <td align="center" style="padding:25px; border-bottom:1px solid #e5e7eb;">
-                          <p style="margin:0; font-size:14px; color:#047857;">Loan Amount</p>
-                          <p style="margin:10px 0 0; font-size:34px; font-weight:bold; color:#059669;">
-                            ${loan.currency} ${loan.amount.toLocaleString()}
-                          </p>
-                        </td>
-                      </tr>
-
-                      <tr>
-                        <td style="padding:20px;">
-                          <p style="margin:0 0 8px; color:#047857; font-size:14px;">Borrower</p>
-                          <p style="margin:0 0 15px; color:#065f46; font-size:16px; font-weight:600;">
-                            ${loan.borrower?.full_name || 'Anonymous'}
-                          </p>
-
-                          <p style="margin:0 0 8px; color:#047857; font-size:14px;">Rating</p>
-                          <span style="display:inline-block; background:#d1fae5; color:#065f46; padding:6px 14px; border-radius:20px; font-size:14px; font-weight:600;">
-                            ${loan.borrower?.borrower_rating || 'Neutral'}
-                          </span>
-
-                          ${loan.recipient_country ? `
-                            <p style="margin:20px 0 5px; color:#047857; font-size:14px;">Recipient Country</p>
-                            <p style="margin:0; color:#065f46;">${loan.recipient_country}</p>
-                          ` : ''}
-
-                          ${loan.purpose ? `
-                            <p style="margin:20px 0 5px; color:#047857; font-size:14px;">Purpose</p>
-                            <p style="margin:0; color:#065f46;">${loan.purpose}</p>
-                          ` : ''}
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- ALERT -->
-                    <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; margin:25px 0;">
-                      <tr>
-                        <td style="padding:16px;">
-                          <p style="margin:0; font-size:14px; color:#854d0e;">
-                            <strong style="color:#059669;">⏰ Time Sensitive:</strong>
-                            You have 24 hours to accept or decline this loan.
-                          </p>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- CTA -->
-                    <table width="100%" role="presentation" style="margin:30px 0;">
-                      <tr>
-                        <td align="center">
-                          <a
-                            href="${reviewUrl}"
-                            style="display:inline-block; background:#059669; color:#ffffff; text-decoration:none; padding:16px 40px; border-radius:8px; font-weight:600; font-size:16px;"
-                          >
-                            Review & Accept Loan →
-                          </a>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- FOOTER LINKS -->
-                    <p style="font-size:14px; color:#047857;">
-                      <a href="${APP_URL}/help/lender-matches" style="color:#059669; text-decoration:none; font-weight:500;">Help Center</a>
-                      &nbsp;•&nbsp;
-                      <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none; font-weight:500;">Contact Support</a>
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- SIGNATURE -->
-              <p style="margin-top:20px; font-size:12px; color:#6b7280;">
-                Feyza • Smart Loan Matching System
-              </p>
-            </td>
-          </tr>
-        </table>
-      </body>
-      </html>
-      `,
-      });
-      console.log(`[Matching] ✅ Sent match notification email to ${lenderEmail}`);
-    } catch (emailError) {
-      console.error(`[Matching] ❌ Failed to send email to ${lenderEmail}:`, emailError);
-    }
-  } else {
-    console.log(`[Matching] ⚠️ No email address found for lender, skipping email notification`);
-  }
-
-  // Create in-app notification for lender
-  // Include match_id in data so notification can link to review page
-  if (match.lender_user_id) {
-    // Individual lender notification
-    const { error: notifError } = await supabase.from('notifications').insert({
-      user_id: match.lender_user_id,
-      loan_id: loan.id,
-      type: 'loan_match_offer',
-      title: '🎯 New Loan Match!',
-      message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your preferences. You have 24h to respond.`,
-      data: { match_id: matchId, amount: loan.amount, currency: loan.currency },
-    });
-    if (notifError) {
-      console.error(`[Matching] Failed to create notification for lender ${match.lender_user_id}:`, notifError);
-    } else {
-      console.log(`[Matching] ✅ Created in-app notification for lender user ${match.lender_user_id}, match_id: ${matchId}`);
-    }
-  } else if (match.lender_business_id) {
-    // Business lender notification - find the business owner
-    const { data: business, error: bizError } = await supabase
-      .from('business_profiles')
-      .select('user_id, business_name')
-      .eq('id', match.lender_business_id)
-      .single();
-    
-    if (bizError) {
-      console.error(`[Matching] Failed to get business profile ${match.lender_business_id}:`, bizError);
-    } else if (business?.user_id) {
-      const { error: notifError } = await supabase.from('notifications').insert({
-        user_id: business.user_id,
-        loan_id: loan.id,
-        type: 'loan_match_offer',
-        title: '🎯 New Loan Match!',
-        message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your ${business.business_name} lending preferences. Review and accept within 24h.`,
-        data: { match_id: matchId, amount: loan.amount, currency: loan.currency, business_name: business.business_name },
-      });
-      if (notifError) {
-        console.error(`[Matching] Failed to create notification for business owner ${business.user_id}:`, notifError);
-      } else {
-        console.log(`[Matching] ✅ Created in-app notification for business owner ${business.user_id}, match_id: ${matchId}`);
-      }
-    } else {
-      console.log(`[Matching] Business ${match.lender_business_id} has no user_id, skipping notification`);
-    }
-  } else {
-    console.log(`[Matching] No lender_user_id or lender_business_id, skipping notification`);
-  }
-
-  console.log(`[Matching] ========== NOTIFY LENDER END ==========`);
-}
-
-// Helper: Send match confirmation emails
-async function sendMatchNotifications(supabase: any, loan: any, match: MatchResult, isAutoAccept: boolean) {
-    // 1. Email to LENDER (confirmation of auto-accept or acceptance)
-  let lenderEmail: string | null = null;
   let lenderName = match.lender_name;
 
   if (match.lender_user_id) {
@@ -1039,14 +877,427 @@ async function sendMatchNotifications(supabase: any, loan: any, match: MatchResu
       .select('email, full_name')
       .eq('id', match.lender_user_id)
       .single();
-    lenderEmail = user?.email;
-    lenderName = user?.full_name || lenderName;
+    if (user) {
+      lenderEmail = user.email || lenderEmail;
+      lenderName = user.full_name || lenderName;
+    }
   } else if (match.lender_business_id) {
     const { data: business } = await supabase
       .from('business_profiles')
       .select('contact_email, business_name')
       .eq('id', match.lender_business_id)
       .single();
+    if (business) {
+      lenderEmail = business.contact_email || lenderEmail;
+      lenderName = business.business_name || lenderName;
+    }
+  }
+
+  if (lenderEmail && matchId) {
+    const reviewUrl = `${APP_URL}/lender/matches/${matchId}`;
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresStr = expires.toLocaleString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+    });
+
+    await sendEmail({
+      to: lenderEmail,
+      subject: `🎯 New Loan Opportunity: ${loan.currency} ${loan.amount.toLocaleString()} — Review Now`,
+      html: buildLenderMatchEmail({
+        lenderName,
+        borrowerName: loan.borrower?.full_name || 'A borrower',
+        borrowerRating: loan.borrower?.borrower_rating,
+        amount: loan.amount,
+        currency: loan.currency,
+        purpose: loan.purpose,
+        reviewUrl,
+        expiresStr,
+      }),
+    }).catch(err => console.error(`[Matching] Email failed for ${lenderEmail}:`, err));
+  } else {
+    console.warn(`[Matching] No email for lender ${match.lender_name} (matchId: ${matchId})`);
+  }
+
+  // In-app notification
+  const matchData = { match_id: matchId, amount: loan.amount, currency: loan.currency };
+  const notifMsg = `A ${loan.currency} ${loan.amount.toLocaleString()} loan request matches your preferences. Review within 24 hours.`;
+
+  if (match.lender_user_id) {
+    await supabase.from('notifications').insert({
+      user_id: match.lender_user_id,
+      loan_id: loan.id,
+      type: 'loan_match_offer',
+      title: '🎯 New Loan Match Available',
+      message: notifMsg,
+      data: matchData,
+    }).catch((e: any) => console.error('[Matching] Notification insert failed:', e));
+  } else if (match.lender_business_id) {
+    const { data: business } = await supabase
+      .from('business_profiles')
+      .select('user_id, business_name')
+      .eq('id', match.lender_business_id)
+      .single();
+    if (business?.user_id) {
+      await supabase.from('notifications').insert({
+        user_id: business.user_id,
+        loan_id: loan.id,
+        type: 'loan_match_offer',
+        title: '🎯 New Loan Match Available',
+        message: `A ${loan.currency} ${loan.amount.toLocaleString()} loan matches your ${business.business_name} preferences. Review within 24h.`,
+        data: { ...matchData, business_name: business.business_name },
+      }).catch((e: any) => console.error('[Matching] Business notification insert failed:', e));
+    }
+  }
+}
+
+// Helper: Notify borrower that their loan is in the review queue
+async function notifyBorrowerLoanQueued(supabase: any, loan: any, matchCount: number) {
+  if (!loan.borrower?.email) return;
+
+  await sendEmail({
+    to: loan.borrower.email,
+    subject: `⏳ Your loan request is under review — ${loan.currency} ${loan.amount.toLocaleString()}`,
+    html: buildBorrowerQueuedEmail({
+      borrowerName: loan.borrower.full_name || 'there',
+      amount: loan.amount,
+      currency: loan.currency,
+      matchCount,
+      loanUrl: `${APP_URL}/loans/${loan.id}`,
+    }),
+  }).catch(err => console.error('[Matching] Borrower queued email failed:', err));
+
+  await supabase.from('notifications').insert({
+    user_id: loan.borrower_id,
+    loan_id: loan.id,
+    type: 'loan_in_review',
+    title: '⏳ Loan Under Review',
+    message: `Your ${loan.currency} ${loan.amount.toLocaleString()} request has been sent to ${matchCount} lender${matchCount !== 1 ? 's' : ''}. You'll be notified as soon as one accepts.`,
+  }).catch((e: any) => console.error('[Matching] Borrower notification insert failed:', e));
+}
+
+// ============================================================
+// EMAIL BUILDERS
+// ============================================================
+
+function buildLenderMatchEmail(params: {
+  lenderName: string;
+  borrowerName: string;
+  borrowerRating?: string;
+  amount: number;
+  currency: string;
+  purpose?: string;
+  reviewUrl: string;
+  expiresStr: string;
+}): string {
+  const { lenderName, borrowerName, borrowerRating, amount, currency, purpose, reviewUrl, expiresStr } = params;
+  const ratingColors: Record<string, string> = {
+    excellent: '#059669', good: '#10b981', neutral: '#6b7280',
+    fair: '#f59e0b', poor: '#ef4444',
+  };
+  const ratingColor = ratingColors[borrowerRating?.toLowerCase() ?? 'neutral'] ?? '#6b7280';
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>New Loan Opportunity – Feyza</title>
+</head>
+<body style="margin:0;padding:0;background:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 30px rgba(5,150,105,0.12);">
+
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#059669 0%,#047857 60%,#065f46 100%);padding:40px 40px 35px;text-align:center;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding-bottom:20px;">
+                    <img src="https://feyza.app/feyza.png" alt="Feyza" height="44" style="display:block;border:0;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center">
+                    <div style="display:inline-block;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:50px;padding:6px 16px;margin-bottom:16px;">
+                      <span style="color:#d1fae5;font-size:13px;font-weight:600;letter-spacing:0.5px;">🎯 LOAN OPPORTUNITY</span>
+                    </div>
+                    <h1 style="color:#ffffff;margin:0;font-size:30px;font-weight:700;letter-spacing:-0.5px;">New Match Available</h1>
+                    <p style="color:rgba(255,255,255,0.85);margin:10px 0 0;font-size:16px;">A borrower matches your lending preferences</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- AMOUNT HERO -->
+          <tr>
+            <td style="background:#f0fdf4;padding:0;border-bottom:1px solid #bbf7d0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:36px 40px;">
+                    <p style="margin:0 0 6px;font-size:13px;color:#047857;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Loan Amount</p>
+                    <p style="margin:0;font-size:52px;font-weight:800;color:#065f46;letter-spacing:-2px;line-height:1;">${currency} ${amount.toLocaleString()}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- BORROWER INFO -->
+          <tr>
+            <td style="padding:32px 40px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="vertical-align:top;padding-right:20px;">
+                    <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Borrower</p>
+                    <p style="margin:0;font-size:20px;font-weight:700;color:#111827;">${borrowerName}</p>
+                    ${purpose ? `<p style="margin:8px 0 0;font-size:14px;color:#6b7280;">Purpose: <span style="color:#374151;font-weight:500;">${purpose}</span></p>` : ''}
+                  </td>
+                  ${borrowerRating ? `
+                  <td style="vertical-align:top;text-align:right;white-space:nowrap;">
+                    <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">Rating</p>
+                    <span style="display:inline-block;background:${ratingColor}15;color:${ratingColor};border:1px solid ${ratingColor}40;border-radius:8px;padding:4px 14px;font-size:15px;font-weight:700;text-transform:capitalize;">${borrowerRating}</span>
+                  </td>
+                  ` : ''}
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- URGENCY BANNER -->
+          <tr>
+            <td style="padding:0 40px 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="font-size:20px;width:32px;vertical-align:middle;">⏰</td>
+                        <td style="vertical-align:middle;padding-left:8px;">
+                          <p style="margin:0;font-size:14px;font-weight:700;color:#92400e;">Time-Sensitive Opportunity</p>
+                          <p style="margin:4px 0 0;font-size:13px;color:#b45309;">This offer expires ${expiresStr}. First lender to accept gets the loan.</p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:0 40px 40px;text-align:center;">
+              <a href="${reviewUrl}" style="display:inline-block;background:linear-gradient(135deg,#059669,#047857);color:#ffffff;text-decoration:none;padding:18px 48px;border-radius:12px;font-size:17px;font-weight:700;letter-spacing:0.3px;box-shadow:0 6px 20px rgba(5,150,105,0.35);">
+                Review &amp; Accept Loan →
+              </a>
+              <p style="margin:16px 0 0;font-size:13px;color:#9ca3af;">
+                Or visit: <a href="${reviewUrl}" style="color:#059669;text-decoration:none;">${reviewUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:24px 40px;text-align:center;">
+              <p style="margin:0 0 8px;font-size:13px;color:#6b7280;">
+                <a href="${APP_URL}/lender/preferences" style="color:#059669;text-decoration:none;font-weight:500;">Manage Preferences</a>
+                &nbsp;•&nbsp;
+                <a href="mailto:support@feyza.app" style="color:#059669;text-decoration:none;font-weight:500;">Support</a>
+              </p>
+              <p style="margin:0;font-size:12px;color:#9ca3af;">Feyza · Intelligent Loan Matching · <a href="https://feyza.app" style="color:#9ca3af;text-decoration:none;">feyza.app</a></p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}
+
+function buildBorrowerQueuedEmail(params: {
+  borrowerName: string;
+  amount: number;
+  currency: string;
+  matchCount: number;
+  loanUrl: string;
+}): string {
+  const { borrowerName, amount, currency, matchCount, loanUrl } = params;
+  const plural = matchCount !== 1;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loan Under Review – Feyza</title>
+</head>
+<body style="margin:0;padding:0;background:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 30px rgba(5,150,105,0.12);">
+
+          <!-- HEADER -->
+          <tr>
+            <td style="background:linear-gradient(135deg,#0284c7 0%,#0369a1 60%,#075985 100%);padding:40px 40px 35px;text-align:center;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding-bottom:20px;">
+                    <img src="https://feyza.app/feyza.png" alt="Feyza" height="44" style="display:block;border:0;" />
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center">
+                    <div style="display:inline-block;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:50px;padding:6px 16px;margin-bottom:16px;">
+                      <span style="color:#bae6fd;font-size:13px;font-weight:600;letter-spacing:0.5px;">⏳ LOAN STATUS UPDATE</span>
+                    </div>
+                    <h1 style="color:#ffffff;margin:0;font-size:30px;font-weight:700;letter-spacing:-0.5px;">Your Loan is Under Review</h1>
+                    <p style="color:rgba(255,255,255,0.85);margin:10px 0 0;font-size:16px;">We've found ${matchCount} matching lender${plural ? 's' : ''} for you</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- AMOUNT -->
+          <tr>
+            <td style="background:#f0f9ff;padding:0;border-bottom:1px solid #bae6fd;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td align="center" style="padding:36px 40px;">
+                    <p style="margin:0 0 6px;font-size:13px;color:#0369a1;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Requested Amount</p>
+                    <p style="margin:0;font-size:52px;font-weight:800;color:#0c4a6e;letter-spacing:-2px;line-height:1;">${currency} ${amount.toLocaleString()}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- BODY -->
+          <tr>
+            <td style="padding:32px 40px;">
+              <p style="margin:0 0 20px;font-size:17px;color:#111827;">Hi ${borrowerName}! 👋</p>
+              <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.7;">
+                Great news — we've matched your loan request with <strong style="color:#0284c7;">${matchCount} lender${plural ? 's' : ''}</strong> who fit your needs. 
+                ${plural ? 'Each has been notified and the' : 'They have been notified and'} will review your request within the next <strong>24 hours</strong>.
+              </p>
+
+              <!-- STEPS -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;margin:0 0 24px;">
+                <tr>
+                  <td style="padding:24px 28px;">
+                    <p style="margin:0 0 16px;font-size:14px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.5px;">What happens next</p>
+                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <table role="presentation" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="width:28px;vertical-align:top;">
+                                <div style="width:24px;height:24px;background:#059669;border-radius:50%;text-align:center;line-height:24px;font-size:12px;font-weight:700;color:#fff;">1</div>
+                              </td>
+                              <td style="padding-left:12px;vertical-align:top;">
+                                <p style="margin:2px 0 0;font-size:14px;color:#374151;"><strong>Lender reviews</strong> your request (up to 24h)</p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <table role="presentation" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="width:28px;vertical-align:top;">
+                                <div style="width:24px;height:24px;background:#059669;border-radius:50%;text-align:center;line-height:24px;font-size:12px;font-weight:700;color:#fff;">2</div>
+                              </td>
+                              <td style="padding-left:12px;vertical-align:top;">
+                                <p style="margin:2px 0 0;font-size:14px;color:#374151;"><strong>You get notified</strong> the moment someone accepts</p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:8px 0;vertical-align:top;">
+                          <table role="presentation" cellpadding="0" cellspacing="0">
+                            <tr>
+                              <td style="width:28px;vertical-align:top;">
+                                <div style="width:24px;height:24px;background:#059669;border-radius:50%;text-align:center;line-height:24px;font-size:12px;font-weight:700;color:#fff;">3</div>
+                              </td>
+                              <td style="padding-left:12px;vertical-align:top;">
+                                <p style="margin:2px 0 0;font-size:14px;color:#374151;"><strong>Funds are sent</strong> to you once the loan is signed</p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- TIP -->
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;color:#065f46;">
+                      💡 <strong>Tip:</strong> You can also share your loan request directly with friends or family — personal loans don't need to go through matching.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- CTA -->
+          <tr>
+            <td style="padding:0 40px 40px;text-align:center;">
+              <a href="${loanUrl}" style="display:inline-block;background:linear-gradient(135deg,#0284c7,#0369a1);color:#ffffff;text-decoration:none;padding:18px 48px;border-radius:12px;font-size:17px;font-weight:700;letter-spacing:0.3px;box-shadow:0 6px 20px rgba(2,132,199,0.35);">
+                Track Your Loan →
+              </a>
+            </td>
+          </tr>
+
+          <!-- FOOTER -->
+          <tr>
+            <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:24px 40px;text-align:center;">
+              <p style="margin:0;font-size:12px;color:#9ca3af;">Feyza · Intelligent Loan Matching · <a href="https://feyza.app" style="color:#9ca3af;text-decoration:none;">feyza.app</a></p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>`;
+}
+
+
+
+// Helper: Send match confirmation emails (auto-accept or manual accept confirmation)
+async function sendMatchNotifications(supabase: any, loan: any, match: MatchResult, isAutoAccept: boolean) {
+  // 1. Lender confirmation email
+  let lenderEmail: string | null = null;
+  let lenderName = match.lender_name;
+
+  if (match.lender_user_id) {
+    const { data: user } = await supabase
+      .from('users').select('email, full_name').eq('id', match.lender_user_id).single();
+    lenderEmail = user?.email;
+    lenderName = user?.full_name || lenderName;
+  } else if (match.lender_business_id) {
+    const { data: business } = await supabase
+      .from('business_profiles').select('contact_email, business_name').eq('id', match.lender_business_id).single();
     lenderEmail = business?.contact_email;
     lenderName = business?.business_name || lenderName;
   }
@@ -1054,360 +1305,230 @@ async function sendMatchNotifications(supabase: any, loan: any, match: MatchResu
   if (lenderEmail) {
     await sendEmail({
       to: lenderEmail,
-      subject: isAutoAccept ? 'Loan Auto-Accepted!' : 'You Accepted a Loan!',
-      html: `
-      <!DOCTYPE html>
-      <html lang="en">
-        <body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f9fafb;">
-          
-          <!-- Wrapper -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center" style="padding:20px;">
-                
-                <!-- Card -->
-                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:16px;overflow:hidden;">
-
-                  <!-- HEADER -->
-                  <tr>
-                    <td style="background:#059669;padding:30px;text-align:center;">
-                      
-                      <!-- Logo -->
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td align="center" style="padding-bottom:20px;">
-                            <img
-                              src="https://feyza.app/feyza.png"
-                              alt="Feyza Logo"
-                              height="40"
-                              style="display:block;height:40px;width:auto;border:0;outline:none;text-decoration:none;"
-                            />
-                          </td>
-                        </tr>
-                      </table>
-
-                      <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:600;">
-                        ${isAutoAccept ? 'Loan Auto-Accepted!' : 'Loan Accepted!'}
-                      </h1>
-                      <p style="margin:8px 0 0;color:#d1fae5;font-size:15px;">
-                        ${isAutoAccept ? 'Automated matching complete' : 'Successfully matched with borrower'}
-                      </p>
-                    </td>
-                  </tr>
-
-                  <!-- CONTENT -->
-                  <tr>
-                    <td style="background:#f0fdf4;padding:30px;border:1px solid #bbf7d0;border-top:none;">
-                      
-                      <p style="font-size:18px;color:#065f46;margin:0 0 20px;">
-                        Hi ${lenderName} 👋
-                      </p>
-
-                      <p style="color:#065f46;line-height:1.6;margin:0 0 20px;">
-                        ${isAutoAccept
-                          ? 'Your auto-accept settings successfully matched you with a new loan.'
-                          : 'You have successfully accepted a loan request from a verified borrower.'}
-                      </p>
-
-                      <!-- LOAN DETAILS -->
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                        style="background:#ffffff;border-radius:12px;border:1px solid #bbf7d0;margin:20px 0;">
-                        <tr>
-                          <td style="padding:24px;text-align:center;">
-                            <h3 style="margin:0 0 16px;color:#065f46;font-size:20px;">Loan Details</h3>
-
-                            <div style="background:#dcfce7;padding:18px;border-radius:8px;margin-bottom:20px;">
-                              <p style="margin:0;color:#065f46;font-size:14px;">Loan Amount</p>
-                              <p style="margin:6px 0;font-size:34px;font-weight:bold;color:#059669;">
-                                ${loan.currency} ${loan.amount.toLocaleString()}
-                              </p>
-                              <p style="margin:0;color:#047857;font-size:15px;">
-                                Interest Rate: <strong>${match.interest_rate}%</strong> p.a.
-                              </p>
-                            </div>
-
-                            <!-- DETAILS -->
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                              <tr>
-                                <td style="padding:10px 0;text-align:left;">
-                                  <p style="margin:0;color:#6b7280;font-size:13px;">Borrower</p>
-                                  <p style="margin:0;color:#065f46;font-weight:500;">
-                                    ${loan.borrower?.full_name || 'Anonymous Borrower'}
-                                  </p>
-                                </td>
-                                <td style="padding:10px 0;text-align:left;">
-                                  <p style="margin:0;color:#6b7280;font-size:13px;">Purpose</p>
-                                  <p style="margin:0;color:#065f46;font-weight:500;">
-                                    ${loan.purpose || 'Not specified'}
-                                  </p>
-                                </td>
-                              </tr>
-                            </table>
-
-                            ${loan.repayment_term ? `
-                            <p style="margin-top:15px;color:#065f46;">
-                              Repayment Term: <strong>${loan.repayment_term} ${loan.repayment_term_unit || 'months'}</strong>
-                            </p>
-                            ` : ''}
-                          </td>
-                        </tr>
-                      </table>
-
-                      <!-- ACTION REQUIRED -->
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"
-                        style="background:#fef3c7;border:1px solid #fbbf24;border-radius:8px;margin:20px 0;">
-                        <tr>
-                          <td style="padding:18px;">
-                            <p style="margin:0 0 8px;color:#92400e;font-weight:600;">
-                              💰 Action Required: Send Payment
-                            </p>
-                            <p style="margin:0;color:#92400e;">
-                              Please send <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong>
-                              to the borrower via PayPal within 24 hours.
-                            </p>
-                          </td>
-                        </tr>
-                      </table>
-
-                      <!-- CTA BUTTON -->
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                        <tr>
-                          <td align="center" style="padding:20px 0;">
-                            <a href="${APP_URL}/loans/${loan.id}"
-                              style="background:#059669;color:#ffffff;text-decoration:none;
-                                    padding:14px 32px;border-radius:8px;
-                                    font-weight:600;font-size:16px;display:inline-block;">
-                              View Loan & Send Payment →
-                            </a>
-                          </td>
-                        </tr>
-                      </table>
-
-                      ${isAutoAccept ? `
-                      <p style="background:#dcfce7;padding:14px;border-radius:8px;border:1px solid #86efac;
-                                color:#065f46;font-size:14px;">
-                        ℹ️ This loan was auto-accepted based on your preferences.
-                        Manage settings in <a href="${APP_URL}/lender/preferences" style="color:#059669;">Lender Preferences</a>.
-                      </p>
-                      ` : ''}
-
-                      <!-- FOOTER -->
-                      <div style="margin-top:30px;padding-top:20px;border-top:1px solid #bbf7d0;color:#047857;font-size:14px;">
-                        <p style="margin:0 0 8px;">Need help?</p>
-                        <a href="${APP_URL}/help/payment-process" style="color:#059669;text-decoration:none;font-weight:500;">Payment Guide</a>
-                        &nbsp;•&nbsp;
-                        <a href="mailto:support@feyza.com" style="color:#059669;text-decoration:none;font-weight:500;">Support</a>
-                      </div>
-
-                    </td>
-                  </tr>
-
-                </table>
-
-                <p style="margin-top:20px;color:#6b7280;font-size:12px;text-align:center;">
-                  Feyza • Automated Loan Matching System
-                </p>
-
-              </td>
-            </tr>
-          </table>
-
-        </body>
-      </html>
-      `,
-    });
+      subject: isAutoAccept
+        ? `⚡ Loan Auto-Accepted: ${loan.currency} ${loan.amount.toLocaleString()} — Send Funds Now`
+        : `✅ Loan Accepted: ${loan.currency} ${loan.amount.toLocaleString()} — Next Steps`,
+      html: buildLenderConfirmationEmail({
+        lenderName,
+        borrowerName: loan.borrower?.full_name || 'the borrower',
+        amount: loan.amount,
+        currency: loan.currency,
+        interestRate: match.interest_rate,
+        purpose: loan.purpose,
+        loanUrl: `${APP_URL}/loans/${loan.id}`,
+        isAutoAccept,
+      }),
+    }).catch(err => console.error('[Matching] Lender confirmation email failed:', err));
   }
 
-  // 2. Email to BORROWER
+  // 2. Borrower confirmation email
   if (loan.borrower?.email) {
-  await sendEmail({
-    to: loan.borrower.email,
-    subject: isAutoAccept ? 'Loan Instantly Matched!' : 'Your Loan Has Been Accepted!',
-    html: `
-    <!DOCTYPE html>
-    <html>
-      <body style="
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 20px;
-        background: #f9fafb;
-      ">
+    await sendEmail({
+      to: loan.borrower.email,
+      subject: isAutoAccept
+        ? `⚡ Instantly Matched! Your ${loan.currency} ${loan.amount.toLocaleString()} loan is approved`
+        : `🎉 Loan Accepted! ${lenderName} approved your ${loan.currency} ${loan.amount.toLocaleString()} request`,
+      html: buildBorrowerMatchedEmail({
+        borrowerName: loan.borrower.full_name || 'there',
+        lenderName,
+        amount: loan.amount,
+        currency: loan.currency,
+        interestRate: match.interest_rate,
+        loanUrl: `${APP_URL}/loans/${loan.id}`,
+        isAutoAccept,
+      }),
+    }).catch(err => console.error('[Matching] Borrower confirmation email failed:', err));
+  }
+}
 
-        <!-- ===== HEADER ===== -->
-        <div style="
-          background: linear-gradient(135deg, #059669 0%, #047857 100%);
-          padding: 30px;
-          border-radius: 16px 16px 0 0;
-          text-align: center;
-        ">
+function buildLenderConfirmationEmail(params: {
+  lenderName: string;
+  borrowerName: string;
+  amount: number;
+  currency: string;
+  interestRate: number;
+  purpose?: string;
+  loanUrl: string;
+  isAutoAccept: boolean;
+}): string {
+  const { lenderName, borrowerName, amount, currency, interestRate, purpose, loanUrl, isAutoAccept } = params;
 
-          <!-- Logo (email-safe centered) -->
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr>
-              <td align="center" style="padding-bottom: 20px;">
-                <img
-                  src="https://feyza.app/feyza.png"
-                  alt="Feyza Logo"
-                  height="40"
-                  style="display:block; height:40px; width:auto; border:0; outline:none; text-decoration:none;"
-                />
-              </td>
-            </tr>
-          </table>
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 30px rgba(5,150,105,0.12);">
 
-          <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 600;">
-            ${isAutoAccept ? '⚡ Instant Match!' : '🎉 Loan Accepted!'}
-          </h1>
-
-          ${
-            isAutoAccept
-              ? `<p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">
-                  Automatically approved by our system
-                </p>`
-              : ''
-          }
-        </div>
-
-        <!-- ===== CONTENT ===== -->
-        <div style="
-          background: #f0fdf4;
-          padding: 30px;
-          border-radius: 0 0 16px 16px;
-          border: 1px solid #bbf7d0;
-          border-top: none;
-        ">
-
-          <p style="font-size: 18px; color: #166534; margin-bottom: 20px;">
-            Hi ${loan.borrower.full_name || 'there'}! 👋
-          </p>
-
-          <p style="color: #166534; line-height: 1.6; margin-bottom: 20px;">
-            Great news! Your loan has been
-            ${isAutoAccept ? 'instantly matched and approved' : 'accepted'}
-            by <strong style="color:#059669;">${lenderName}</strong>.
-          </p>
-
-          <!-- ===== LOAN DETAILS ===== -->
-          <div style="
-            background: white;
-            padding: 24px;
-            border-radius: 12px;
-            margin: 20px 0;
-            border: 1px solid #bbf7d0;
-            box-shadow: 0 2px 8px rgba(5,150,105,0.1);
-          ">
-
-            <h3 style="
-              margin: 0 0 20px;
-              color: #065f46;
-              font-size: 20px;
-              font-weight: 600;
-              text-align: center;
-            ">
-              Loan Details
-            </h3>
-
-            <div style="text-align: center; margin-bottom: 20px;">
-              <p style="color: #6b7280; margin: 0; font-size: 14px;">Loan Amount</p>
-              <p style="
-                font-size: 40px;
-                font-weight: bold;
-                color: #059669;
-                margin: 10px 0;
-                letter-spacing: -0.5px;
-              ">
-                ${loan.currency} ${loan.amount.toLocaleString()}
-              </p>
-            </div>
-
+        <tr>
+          <td style="background:linear-gradient(135deg,#059669 0%,#047857 60%,#065f46 100%);padding:40px;text-align:center;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
-              <tr>
-                <td style="padding: 8px; text-align: center;">
-                  <div style="background:#f0fdf4; padding:15px; border-radius:8px;">
-                    <p style="color:#065f46; margin:0; font-size:13px; font-weight:600;">Interest Rate</p>
-                    <p style="color:#059669; margin:8px 0 0; font-size:22px; font-weight:bold;">
-                      ${match.interest_rate}%
-                    </p>
-                    <p style="color:#6b7280; margin:5px 0 0; font-size:12px;">per annum</p>
-                  </div>
-                </td>
+              <tr><td align="center" style="padding-bottom:20px;"><img src="https://feyza.app/feyza.png" alt="Feyza" height="44" style="display:block;border:0;" /></td></tr>
+            </table>
+            <div style="display:inline-block;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);border-radius:50px;padding:6px 16px;margin-bottom:16px;">
+              <span style="color:#d1fae5;font-size:13px;font-weight:600;">${isAutoAccept ? '⚡ AUTO-ACCEPTED' : '✅ LOAN ACCEPTED'}</span>
+            </div>
+            <h1 style="color:#fff;margin:0;font-size:28px;font-weight:700;">${isAutoAccept ? 'Loan Auto-Matched!' : 'Loan Successfully Accepted!'}</h1>
+            <p style="color:rgba(255,255,255,0.85);margin:10px 0 0;font-size:15px;">${isAutoAccept ? 'Your auto-accept settings triggered a match' : 'Time to send the funds'}</p>
+          </td>
+        </tr>
 
-                <td style="padding: 8px; text-align: center;">
-                  <div style="background:#f0fdf4; padding:15px; border-radius:8px;">
-                    <p style="color:#065f46; margin:0; font-size:13px; font-weight:600;">Lender</p>
-                    <p style="color:#059669; margin:8px 0 0; font-size:18px; font-weight:bold;">
-                      ${lenderName}
-                    </p>
-                    <p style="color:#6b7280; margin:5px 0 0; font-size:12px;">Verified Partner</p>
-                  </div>
+        <tr>
+          <td style="padding:36px 40px 0;">
+            <p style="margin:0 0 24px;font-size:17px;color:#111827;">Hi ${lenderName}! 👋</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:16px;">
+              <tr>
+                <td style="padding:28px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:13px;color:#047857;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Loan Amount</p>
+                  <p style="margin:0;font-size:48px;font-weight:800;color:#065f46;letter-spacing:-2px;">${currency} ${amount.toLocaleString()}</p>
+                  <p style="margin:10px 0 0;font-size:15px;color:#059669;">at <strong>${interestRate}%</strong> interest per annum</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 28px 28px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #bbf7d0;">
+                    <tr>
+                      <td style="padding:16px 0 0;">
+                        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;">Borrower</p>
+                        <p style="margin:0;font-size:16px;font-weight:600;color:#065f46;">${borrowerName}</p>
+                      </td>
+                      ${purpose ? `<td style="padding:16px 0 0;text-align:right;">
+                        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;">Purpose</p>
+                        <p style="margin:0;font-size:15px;color:#374151;font-weight:500;">${purpose}</p>
+                      </td>` : ''}
+                    </tr>
+                  </table>
                 </td>
               </tr>
             </table>
-          </div>
+          </td>
+        </tr>
 
-          <!-- ===== NEXT STEPS ===== -->
-          <div style="
-            background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
-            border: 1px solid #86efac;
-            border-radius: 12px;
-            padding: 20px;
-            margin: 25px 0;
-          ">
-            <h4 style="margin:0 0 8px; color:#065f46; font-weight:600;">Next Steps</h4>
-            <p style="margin:0; color:#166534; line-height:1.6;">
-              The lender will send
-              <strong>${loan.currency} ${loan.amount.toLocaleString()}</strong>
-              to your PayPal account. You’ll receive another notification when the payment is sent.
-            </p>
-          </div>
+        <tr>
+          <td style="padding:24px 40px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fef9c3;border:1px solid #fde68a;border-radius:12px;">
+              <tr>
+                <td style="padding:18px 20px;">
+                  <p style="margin:0 0 6px;font-size:15px;font-weight:700;color:#92400e;">💰 Action Required</p>
+                  <p style="margin:0;font-size:14px;color:#b45309;">Please send <strong>${currency} ${amount.toLocaleString()}</strong> to the borrower to activate this loan. Check their payment details on the loan page.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-          <!-- ===== CTA ===== -->
-          <a href="${APP_URL}/loans/${loan.id}"
-            style="
-              display:block;
-              background: linear-gradient(to right, #059669, #047857);
-              color:white;
-              text-decoration:none;
-              padding:16px 32px;
-              border-radius:8px;
-              font-weight:600;
-              text-align:center;
-              margin:24px 0;
-              font-size:16px;
-              box-shadow:0 4px 12px rgba(5,150,105,0.2);
-            ">
-            View Your Loan Details →
-          </a>
+        <tr>
+          <td style="padding:0 40px 40px;text-align:center;">
+            <a href="${loanUrl}" style="display:inline-block;background:linear-gradient(135deg,#059669,#047857);color:#fff;text-decoration:none;padding:18px 48px;border-radius:12px;font-size:17px;font-weight:700;box-shadow:0 6px 20px rgba(5,150,105,0.35);">
+              View Loan &amp; Send Funds →
+            </a>
+          </td>
+        </tr>
 
-          <!-- ===== FOOTER ===== -->
-          <div style="
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #bbf7d0;
-            color: #047857;
-            font-size: 14px;
-            text-align:center;
-          ">
-            <p style="margin:0 0 10px;">Questions about your loan?</p>
-            <p style="margin:0;">
-              <a href="${APP_URL}/help/loan-acceptance" style="color:#059669; text-decoration:none; font-weight:500;">Help Center</a> •
-              <a href="mailto:support@feyza.com" style="color:#059669; text-decoration:none; font-weight:500;">Contact Support</a>
-            </p>
-          </div>
-        </div>
+        <tr>
+          <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">Feyza · Intelligent Loan Matching · <a href="https://feyza.app" style="color:#9ca3af;text-decoration:none;">feyza.app</a></p>
+          </td>
+        </tr>
 
-        <!-- ===== SIGNATURE ===== -->
-        <div style="text-align:center; margin-top:20px; color:#6b7280; font-size:12px;">
-          Feyza • Secure Loan Matching
-        </div>
-
-      </body>
-    </html>
-    `,
-  });
-  }
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
+
+function buildBorrowerMatchedEmail(params: {
+  borrowerName: string;
+  lenderName: string;
+  amount: number;
+  currency: string;
+  interestRate: number;
+  loanUrl: string;
+  isAutoAccept: boolean;
+}): string {
+  const { borrowerName, lenderName, amount, currency, interestRate, loanUrl, isAutoAccept } = params;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f0fdf4;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f0fdf4;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 4px 30px rgba(5,150,105,0.12);">
+
+        <tr>
+          <td style="background:linear-gradient(135deg,#059669 0%,#047857 60%,#065f46 100%);padding:40px;text-align:center;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+              <tr><td align="center" style="padding-bottom:20px;"><img src="https://feyza.app/feyza.png" alt="Feyza" height="44" style="display:block;border:0;" /></td></tr>
+            </table>
+            <div style="font-size:48px;margin-bottom:12px;">${isAutoAccept ? '⚡' : '🎉'}</div>
+            <h1 style="color:#fff;margin:0;font-size:30px;font-weight:700;">${isAutoAccept ? 'Instantly Matched!' : 'Loan Accepted!'}</h1>
+            <p style="color:rgba(255,255,255,0.85);margin:10px 0 0;font-size:16px;"><strong style="color:#fff;">${lenderName}</strong> approved your request</p>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:36px 40px 0;">
+            <p style="margin:0 0 24px;font-size:17px;color:#111827;">Hi ${borrowerName}! 👋</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:16px;margin-bottom:24px;">
+              <tr>
+                <td style="padding:28px;text-align:center;">
+                  <p style="margin:0 0 6px;font-size:13px;color:#047857;font-weight:600;text-transform:uppercase;letter-spacing:1px;">You're Getting</p>
+                  <p style="margin:0;font-size:52px;font-weight:800;color:#065f46;letter-spacing:-2px;">${currency} ${amount.toLocaleString()}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 28px 28px;">
+                  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #bbf7d0;">
+                    <tr>
+                      <td style="padding:16px 0 0;text-align:center;">
+                        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;">Interest Rate</p>
+                        <p style="margin:0;font-size:22px;font-weight:700;color:#059669;">${interestRate}% <span style="font-size:14px;font-weight:400;color:#6b7280;">per annum</span></p>
+                      </td>
+                      <td style="padding:16px 0 0;text-align:center;">
+                        <p style="margin:0 0 4px;font-size:12px;color:#6b7280;font-weight:600;text-transform:uppercase;">Lender</p>
+                        <p style="margin:0;font-size:18px;font-weight:700;color:#065f46;">${lenderName}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ecfdf5;border:1px solid #6ee7b7;border-radius:12px;margin-bottom:24px;">
+              <tr>
+                <td style="padding:18px 20px;">
+                  <p style="margin:0 0 8px;font-size:15px;font-weight:700;color:#065f46;">🚀 What happens now</p>
+                  <p style="margin:0;font-size:14px;color:#065f46;line-height:1.6;">${lenderName} will send <strong>${currency} ${amount.toLocaleString()}</strong> to your account. You'll get another notification the moment the funds are on their way.</p>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="padding:0 40px 40px;text-align:center;">
+            <a href="${loanUrl}" style="display:inline-block;background:linear-gradient(135deg,#059669,#047857);color:#fff;text-decoration:none;padding:18px 48px;border-radius:12px;font-size:17px;font-weight:700;box-shadow:0 6px 20px rgba(5,150,105,0.35);">
+              View Your Loan →
+            </a>
+          </td>
+        </tr>
+
+        <tr>
+          <td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:20px 40px;text-align:center;">
+            <p style="margin:0;font-size:12px;color:#9ca3af;">Feyza · Secure Loan Matching · <a href="https://feyza.app" style="color:#9ca3af;text-decoration:none;">feyza.app</a></p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+}
+
 
 // GET: Get match status for a loan
 export async function GET(request: NextRequest) {

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 
-// GET /api/business/loan-types - Get loan types for the current user's business
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
@@ -56,8 +55,25 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/business/loan-types - Update loan types for the current user's business
 export async function POST(request: NextRequest) {
+  return handleUpdate(request);
+}
+
+export async function PUT(request: NextRequest) {
+  return handleUpdate(request);
+}
+
+export async function PATCH(request: NextRequest) {
+  return handleUpdate(request);
+}
+
+// Handle unsupported methods
+export async function DELETE() {
+  return NextResponse.json({ error: 'Method not allowed' }, { status: 405 });
+}
+
+// Shared update logic
+async function handleUpdate(request: NextRequest) {
   try {
     const supabase = await createServerSupabaseClient();
 
@@ -79,9 +95,6 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const { loanTypeIds, loanTypeSettings } = body;
-
-    // loanTypeIds: string[] - array of loan type IDs to enable
-    // loanTypeSettings: { [loanTypeId]: { min_amount?, max_amount?, interest_rate? } } - optional per-type settings
 
     if (!Array.isArray(loanTypeIds)) {
       return NextResponse.json({ error: 'loanTypeIds must be an array' }, { status: 400 });

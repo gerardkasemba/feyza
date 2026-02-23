@@ -17,42 +17,32 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fullName, userType } = body;
 
-    // Use service role to bypass RLS for initial user creation
+    // Use service role to bypass RLS for user creation
     const serviceClient = await createServiceRoleClient();
 
-    // Check if user already exists
-    const { data: existingUser } = await serviceClient
+    // Create (or update) the user record — upsert is safe on conflict
+    const { error: upsertError } = await serviceClient
       .from('users')
-      .select('id')
-      .eq('id', user.id)
-      .single();
+      .upsert(
+        {
+          id: user.id,
+          email: user.email,
+          full_name: fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+          user_type: userType || user.user_metadata?.user_type || 'individual',
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: 'id',
+          ignoreDuplicates: false, // Always update full_name/user_type if they changed
+        }
+      );
 
-    if (existingUser) {
-      // User already exists, just return success
-      return NextResponse.json({ success: true, message: 'User already exists' });
+    if (upsertError) {
+      console.error('[Auth] Error upserting user record:', upsertError);
+      return NextResponse.json({ error: upsertError.message }, { status: 500 });
     }
 
-    // Create the user record
-    const { error: insertError } = await serviceClient
-      .from('users')
-      .insert({
-        id: user.id,
-        email: user.email,
-        full_name: fullName || user.user_metadata?.full_name || '',
-        user_type: userType || user.user_metadata?.user_type || 'individual',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      });
-
-    if (insertError) {
-      console.error('Error creating user record:', insertError);
-      // Don't fail if it's a duplicate (race condition)
-      if (!insertError.message.includes('duplicate')) {
-        return NextResponse.json({ error: insertError.message }, { status: 500 });
-      }
-    }
-
-    console.log(`[Auth] User record created for ${user.id}`);
+    console.log(`[Auth] User record ensured for ${user.id}`);
 
     return NextResponse.json({ success: true });
   } catch (error: any) {

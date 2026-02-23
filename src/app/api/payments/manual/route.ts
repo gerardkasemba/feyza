@@ -1,17 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
-import { sendEmail, getPaymentReceivedLenderEmail, getPaymentProcessedBorrowerEmail } from '@/lib/email';
-import { TrustScoreService } from '@/lib/trust-score';
+import {
+  sendEmail,
+  getPaymentReceivedLenderEmail,
+  getPaymentProcessedBorrowerEmail,
+  getPaymentReceivedGuestLenderEmail,
+} from '@/lib/email';
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 export async function POST(request: NextRequest) {
   console.log('[Manual Payment API] Starting...');
-  
+
   try {
     // Verify the user is authenticated
     const supabase = await createServerSupabaseClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
     if (!user) {
       console.log('[Manual Payment API] Unauthorized - no user');
@@ -21,16 +27,14 @@ export async function POST(request: NextRequest) {
     console.log('[Manual Payment API] User authenticated:', user.id);
 
     const body = await request.json();
-    const { 
-      loanId, 
-      paymentId, 
-      paymentMethod, 
-      transactionReference, 
-      proofUrl,
-      platformFee 
-    } = body;
+    const { loanId, paymentId, paymentMethod, transactionReference, proofUrl, platformFee } = body;
 
-    console.log('[Manual Payment API] Request body:', { loanId, paymentId, paymentMethod, proofUrl: !!proofUrl });
+    console.log('[Manual Payment API] Request body:', {
+      loanId,
+      paymentId,
+      paymentMethod,
+      proofUrl: !!proofUrl,
+    });
 
     if (!loanId || !paymentId || !paymentMethod) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -42,12 +46,16 @@ export async function POST(request: NextRequest) {
     // Get the loan
     const { data: loan, error: loanError } = await serviceClient
       .from('loans')
-      .select(`
+      .select(
+        `
         *,
         borrower:users!borrower_id(id, full_name, email),
         lender:users!lender_id(id, full_name, email),
-        business_lender:business_profiles!business_lender_id(id, business_name, user_id)
-      `)
+        business_lender:business_profiles!business_lender_id(id, business_name, user_id),
+        invite_email,
+        invite_token
+      `
+      )
       .eq('id', loanId)
       .single();
 
@@ -56,11 +64,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Loan not found', details: loanError?.message }, { status: 404 });
     }
 
-    console.log('[Manual Payment API] Loan found:', { 
-      id: loan.id, 
-      amount: loan.amount, 
+    console.log('[Manual Payment API] Loan found:', {
+      id: loan.id,
+      amount: loan.amount,
+      total_amount: (loan as any).total_amount,
       amount_paid: loan.amount_paid,
-      borrower_id: loan.borrower_id 
+      borrower_id: loan.borrower_id,
     });
 
     // Verify the user is the borrower
@@ -82,11 +91,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Payment not found', details: paymentError?.message }, { status: 404 });
     }
 
-    console.log('[Manual Payment API] Payment found:', { 
-      id: payment.id, 
-      amount: payment.amount, 
+    console.log('[Manual Payment API] Payment found:', {
+      id: payment.id,
+      amount: payment.amount,
       is_paid: payment.is_paid,
-      status: payment.status 
+      status: payment.status,
     });
 
     if (payment.is_paid) {
@@ -118,34 +127,79 @@ export async function POST(request: NextRequest) {
 
     if (updatePaymentError) {
       console.error('[Manual Payment API] Error updating payment schedule:', updatePaymentError);
-      return NextResponse.json({ error: 'Failed to update payment', details: updatePaymentError.message }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Failed to update payment', details: updatePaymentError.message },
+        { status: 500 }
+      );
     }
 
     console.log('[Manual Payment API] Payment schedule updated:', updatedPayment);
 
-    // Calculate new amounts - ensure numeric conversion
-    const paymentAmount = Number(payment.amount) || 0;
+    // ── INSERT INTO payments TABLE ──────────────────────────────────────────
+    // Auto-pay always creates a payments row; manual was missing this entirely.
+    const { data: paymentRecord, error: paymentInsertError } = await serviceClient
+      .from('payments')
+      .insert({
+        loan_id: loanId,
+        schedule_id: paymentId,
+        amount: payment.amount,
+        payment_date: new Date().toISOString(),
+        status: 'confirmed',
+        note: `Manual payment via ${paymentMethod}${
+          transactionReference ? ` — ref: ${transactionReference}` : ''
+        }${proofUrl ? ' (proof uploaded)' : ''}`,
+        ...(transactionReference ? { transaction_reference: transactionReference } : {}),
+      })
+      .select()
+      .single();
+
+    if (paymentInsertError) {
+      console.error('[Manual Payment API] Error creating payments record:', paymentInsertError);
+      // Non-fatal: payment_schedule is already marked paid; proceed.
+    } else if (paymentRecord) {
+      // Link payment record back to the schedule row
+      await serviceClient.from('payment_schedule').update({ payment_id: paymentRecord.id }).eq('id', paymentId);
+      console.log('[Manual Payment API] payments record created:', paymentRecord.id);
+    }
+
+    // ── Calculate new amounts (numeric-safe) ────────────────────────────────
+    const paymentAmountNum = Number(payment.amount) || 0;
     const currentAmountPaid = Number(loan.amount_paid) || 0;
-    const loanAmount = Number(loan.amount) || 0;
-    
-    const newAmountPaid = currentAmountPaid + paymentAmount;
-    const newAmountRemaining = Math.max(0, loanAmount - newAmountPaid);
-    const isComplete = newAmountPaid >= loanAmount;
+
+    // Use total_amount (principal + interest) as the repayment ceiling — consistent with auto-pay.
+    // Fallback to amount (principal only) if total_amount is not set.
+    const loanTotal = Number((loan as any).total_amount) || Number(loan.amount) || 0;
+
+    const newAmountPaid = currentAmountPaid + paymentAmountNum;
+    const newAmountRemaining = Math.max(0, loanTotal - newAmountPaid);
+
+    // Check unpaid schedule entries as the authoritative source of completion,
+    // plus a $0.50 rounding tolerance — consistent with auto-pay.
+    const { count: unpaidCount } = await serviceClient
+      .from('payment_schedule')
+      .select('id', { count: 'exact', head: true })
+      .eq('loan_id', loanId)
+      .eq('is_paid', false);
+
+    const allSchedulePaid = (unpaidCount ?? 1) === 0;
+    const isComplete = allSchedulePaid || newAmountRemaining <= 0.5;
 
     console.log('[Manual Payment API] Calculated amounts:', {
-      paymentAmount,
+      paymentAmount: paymentAmountNum,
       currentAmountPaid,
-      loanAmount,
+      loanTotal,
       newAmountPaid,
       newAmountRemaining,
-      isComplete
+      unpaidCount,
+      isComplete,
     });
 
-    // Update the loan
+    // Update the loan — mirror auto-pay field set exactly
     const loanUpdateData = {
-      amount_paid: newAmountPaid,
-      amount_remaining: newAmountRemaining,
+      amount_paid: isComplete ? loanTotal : newAmountPaid,
+      amount_remaining: isComplete ? 0 : newAmountRemaining,
       status: isComplete ? 'completed' : loan.status,
+      last_payment_at: new Date().toISOString(),
       completed_at: isComplete ? new Date().toISOString() : null,
     };
 
@@ -160,25 +214,27 @@ export async function POST(request: NextRequest) {
 
     if (updateLoanError) {
       console.error('[Manual Payment API] Error updating loan:', updateLoanError);
-      return NextResponse.json({ 
-        error: 'Payment recorded but failed to update loan totals', 
-        details: updateLoanError.message 
-      }, { status: 500 });
+      return NextResponse.json(
+        { error: 'Payment recorded but failed to update loan totals', details: updateLoanError.message },
+        { status: 500 }
+      );
     }
 
     console.log('[Manual Payment API] Loan updated successfully:', {
       loanId,
       newAmountPaid: updatedLoan?.amount_paid,
       newAmountRemaining: updatedLoan?.amount_remaining,
-      status: updatedLoan?.status
+      status: updatedLoan?.status,
     });
 
-    console.log(`Manual payment processed: Loan ${loanId}, Payment ${paymentId}, Amount: ${payment.amount}, New total paid: ${newAmountPaid}`);
+    console.log(
+      `Manual payment processed: Loan ${loanId}, Payment ${paymentId}, Amount: ${paymentAmountNum}, New total paid: ${newAmountPaid}`
+    );
 
-    // Send email notifications
+    // ── Email notifications ────────────────────────────────────────────────
     const borrowerName = loan.borrower?.full_name || 'Borrower';
     const borrowerEmail = loan.borrower?.email;
-    
+
     // Determine lender info
     let lenderName = 'Lender';
     let lenderEmail = '';
@@ -188,6 +244,7 @@ export async function POST(request: NextRequest) {
       lenderEmail = loan.lender.email || '';
     } else if (loan.business_lender) {
       lenderName = loan.business_lender.business_name || 'Lender';
+
       // Get business owner email
       if (loan.business_lender.user_id) {
         const { data: ownerData } = await serviceClient
@@ -195,31 +252,49 @@ export async function POST(request: NextRequest) {
           .select('email, full_name')
           .eq('id', loan.business_lender.user_id)
           .single();
+
         lenderEmail = ownerData?.email || '';
         lenderName = loan.business_lender.business_name || ownerData?.full_name || 'Lender';
       }
-    } else if (loan.invite_email) {
-      lenderEmail = loan.invite_email;
+    } else if ((loan as any).invite_email) {
+      lenderEmail = (loan as any).invite_email;
     }
 
-    // Send email to lender
+    // Send email to lender — use guest template when loan has an invite_token
     if (lenderEmail) {
       try {
-        const lenderEmailContent = getPaymentReceivedLenderEmail({
-          lenderName: lenderName.split(' ')[0],
-          borrowerName,
-          amount: payment.amount,
-          currency: loan.currency || 'USD',
-          remainingBalance: newAmountRemaining,
-          loanId: loan.id,
-          isCompleted: isComplete,
-        });
+        const isGuestLoan = !!(loan as any).invite_token;
+        let lenderEmailContent;
+
+        if (isGuestLoan && (loan as any).invite_token) {
+          lenderEmailContent = getPaymentReceivedGuestLenderEmail({
+            lenderName: lenderName.split(' ')[0],
+            borrowerName,
+            amount: paymentAmountNum,
+            currency: loan.currency || 'USD',
+            remainingBalance: newAmountRemaining,
+            loanId: loan.id,
+            accessToken: (loan as any).invite_token,
+            isCompleted: isComplete,
+          });
+        } else {
+          lenderEmailContent = getPaymentReceivedLenderEmail({
+            lenderName: lenderName.split(' ')[0],
+            borrowerName,
+            amount: paymentAmountNum,
+            currency: loan.currency || 'USD',
+            remainingBalance: newAmountRemaining,
+            loanId: loan.id,
+            isCompleted: isComplete,
+          });
+        }
 
         await sendEmail({
           to: lenderEmail,
           subject: lenderEmailContent.subject,
           html: lenderEmailContent.html,
         });
+
         console.log(`Payment notification email sent to lender: ${lenderEmail}`);
       } catch (emailError) {
         console.error('Failed to send lender email:', emailError);
@@ -232,7 +307,7 @@ export async function POST(request: NextRequest) {
         const borrowerEmailContent = getPaymentProcessedBorrowerEmail({
           borrowerName: borrowerName.split(' ')[0],
           lenderName,
-          amount: payment.amount,
+          amount: paymentAmountNum,
           currency: loan.currency || 'USD',
           remainingBalance: newAmountRemaining,
           loanId: loan.id,
@@ -244,20 +319,24 @@ export async function POST(request: NextRequest) {
           subject: borrowerEmailContent.subject,
           html: borrowerEmailContent.html,
         });
+
         console.log(`Payment confirmation email sent to borrower: ${borrowerEmail}`);
       } catch (emailError) {
         console.error('Failed to send borrower email:', emailError);
       }
     }
 
-    // Create in-app notification for lender
+    // ── In-app notification for lender ─────────────────────────────────────
+    const notificationMessage = `${borrowerName} has made a payment of $${paymentAmountNum.toLocaleString()} via ${paymentMethod}`;
+    const notificationData = { loan_id: loanId, payment_id: paymentId, amount: paymentAmountNum };
+
     if (loan.lender_id) {
       await serviceClient.from('notifications').insert({
         user_id: loan.lender_id,
         type: 'payment_received',
         title: 'Payment Received',
-        message: `${borrowerName} has made a payment of $${payment.amount.toLocaleString()} via ${paymentMethod}`,
-        data: { loan_id: loanId, payment_id: paymentId, amount: payment.amount },
+        message: notificationMessage,
+        data: notificationData,
         is_read: false,
       });
     } else if (loan.business_lender?.user_id) {
@@ -265,33 +344,33 @@ export async function POST(request: NextRequest) {
         user_id: loan.business_lender.user_id,
         type: 'payment_received',
         title: 'Payment Received',
-        message: `${borrowerName} has made a payment of $${payment.amount.toLocaleString()} via ${paymentMethod}`,
-        data: { loan_id: loanId, payment_id: paymentId, amount: payment.amount },
+        message: notificationMessage,
+        data: notificationData,
         is_read: false,
       });
     }
 
-    // Update Trust Score using centralized handler
+    // ── Update Trust Score using centralized handler ───────────────────────
     try {
       const { onPaymentCompleted } = await import('@/lib/payments/handler');
-      
+
       const result = await onPaymentCompleted({
         supabase: serviceClient,
         loanId,
         borrowerId: user.id,
         paymentId,
         scheduleId: paymentId,
-        amount: Number(payment.amount),
+        amount: paymentAmountNum,
         dueDate: payment.due_date,
         paymentMethod: 'manual',
       });
 
       console.log('[Manual Payment] Trust score update result:', result);
-      
+
       if (!result.trustScoreUpdated) {
         console.error('[Manual Payment] Trust score failed to update:', result.error);
       }
-      
+
       if (result.loanCompleted) {
         console.log('[Manual Payment] 🎉 Loan completed, tier/eligibility updated!');
       }
@@ -300,20 +379,15 @@ export async function POST(request: NextRequest) {
       // Don't fail the payment if trust score update fails
     }
 
-
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       newAmountPaid,
       newAmountRemaining,
       isComplete,
-      message: 'Payment recorded successfully'
+      message: 'Payment recorded successfully',
     });
-
   } catch (error: any) {
     console.error('Error processing manual payment:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to process payment' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || 'Failed to process payment' }, { status: 500 });
   }
 }

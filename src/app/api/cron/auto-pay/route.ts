@@ -228,6 +228,7 @@ export async function GET(request: NextRequest) {
             amount_remaining: isCompleted ? 0 : Math.max(0, newAmountRemaining),
             status: isCompleted ? 'completed' : 'active',
             last_payment_at: new Date().toISOString(),
+            completed_at: isCompleted ? new Date().toISOString() : null,
           })
           .eq('id', loan.id);
 
@@ -258,9 +259,6 @@ export async function GET(request: NextRequest) {
             console.error(`[Auto-Pay] Trust score update failed:`, trustError);
           }
         }
-
-        // Update borrower stats
-        await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
         // Send payment received email to lender
         await sendPaymentReceivedEmail(loan, payment, newAmountRemaining, isCompleted, supabase);
@@ -792,6 +790,7 @@ export async function POST(request: NextRequest) {
         amount_remaining: isCompleted ? 0 : Math.max(0, newAmountRemaining),
         status: isCompleted ? 'completed' : 'active',
         last_payment_at: new Date().toISOString(),
+        completed_at: isCompleted ? new Date().toISOString() : null,
       })
       .eq('id', loan.id);
 
@@ -800,9 +799,6 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Loan ${loan.id} updated - paid: ${newAmountPaid}, remaining: ${newAmountRemaining}`);
-
-    // Update borrower stats
-    await updateBorrowerStats(supabase, loan, payment, isCompleted);
 
     // Send payment received email
     await sendPaymentReceivedEmail(loan, payment, Math.max(0, newAmountRemaining), isCompleted, supabase);

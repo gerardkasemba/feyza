@@ -13,6 +13,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import { calculateSimpleTrustTier } from '@/lib/trust/simple-tier';
 
 // ============================================
 // TYPES
@@ -112,6 +113,99 @@ export interface Vouch {
     username?: string;
     trust_score?: TrustScore;
   };
+}
+
+// ============================================
+// VOUCH STRENGTH CALCULATOR
+// ============================================
+
+/**
+ * Compute a 1–10 vouch strength score based on:
+ *   - Voucher's trust tier    (carries most weight — their social credibility)
+ *   - Relationship type       (family/partner means more accountability)
+ *   - Known years             (longer = more reliable signal)
+ *   - Vouch type              (guarantee > employment > character)
+ *
+ * Scale: 1 = minimal endorsement, 10 = maximum trust signal
+ */
+export function computeVouchStrength(params: {
+  voucherTier: 'tier_1' | 'tier_2' | 'tier_3' | 'tier_4' | string;
+  relationship: string;
+  knownYears?: number;
+  vouchType: 'character' | 'guarantee' | 'employment' | 'family' | string;
+  /**
+   * The voucher's historical success rate (0–100).
+   * If omitted, defaults to 100 (no penalty — clean record or first vouch).
+   * Provided by createVouch() after fetching users.vouching_success_rate.
+   */
+  voucherSuccessRate?: number;
+}): number {
+  const { voucherTier, relationship, knownYears, vouchType, voucherSuccessRate = 100 } = params;
+
+  // Tier base (0–5 points)
+  const tierBase: Record<string, number> = {
+    tier_1: 1,
+    tier_2: 2,
+    tier_3: 3.5,
+    tier_4: 5,
+  };
+  const base = tierBase[voucherTier] ?? 1;
+
+  // Longevity bonus (0–2 points)
+  const years = knownYears ?? 0;
+  const longevity = years >= 10 ? 2 : years >= 5 ? 1.5 : years >= 2 ? 1 : years >= 1 ? 0.5 : 0;
+
+  // Relationship bonus (0–2 points)
+  const rel = relationship?.toLowerCase() ?? '';
+  let relBonus = 0;
+  if (['spouse', 'partner', 'parent', 'sibling', 'family', 'child'].some(r => rel.includes(r))) {
+    relBonus = 2;
+  } else if (['close friend', 'best friend', 'mentor', 'manager', 'employer'].some(r => rel.includes(r))) {
+    relBonus = 1.5;
+  } else if (['friend', 'colleague', 'coworker', 'classmate'].some(r => rel.includes(r))) {
+    relBonus = 1;
+  } else {
+    relBonus = 0.5;
+  }
+
+  // Type bonus (0–1 point)
+  const typeBonus: Record<string, number> = {
+    guarantee: 1,
+    family: 0.75,
+    employment: 0.5,
+    character: 0,
+  };
+  const type = typeBonus[vouchType] ?? 0;
+
+  // Sum base score
+  const raw = base + longevity + relBonus + type;
+  const baseStrength = Math.min(10, Math.max(1, Math.round(raw)));
+
+  // Apply success-rate multiplier (skin-in-the-game decay).
+  // A voucher with a perfect track record passes through unchanged.
+  // A careless voucher with 40% success rate produces vouches worth ~35% of face value.
+  const successMultiplier =
+    voucherSuccessRate >= 100 ? 1.00 :
+    voucherSuccessRate >= 80  ? 0.90 :
+    voucherSuccessRate >= 60  ? 0.75 :
+    voucherSuccessRate >= 40  ? 0.55 : 0.35;
+
+  return Math.min(10, Math.max(1, Math.round(baseStrength * successMultiplier)));
+}
+
+/**
+ * Convert a 1–10 vouch strength into a human-readable label.
+ */
+export function vouchStrengthLabel(strength: number): {
+  label: string;
+  description: string;
+  color: string;
+} {
+  if (strength >= 9) return { label: 'Exceptional',  description: 'Highest trust signal',    color: '#059669' };
+  if (strength >= 7) return { label: 'Strong',        description: 'High-confidence vouch',    color: '#10b981' };
+  if (strength >= 5) return { label: 'Solid',         description: 'Good trust endorsement',   color: '#3b82f6' };
+  if (strength >= 3) return { label: 'Moderate',      description: 'Moderate endorsement',     color: '#f59e0b' };
+  return                    { label: 'Light',          description: 'Basic endorsement',        color: '#9ca3af' };
 }
 
 // ============================================
@@ -656,6 +750,7 @@ export class TrustScoreService {
 
   /**
    * Handle vouch received event
+   * strength is now a 1–10 score computed by computeVouchStrength()
    */
   async onVouchReceived(
     userId: string, 
@@ -663,7 +758,8 @@ export class TrustScoreService {
     vouchId: string, 
     strength: number
   ): Promise<void> {
-    const impact = strength >= 70 ? IMPACTS.VOUCH_RECEIVED_STRONG : IMPACTS.VOUCH_RECEIVED_BASE;
+    // strength 7+ = strong vouch (was tier_3/4 voucher with good relationship)
+    const impact = strength >= 7 ? IMPACTS.VOUCH_RECEIVED_STRONG : IMPACTS.VOUCH_RECEIVED_BASE;
 
     const event: TrustScoreEvent = {
       event_type: 'vouch_received',
@@ -754,6 +850,39 @@ export class VouchService {
       return { error: 'You have already vouched for this person' };
     }
 
+    // ── Fetch voucher's current trust tier and success rate ─────────────────
+    let voucherTier: string = 'tier_1';
+    let voucherSuccessRate: number = 100;
+    try {
+      const { data: voucherProfile } = await this.supabase
+        .from('users')
+        .select('trust_tier, vouching_success_rate')
+        .eq('id', voucherId)
+        .single();
+      if (voucherProfile?.trust_tier) voucherTier = voucherProfile.trust_tier;
+      if (typeof voucherProfile?.vouching_success_rate === 'number') {
+        voucherSuccessRate = voucherProfile.vouching_success_rate;
+      }
+    } catch {
+      // Non-blocking — fall back to tier_1, 100% success rate
+    }
+
+    // Compute strength (1–10): tier + relationship signals + track record multiplier
+    const vouchStrength = computeVouchStrength({
+      voucherTier,
+      relationship: data.relationship,
+      knownYears: data.known_years,
+      vouchType: data.vouch_type,
+      voucherSuccessRate,
+    });
+
+    // Map strength to trust score boost (stronger vouches contribute more)
+    // 1-3 → 3pts, 4-6 → 5pts, 7-8 → 8pts, 9-10 → 12pts
+    const trustScoreBoost =
+      vouchStrength >= 9 ? 12 :
+      vouchStrength >= 7 ? 8  :
+      vouchStrength >= 4 ? 5  : 3;
+
     // Create the vouch
     const { data: vouch, error } = await this.supabase
       .from('vouches')
@@ -768,6 +897,8 @@ export class VouchService {
         guarantee_percentage: data.guarantee_percentage || 0,
         guarantee_max_amount: data.guarantee_max_amount || 0,
         is_public: data.is_public !== false,
+        vouch_strength: vouchStrength,
+        trust_score_boost: trustScoreBoost,
       })
       .select()
       .single();
@@ -777,13 +908,17 @@ export class VouchService {
       return { error: error.message };
     }
 
-    // Record event and recalculate vouchee's score
+    // Record event and recalculate vouchee's trust_scores row
     await this.trustScoreService.onVouchReceived(
       voucheeId,
       voucherId,
       vouch.id,
-      vouch.vouch_strength
+      vouch.vouch_strength        // now a real 1-10 value
     );
+
+    // Also recalculate users.trust_tier immediately so the matching engine
+    // sees the correct tier without waiting for the stale-cache refresh.
+    await calculateSimpleTrustTier(voucheeId);
 
     return { vouch };
   }
@@ -859,6 +994,14 @@ export class VouchService {
 
     if (error) {
       return { success: false, error: error.message };
+    }
+
+    // Recalculate the vouchee's trust_tier now that a vouch has been revoked.
+    // We need to find the vouchee from the vouch record.
+    const { data: revokedVouch } = await this.supabase
+      .from('vouches').select('vouchee_id').eq('id', vouchId).single();
+    if (revokedVouch?.vouchee_id) {
+      await calculateSimpleTrustTier(revokedVouch.vouchee_id);
     }
 
     return { success: true };

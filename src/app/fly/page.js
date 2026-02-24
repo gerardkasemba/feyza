@@ -1,7 +1,7 @@
 'use client'
 import { useState, useRef, useCallback } from "react";
 
-const LOGO = "https://www.feyza.app/feyza.svg";
+const LOGO = "https://www.feyza.app/feyza.png";
 
 const Logo = () => (
   <div style={{ width:"85px", height:"30px", flexShrink:0 }}>

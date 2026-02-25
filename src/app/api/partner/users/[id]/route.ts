@@ -33,7 +33,7 @@ export async function GET(
       .from('users')
       .select(`
         id, email, full_name, avatar_url, phone, phone_number, username,
-        verification_status, is_verified, is_blocked, is_suspended,
+        verification_status, is_blocked, is_suspended,
         trust_tier, vouch_count, active_vouches_count, created_at
       `)
       .eq('id', id)
@@ -62,73 +62,52 @@ export async function GET(
     const user = toPartnerUser(userRow);
 
     // Map trust_score fields to match Capital Circle's FeyzaTrustScore shape
-    const formattedTrustScore = trustScore
-      ? {
-          // Capital Circle uses 'overall' instead of 'score'
-          overall: trustScore.score,
-          score_grade: trustScore.score_grade,
-          score_label: trustScore.score_label,
-          components: {
-            payment_history: trustScore.payment_score ?? 50,
-            loan_completion: trustScore.completion_score ?? 50,
-            community_vouches: trustScore.social_score ?? 50,
-            verification: trustScore.verification_score ?? 0,
-            platform_tenure: trustScore.tenure_score ?? 0,
-          },
-          // Mirror user trust data into trust_score for convenience
-          tier: user.trust_tier,
-          vouch_count: user.vouch_count,
-          // Raw stats
-          total_loans: trustScore.total_loans ?? 0,
-          completed_loans: trustScore.completed_loans ?? 0,
-          defaulted_loans: trustScore.defaulted_loans ?? 0,
-          total_payments: trustScore.total_payments ?? 0,
-          ontime_payments: trustScore.ontime_payments ?? 0,
-          early_payments: trustScore.early_payments ?? 0,
-          late_payments: trustScore.late_payments ?? 0,
-          missed_payments: trustScore.missed_payments ?? 0,
-          total_amount_borrowed: trustScore.total_amount_borrowed ?? 0,
-          total_amount_repaid: trustScore.total_amount_repaid ?? 0,
-          current_streak: trustScore.current_streak ?? 0,
-          best_streak: trustScore.best_streak ?? 0,
-          vouches_received: trustScore.vouches_received ?? 0,
-          vouches_given: trustScore.vouches_given ?? 0,
-          vouch_defaults: trustScore.vouch_defaults ?? 0,
-          last_calculated_at: trustScore.last_calculated_at ?? null,
-        }
-      : {
-          overall: 50,
-          score_grade: 'C',
-          score_label: 'Building Trust',
-          components: {
-            payment_history: 50,
-            loan_completion: 50,
-            community_vouches: 50,
-            verification: 0,
-            platform_tenure: 0,
-          },
-          tier: user.trust_tier,
-          vouch_count: user.vouch_count,
-          total_loans: 0,
-          completed_loans: 0,
-          defaulted_loans: 0,
-          total_payments: 0,
-          ontime_payments: 0,
-          early_payments: 0,
-          late_payments: 0,
-          missed_payments: 0,
-          total_amount_borrowed: 0,
-          total_amount_repaid: 0,
-          current_streak: 0,
-          best_streak: 0,
-          vouches_received: 0,
-          vouches_given: 0,
-          vouch_defaults: 0,
-          last_calculated_at: null,
-        };
+    const formattedTrustScore = trustScore ? {
+      // Capital Circle uses 'overall' instead of 'score'
+      overall:            trustScore.score,
+      score_grade:        trustScore.score_grade,
+      score_label:        trustScore.score_label,
+      components: {
+        payment_history:   trustScore.payment_score    ?? 50,
+        loan_completion:   trustScore.completion_score  ?? 50,
+        community_vouches: trustScore.social_score      ?? 50,
+        verification:      trustScore.verification_score ?? 0,
+        platform_tenure:   trustScore.tenure_score      ?? 0,
+      },
+      // Mirror user trust data into trust_score for convenience
+      tier:        user.trust_tier,
+      vouch_count: user.vouch_count,
+      // Raw stats
+      total_loans:           trustScore.total_loans           ?? 0,
+      completed_loans:       trustScore.completed_loans        ?? 0,
+      defaulted_loans:       trustScore.defaulted_loans        ?? 0,
+      total_payments:        trustScore.total_payments         ?? 0,
+      ontime_payments:       trustScore.ontime_payments        ?? 0,
+      early_payments:        trustScore.early_payments         ?? 0,
+      late_payments:         trustScore.late_payments          ?? 0,
+      missed_payments:       trustScore.missed_payments        ?? 0,
+      total_amount_borrowed: trustScore.total_amount_borrowed  ?? 0,
+      total_amount_repaid:   trustScore.total_amount_repaid    ?? 0,
+      current_streak:        trustScore.current_streak         ?? 0,
+      best_streak:           trustScore.best_streak            ?? 0,
+      vouches_received:      trustScore.vouches_received       ?? 0,
+      vouches_given:         trustScore.vouches_given          ?? 0,
+      vouch_defaults:        trustScore.vouch_defaults         ?? 0,
+      last_calculated_at:    trustScore.last_calculated_at     ?? null,
+    } : {
+      overall: 50, score_grade: 'C', score_label: 'Building Trust',
+      components: { payment_history: 50, loan_completion: 50, community_vouches: 50, verification: 0, platform_tenure: 0 },
+      tier: user.trust_tier, vouch_count: user.vouch_count,
+      total_loans: 0, completed_loans: 0, defaulted_loans: 0,
+      total_payments: 0, ontime_payments: 0, early_payments: 0, late_payments: 0, missed_payments: 0,
+      total_amount_borrowed: 0, total_amount_repaid: 0,
+      current_streak: 0, best_streak: 0,
+      vouches_received: 0, vouches_given: 0, vouch_defaults: 0,
+      last_calculated_at: null,
+    };
 
     return NextResponse.json({ user, trust_score: formattedTrustScore });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error(`[Partner /users/${id}]`, err);
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
   }

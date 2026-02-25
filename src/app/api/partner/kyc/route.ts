@@ -33,11 +33,17 @@ export async function GET(req: NextRequest) {
     const { data: user, error } = await db
       .from('users')
       .select(`
-        id, verification_status, is_verified,
+        id, verification_status, is_blocked,
         verification_submitted_at, verification_reviewed_at, verification_notes,
-        id_type, id_front_url, id_back_url,
-        selfie_verified, selfie_verified_at,
-        phone_verified, kyc_verified_at
+        kyc_verified_at, reverification_required, reverification_due_at, verification_count,
+        id_type, id_number, id_front_url, id_back_url, id_expiry,
+        selfie_url, selfie_verified, selfie_verified_at,
+        phone_verified, phone_number,
+        date_of_birth, ssn_last4,
+        employment_status, employer_name, job_title, monthly_income_range,
+        address_line1, address_line2, city, state_province, postal_code, country,
+        address_document_url, address_document_type,
+        full_name, email, avatar_url
       `)
       .eq('id', user_id)
       .single();
@@ -57,27 +63,64 @@ export async function GET(req: NextRequest) {
     };
     const kyc_status = statusMap[user.verification_status ?? 'pending'] ?? 'not_started';
 
-    // Determine what documents have been submitted
-    const has_id_front  = !!user.id_front_url;
-    const has_id_back   = !!user.id_back_url;
-    const has_selfie    = user.selfie_verified;
+    // Reverification: every 90 days
+    const now = new Date();
+    const reverification_due = user.reverification_due_at ? new Date(user.reverification_due_at) : null;
+    const reverification_overdue = reverification_due ? now > reverification_due : false;
+    const days_until_reverification = reverification_due
+      ? Math.ceil((reverification_due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+      : null;
 
     return NextResponse.json({
       user_id,
       kyc_status,
-      is_verified:              user.is_verified,
-      verification_status:      user.verification_status,
-      verification_notes:       user.verification_notes ?? null,
-      submitted_at:             user.verification_submitted_at ?? null,
-      reviewed_at:              user.verification_reviewed_at ?? null,
-      verified_at:              user.kyc_verified_at ?? null,
-      // Document completion status
+      is_verified:             user.verification_status === 'verified',
+      verification_status:     user.verification_status,
+      verification_notes:      user.verification_notes ?? null,
+      submitted_at:            user.verification_submitted_at ?? null,
+      reviewed_at:             user.verification_reviewed_at ?? null,
+      verified_at:             user.kyc_verified_at ?? null,
+      reverification_required:   user.reverification_required ?? false,
+      reverification_due_at:     user.reverification_due_at ?? null,
+      reverification_overdue,
+      days_until_reverification,
+      verification_count:        user.verification_count ?? 0,
       documents: {
-        id_type:   user.id_type ?? null,
-        has_id_front,
-        has_id_back,
-        has_selfie,
+        id_type:        user.id_type ?? null,
+        has_id_front:   !!user.id_front_url,
+        has_id_back:    !!user.id_back_url,
+        has_selfie:     !!user.selfie_verified,
         phone_verified: user.phone_verified ?? false,
+      },
+      // Full profile — pre-populates the verify form
+      profile: {
+        full_name:             user.full_name ?? null,
+        email:                 user.email ?? null,
+        avatar_url:            user.avatar_url ?? null,
+        phone_number:          user.phone_number ?? null,
+        date_of_birth:         user.date_of_birth ?? null,
+        ssn_last4:             user.ssn_last4 ? '••••' : null,
+        id_type:               user.id_type ?? null,
+        id_number:             user.id_number
+          ? user.id_number.slice(0, -4).replace(/./g, '•') + user.id_number.slice(-4)
+          : null,
+        id_expiry:             user.id_expiry ?? null,
+        id_front_url:          user.id_front_url ?? null,
+        id_back_url:           user.id_back_url ?? null,
+        selfie_url:            user.selfie_url ?? null,
+        selfie_verified:       user.selfie_verified ?? false,
+        employment_status:     user.employment_status ?? null,
+        employer_name:         user.employer_name ?? null,
+        job_title:             user.job_title ?? null,
+        monthly_income_range:  user.monthly_income_range ?? null,
+        address_line1:         user.address_line1 ?? null,
+        address_line2:         user.address_line2 ?? null,
+        city:                  user.city ?? null,
+        state_province:        user.state_province ?? null,
+        postal_code:           user.postal_code ?? null,
+        country:               user.country ?? null,
+        address_document_type: user.address_document_type ?? null,
+        address_document_url:  user.address_document_url ?? null,
       },
     });
   } catch (err: any) {

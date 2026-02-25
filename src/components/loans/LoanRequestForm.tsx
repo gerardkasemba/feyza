@@ -169,15 +169,29 @@ function Stepper({
 }) {
   const progressPercent = (step / totalSteps) * 100;
   return (
-    <div className="mb-2">
-      <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
-        <span>
-          Step {step} of {totalSteps}
+    <div className="sticky top-0 z-10 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm pt-3 pb-4 -mx-1 px-1">
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-1.5">
+          {Array.from({ length: totalSteps }).map((_, i) => (
+            <div
+              key={i}
+              className={[
+                'rounded-full transition-all duration-300',
+                i === step - 1
+                  ? 'bg-primary-500 w-6 h-2.5'
+                  : i < step
+                    ? 'bg-primary-500 w-4 h-2'
+                    : 'bg-neutral-200 dark:bg-neutral-700 w-2 h-2',
+              ].join(' ')}
+            />
+          ))}
+        </div>
+        <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 tabular-nums">
+          {step} / {totalSteps}
         </span>
-        <span>{Math.round(progressPercent)}% complete</span>
       </div>
-      <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-        <div className="h-full bg-primary-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+      <div className="h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+        <div className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out" style={{ width: `${progressPercent}%` }} />
       </div>
     </div>
   );
@@ -188,7 +202,7 @@ function BackButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-300"
+      className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
     >
       <ChevronLeft className="w-4 h-4" />
       Back
@@ -935,20 +949,18 @@ export function LoanRequestForm({
   const totalSteps = 5;
 
   return (
-    <form onSubmit={handleFormSubmit} className="space-y-6">
+    <form onSubmit={handleFormSubmit} className="flex flex-col gap-0">
       <Stepper step={step} totalSteps={totalSteps} />
 
       {(stepError || submitError) ? (
-        <Banner tone="danger" icon={AlertCircle} title="Please fix this before continuing">
-          {stepError || submitError}
-        </Banner>
+        <div className="mt-3 mb-1 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700 dark:text-red-300 font-medium">{stepError || submitError}</p>
+        </div>
       ) : null}
 
-      {/* STEP 1 - UPDATED: Removed bank connection requirement */}
       {step === 1 && (
-        <div className="space-y-6">
-          {/* Bank connection is OPTIONAL - users can use manual payment methods (Cash App, Venmo, Zelle) */}
-          
+        <div className="pt-4 space-y-5">
           {businessEligibility && !businessEligibility.canBorrow ? (
             <div className="rounded-2xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-4 flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
@@ -959,22 +971,16 @@ export function LoanRequestForm({
             </div>
           ) : null}
 
-
-          {/* ── Trust Tier Card ─────────────────────────────────────────── */}
           <TrustTierFormCard />
-          {/* ─────────────────────────────────────────────────────────────── */}
 
-          <SectionHeader title="Who do you want to borrow from?" subtitle="Choose your lender type to get started" />
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Who do you want to borrow from?</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Choose your lender type to get started</p>
+          </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* UPDATED: Removed bank connection check from business lender card */}
-            <Card
-              hover
-              className={[
-                'cursor-pointer transition-all rounded-2xl',
-                lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : '',
-                userVerificationStatus !== 'verified' ? 'opacity-50 pointer-events-none' : '',
-              ].join(' ')}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
               onClick={() => {
                 if (userVerificationStatus === 'verified') {
                   setLenderType('business');
@@ -982,47 +988,64 @@ export function LoanRequestForm({
                   setStepError(null);
                 }
               }}
-            >
-              <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 dark:from-primary-900/30 to-yellow-100 dark:to-yellow-900/30 rounded-2xl flex items-center justify-center">
-                  <Building2 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-                </div>
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <h3 className="font-semibold text-lg text-neutral-900 dark:text-white">Business lender</h3>
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                </div>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">We'll match you with an available lender</p>
-                {userVerificationStatus !== 'verified' ? (
-                  <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2 flex items-center justify-center gap-1">
-                    <Shield className="w-3 h-3" />
-                    Requires verification
-                  </p>
-                ) : null}
-              </div>
-            </Card>
-
-            {/* UPDATED: Removed bank connection check from personal lender card */}
-            <Card
-              hover
               className={[
-                'cursor-pointer transition-all rounded-2xl',
-                lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : '',
+                'w-full text-left rounded-2xl border-2 p-4 transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                lenderType === 'business'
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-600',
+                userVerificationStatus !== 'verified' ? 'opacity-50' : '',
               ].join(' ')}
+            >
+              <div className="flex items-center gap-4">
+                <div className={['w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+                  lenderType === 'business' ? 'bg-primary-100 dark:bg-primary-900/40' : 'bg-neutral-100 dark:bg-neutral-800',
+                ].join(' ')}>
+                  <Building2 className={['w-6 h-6', lenderType === 'business' ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'].join(' ')} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="font-semibold text-neutral-900 dark:text-white">Business lender</span>
+                    <Zap className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Auto-matched instantly</p>
+                  {userVerificationStatus !== 'verified' && (
+                    <span className="inline-flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-400 mt-1">
+                      <Shield className="w-3 h-3" /> Needs verification
+                    </span>
+                  )}
+                </div>
+                {lenderType === 'business' && <Check className="w-5 h-5 text-primary-500 flex-shrink-0" />}
+              </div>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 setLenderType('personal');
                 setValue('lenderType', 'personal');
                 setValue('interestRate', 0);
                 setStepError(null);
               }}
+              className={[
+                'w-full text-left rounded-2xl border-2 p-4 transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                lenderType === 'personal'
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-600',
+              ].join(' ')}
             >
-              <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-accent-100 dark:bg-accent-900/30 rounded-2xl flex items-center justify-center">
-                  <Users className="w-8 h-8 text-accent-600 dark:text-accent-400" />
+              <div className="flex items-center gap-4">
+                <div className={['w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+                  lenderType === 'personal' ? 'bg-primary-100 dark:bg-primary-900/40' : 'bg-neutral-100 dark:bg-neutral-800',
+                ].join(' ')}>
+                  <Users className={['w-6 h-6', lenderType === 'personal' ? 'text-primary-600 dark:text-primary-400' : 'text-neutral-500 dark:text-neutral-400'].join(' ')} />
                 </div>
-                <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">Friend or family</h3>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400">Invite someone you know</p>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-neutral-900 dark:text-white mb-0.5">Friend or family</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Invite someone you know</p>
+                </div>
+                {lenderType === 'personal' && <Check className="w-5 h-5 text-primary-500 flex-shrink-0" />}
               </div>
-            </Card>
+            </button>
           </div>
 
           {userVerificationStatus !== 'verified' ? (
@@ -1032,7 +1055,7 @@ export function LoanRequestForm({
               title="Verification required for business loans"
               actions={
                 userVerificationStatus !== 'submitted' && onStartVerification ? (
-                  <Button type="button" size="sm" className="rounded-xl" onClick={onStartVerification}>
+                  <Button type="button" size="sm" className="rounded-xl w-full sm:w-auto" onClick={onStartVerification}>
                     <Shield className="w-4 h-4 mr-2" />
                     Start verification
                   </Button>
@@ -1045,9 +1068,8 @@ export function LoanRequestForm({
             </Banner>
           ) : null}
 
-          <div className="flex justify-end pt-2">
-            {/* UPDATED: Removed bank connection requirement from button */}
-            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType} className="rounded-xl">
+          <div className="pt-2 pb-1">
+            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType} className="w-full rounded-2xl py-3 text-base font-semibold">
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
@@ -1056,12 +1078,15 @@ export function LoanRequestForm({
       )}
       {/* STEP 2 */}
       {step === 2 && (
-        <div className="space-y-4">
+        <div className="pt-4 space-y-4">
           <BackButton onClick={() => { setStep(1); setStepError(null); }} />
 
           {lenderType === 'business' ? (
             <>
-              <SectionHeader title="Auto-match enabled" subtitle="We’ll find the best lender automatically." />
+              <div>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Auto-match enabled</h2>
+                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">We'll find the best lender automatically</p>
+              </div>
 
               <Card className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-gradient-to-br from-primary-50 dark:from-primary-900/10 to-yellow-50 dark:to-yellow-900/10">
                 <div className="text-center py-6">
@@ -1099,7 +1124,7 @@ export function LoanRequestForm({
                     {loadingLoanTypes ? <Loader2 className="w-4 h-4 animate-spin text-neutral-400" /> : null}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {loanTypes.map((loanType) => (
                       <button
                         key={loanType.id}
@@ -1128,7 +1153,10 @@ export function LoanRequestForm({
             </>
           ) : (
             <>
-              <SectionHeader title="Invite your lender" subtitle="Search by username, or invite by email/phone." />
+              <div>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Invite your lender</h2>
+                <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Search by username, or invite by email / phone</p>
+              </div>
 
               <Card className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20">
                 <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
@@ -1225,8 +1253,8 @@ export function LoanRequestForm({
             </>
           )}
 
-          <div className="flex justify-end pt-2">
-            <Button type="button" onClick={() => goToNextStep(3)} disabled={!canProceedStep2()} className="rounded-xl">
+          <div className="pt-2 pb-1">
+            <Button type="button" onClick={() => goToNextStep(3)} disabled={!canProceedStep2()} className="w-full rounded-2xl py-3 text-base font-semibold">
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
@@ -1236,10 +1264,13 @@ export function LoanRequestForm({
 
       {/* STEP 3 */}
       {step === 3 && (
-        <div className="space-y-4">
+        <div className="pt-4 space-y-4">
           <BackButton onClick={() => { setStep(2); setStepError(null); }} />
 
-          <SectionHeader title="Loan details" subtitle="Set amount and repayment terms." />
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Loan details</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Set amount and repayment terms</p>
+          </div>
 
           {/* Show loan power when requesting from business lenders */}
           {lenderType === 'business' && <BorrowerLoanPowerCard />}
@@ -1329,7 +1360,7 @@ export function LoanRequestForm({
             </Card>
           ) : null)}
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Input
                 label="Principal amount *"
@@ -1580,7 +1611,7 @@ export function LoanRequestForm({
                   )}
                 </>
               ) : (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Repayment frequency" options={frequencyOptions} {...register('repaymentFrequency')} />
                   <Input
                     label="Number of installments"
@@ -1593,7 +1624,7 @@ export function LoanRequestForm({
               )}
             </div>
           ) : (
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select label="Repayment frequency *" options={frequencyOptions} {...register('repaymentFrequency')} />
               <Input
                 label="Number of installments *"
@@ -1636,8 +1667,8 @@ export function LoanRequestForm({
             </div>
           ) : null}
 
-          <div className="flex justify-end pt-2">
-            <Button type="button" onClick={() => goToNextStep(4)} disabled={!canProceedStep3()} className="rounded-xl">
+          <div className="pt-2 pb-1">
+            <Button type="button" onClick={() => goToNextStep(4)} disabled={!canProceedStep3()} className="w-full rounded-2xl py-3 text-base font-semibold">
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
@@ -1647,10 +1678,13 @@ export function LoanRequestForm({
 
       {/* STEP 4 - Only show if Dwolla is enabled */}
       {step === 4 && isDwollaEnabled && (
-        <div className="space-y-4">
+        <div className="pt-4 space-y-4">
           <BackButton onClick={() => { setStep(3); setStepError(null); }} />
 
-          <SectionHeader title="How you’ll receive funds" subtitle="Bank transfer only for now." />
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">How you'll receive funds</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Bank transfer only for now</p>
+          </div>
 
           <Banner tone="success" icon={Building2} title="Bank transfer">
             {userBankName ? (
@@ -1660,8 +1694,8 @@ export function LoanRequestForm({
             )}
           </Banner>
 
-          <div className="flex justify-end pt-2">
-            <Button type="button" onClick={() => goToNextStep(5)} className="rounded-xl">
+          <div className="pt-2 pb-1">
+            <Button type="button" onClick={() => goToNextStep(5)} className="w-full rounded-2xl py-3 text-base font-semibold">
               Continue
               <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
@@ -1671,14 +1705,17 @@ export function LoanRequestForm({
 
       {/* STEP 5 */}
       {step === 5 && (
-        <div className="space-y-4">
+        <div className="pt-4 space-y-4">
           <BackButton onClick={() => { 
             setStep(isDwollaEnabled ? 4 : 3); // Go back to step 3 if manual payment, step 4 if Dwolla
             setStepError(null); 
             setSubmitError(null); 
           }} />
 
-          <SectionHeader title="Review & sign" subtitle="Confirm the terms before submitting." />
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Review & sign</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Confirm the terms before submitting</p>
+          </div>
 
           <Card className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20">
             <p className="font-semibold text-primary-900 dark:text-primary-200 mb-3">Loan summary</p>
@@ -1782,8 +1819,8 @@ export function LoanRequestForm({
             </label>
           </Card>
 
-          <div className="flex justify-end pt-2">
-            <Button type="submit" loading={isSubmitting} disabled={!agreementAccepted} className="rounded-xl">
+          <div className="pt-2 pb-1">
+            <Button type="submit" loading={isSubmitting} disabled={!agreementAccepted} className="w-full rounded-2xl py-3.5 text-base font-semibold">
               <FileText className="w-4 h-4 mr-2" />
               Sign & submit request
             </Button>

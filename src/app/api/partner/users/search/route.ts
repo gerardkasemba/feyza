@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
       .from('users')
       .select(`
         id, full_name, username, email, phone_number,
-        trust_tier, vouch_count, verification_status, is_verified,
+        trust_tier, vouch_count, verification_status,
         avatar_url, is_blocked, is_suspended
       `)
       .or(
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
         : null,
       trust_tier:   u.trust_tier ?? 'tier_1',
       vouch_count:  u.vouch_count ?? 0,
-      is_verified:  u.is_verified ?? u.verification_status === 'verified',
+      is_verified:  u.verification_status === 'verified',
       is_suspended: u.is_suspended ?? false,
     }));
 

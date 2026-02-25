@@ -94,7 +94,7 @@ export function toPartnerUser(row: Record<string, any>): PartnerUser {
     phone:              row.phone ?? row.phone_number ?? null,
     username:           row.username ?? null,
     kyc_status,
-    is_verified:        row.is_verified ?? vs === 'verified',
+    is_verified:        row.is_verified ?? (vs === 'verified'),
     verification_status: vs,
     trust_tier:         row.trust_tier ?? 'tier_1',
     vouch_count:        row.vouch_count ?? 0,

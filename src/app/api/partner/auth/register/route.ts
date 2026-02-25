@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
       .from('users')
       .select(`
         id, email, full_name, avatar_url, phone, phone_number, username,
-        verification_status, is_verified, is_blocked, is_suspended,
+        verification_status, is_blocked, is_suspended,
         trust_tier, vouch_count, active_vouches_count, created_at
       `)
       .eq('id', authData.user.id)

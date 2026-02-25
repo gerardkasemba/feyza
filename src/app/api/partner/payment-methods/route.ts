@@ -126,3 +126,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 }
+
+// ── PATCH — update payment handles (cashapp, venmo, zelle, paypal) ────────────
+export async function PATCH(req: NextRequest) {
+  const guard = verifyPartnerSecret(req);
+  if (guard) return guard;
+
+  try {
+    const { user_id, cashapp_username, venmo_username, zelle_email, zelle_phone, paypal_email, preferred_payment_method } = await req.json();
+
+    if (!user_id) {
+      return NextResponse.json({ error: 'user_id is required' }, { status: 400 });
+    }
+
+    const db = serviceClient();
+
+    const updates: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (cashapp_username   !== undefined) updates.cashapp_username   = cashapp_username   || null;
+    if (venmo_username     !== undefined) updates.venmo_username     = venmo_username     || null;
+    if (zelle_email        !== undefined) updates.zelle_email        = zelle_email        || null;
+    if (zelle_phone        !== undefined) updates.zelle_phone        = zelle_phone        || null;
+    if (paypal_email       !== undefined) updates.paypal_email       = paypal_email       || null;
+    if (preferred_payment_method !== undefined) updates.preferred_payment_method = preferred_payment_method || null;
+
+    const { error } = await db.from('users').update(updates).eq('id', user_id);
+
+    if (error) {
+      console.error('[Partner /payment-methods PATCH]', error);
+      return NextResponse.json({ error: 'Failed to update payment handles' }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error('[Partner /payment-methods PATCH]', err);
+    return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
+}

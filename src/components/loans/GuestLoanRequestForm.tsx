@@ -1393,29 +1393,45 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
   }
 
   return (
-    <form onSubmit={handleFormSubmit} className="space-y-6">
-      {/* Progress Bar */}
-      <div className="mb-6">
-        <div className="flex justify-between text-sm text-neutral-500 dark:text-neutral-400 mb-2">
-          <span>Step {step} of {totalSteps}</span>
-          <span>{Math.round(progressPercent)}% complete</span>
+    <form onSubmit={handleFormSubmit} className="flex flex-col">
+      {/* Sticky Progress Stepper */}
+      <div className="sticky top-0 z-10 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm pt-3 pb-4 -mx-1 px-1">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: totalSteps }).map((_, i) => (
+              <div
+                key={i}
+                className={[
+                  'rounded-full transition-all duration-300',
+                  i === step - 1
+                    ? 'bg-primary-500 w-6 h-2.5'
+                    : i < step
+                      ? 'bg-primary-500 w-4 h-2'
+                      : 'bg-neutral-200 dark:bg-neutral-700 w-2 h-2',
+                ].join(' ')}
+              />
+            ))}
+          </div>
+          <span className="text-xs font-semibold text-neutral-400 dark:text-neutral-500 tabular-nums">
+            {step} / {totalSteps}
+          </span>
         </div>
-        <div className="h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
-          <div className="h-full bg-primary-500 transition-all duration-300" style={{ width: `${progressPercent}%` }} />
+        <div className="h-1 bg-neutral-100 dark:bg-neutral-800 rounded-full overflow-hidden">
+          <div className="h-full bg-primary-500 rounded-full transition-all duration-500 ease-out" style={{ width: `${progressPercent}%` }} />
         </div>
       </div>
 
       {/* Error Display */}
       {(stepError || submitError) && (
-        <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm text-red-700 dark:text-red-300">{stepError || submitError}</div>
+        <div className="mt-3 mb-1 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-red-700 dark:text-red-300 font-medium">{stepError || submitError}</p>
         </div>
       )}
 
       {/* STEP 1: Bank Check & Lender Type */}
       {step === 1 && (
-        <div className="space-y-6 animate-fade-in">
+        <div className="pt-4 space-y-5 animate-fade-in">
           {/* Bank Connection - only show if Dwolla is enabled */}
           {isLoggedIn && requiresBankConnection && !bankConnected && (
             <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
@@ -1498,16 +1514,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </Card>
           )}
 
-          <div className="text-center mb-4">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Who do you want to borrow from?</h2>
-            <p className="text-neutral-500 dark:text-neutral-400">Choose your lender type to get started</p>
+          <div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight">Who do you want to borrow from?</h2>
+            <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">Choose your lender type to get started</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Business Lender Card - FIXED */}
-            <Card
-              hover
-              className={`cursor-pointer transition-all ${lenderType === 'business' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Business Lender Card */}
+            <button
+              type="button"
+              className={`w-full text-left rounded-2xl border-2 p-4 transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                lenderType === 'business' 
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-600'
+              } ${
                 isLoggedIn && requiresBankConnection && !bankConnected ? 'opacity-50' : 
                 isLoggedIn && user?.verification_status !== 'verified' ? 'opacity-50' : ''
               }`}
@@ -1531,36 +1551,32 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 }
               }}
             >
-              <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 to-yellow-100 dark:from-primary-900/30 dark:to-yellow-900/30 rounded-2xl flex items-center justify-center">
-                  <Building2 className="w-8 h-8 text-primary-600" />
+              <div className="flex items-center gap-4">
+                <div className={[
+                  'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+                  lenderType === 'business' ? 'bg-primary-100 dark:bg-primary-900/40' : 'bg-neutral-100 dark:bg-neutral-800',
+                ].join(' ')}>
+                  <Building2 className={['w-6 h-6', lenderType === 'business' ? 'text-primary-600' : 'text-neutral-500'].join(' ')} />
                 </div>
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <h3 className="font-semibold text-lg text-neutral-900 dark:text-white">Business Lender</h3>
-                  <Zap className="w-4 h-4 text-yellow-500" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <span className="font-semibold text-neutral-900 dark:text-white text-sm">Business lender</span>
+                    <Zap className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Auto-matched instantly</p>
+                  {isLoggedIn && user?.verification_status !== 'verified' && (
+                    <p className="text-xs text-yellow-600 mt-0.5 flex items-center gap-1">
+                      <Shield className="w-3 h-3" /> Needs verification
+                    </p>
+                  )}
                 </div>
-                <p className="text-sm text-neutral-500">We'll instantly match you with the best lender</p>
-                {isLoggedIn && requiresBankConnection && !bankConnected && (
-                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
-                    <CreditCard className="w-3 h-3" /> Bank connection required
-                  </p>
-                )}
-                {isLoggedIn && user?.verification_status !== 'verified' && (
-                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
-                    <Shield className="w-3 h-3" /> Verification required
-                  </p>
-                )}
+                {lenderType === 'business' && <Check className="w-5 h-5 text-primary-500 flex-shrink-0" />}
               </div>
-            </Card>
+            </button>
 
-            {/* Personal Lender Card - FIXED */}
-            <Card
-              hover
-              className={`cursor-pointer transition-all ${lenderType === 'personal' ? 'ring-2 ring-primary-500 border-primary-500' : ''} ${
-                isLoggedIn && requiresBankConnection && !bankConnected ? 'opacity-50' : ''
-              }`}
+            <button
+              type="button"
               onClick={() => {
-                // For guests: always allow
                 if (!isLoggedIn) {
                   setLenderType('personal');
                   setValue('lenderType', 'personal');
@@ -1568,8 +1584,6 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   setStepError(null);
                   return;
                 }
-                
-                // For logged-in users: only require bank if Dwolla is enabled
                 if (!requiresBankConnection || bankConnected) {
                   setLenderType('personal');
                   setValue('lenderType', 'personal');
@@ -1577,24 +1591,32 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   setStepError(null);
                 }
               }}
+              className={[
+                'w-full text-left rounded-2xl border-2 p-4 transition-all active:scale-[0.98] focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                lenderType === 'personal'
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                  : 'border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800/50 hover:border-neutral-300 dark:hover:border-neutral-600',
+                isLoggedIn && requiresBankConnection && !bankConnected ? 'opacity-50' : '',
+              ].join(' ')}
             >
-              <div className="text-center py-6">
-                <div className="w-16 h-16 mx-auto mb-4 bg-accent-100 dark:bg-accent-900/30 rounded-2xl flex items-center justify-center">
-                  <Users className="w-8 h-8 text-accent-600" />
+              <div className="flex items-center gap-4">
+                <div className={[
+                  'w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0',
+                  lenderType === 'personal' ? 'bg-primary-100 dark:bg-primary-900/40' : 'bg-neutral-100 dark:bg-neutral-800',
+                ].join(' ')}>
+                  <Users className={['w-6 h-6', lenderType === 'personal' ? 'text-primary-600' : 'text-neutral-500'].join(' ')} />
                 </div>
-                <h3 className="font-semibold text-lg text-neutral-900 dark:text-white mb-2">Friend or Family</h3>
-                <p className="text-sm text-neutral-500">Send an invite to someone you know</p>
-                {isLoggedIn && requiresBankConnection && !bankConnected && (
-                  <p className="text-xs text-yellow-600 mt-2 flex items-center justify-center gap-1">
-                    <CreditCard className="w-3 h-3" /> Bank connection optional
-                  </p>
-                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-neutral-900 dark:text-white text-sm mb-0.5">Friend or family</p>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Invite someone you know</p>
+                </div>
+                {lenderType === 'personal' && <Check className="w-5 h-5 text-primary-500 flex-shrink-0" />}
               </div>
-            </Card>
+            </button>
           </div>
 
-          <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || (isLoggedIn && requiresBankConnection && !bankConnected)}>
+          <div className="pt-2 pb-1">
+            <Button type="button" onClick={() => goToNextStep(2)} disabled={!lenderType || (isLoggedIn && requiresBankConnection && !bankConnected)} className="w-full rounded-2xl py-3 text-base font-semibold">
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -1603,15 +1625,20 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* STEP 2: Select Lender */}
       {step === 2 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(1); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(1); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           {lenderType === 'business' ? (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Auto-Match Enabled</h2>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Auto-Match Enabled</h2>
                 <p className="text-neutral-500">We'll find the best lender for you automatically</p>
               </div>
 
@@ -1761,7 +1788,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           ) : (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Invite Your Lender</h2>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Invite Your Lender</h2>
                 <p className="text-neutral-500">Find them by username or enter their contact info</p>
               </div>
 
@@ -1810,8 +1837,13 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </>
           )}
 
-          <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(3)} disabled={!canProceedStep2()}>
+          <div className="pt-2 pb-1">
+            <Button 
+              type="button" 
+              onClick={() => goToNextStep(3)} 
+              disabled={!canProceedStep2()}
+              className="w-full rounded-2xl py-3 text-base font-semibold"
+            >
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -1820,20 +1852,25 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* STEP 3: Loan Details */}
       {step === 3 && (
-        <div className="space-y-4 animate-fade-in">
+        <div className="pt-4 space-y-5 animate-fade-in">
 
           {/* Business Lender Info Banner */}
 
-          <button type="button" onClick={() => { setStep(2); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+          <button 
+            type="button" 
+            onClick={() => { setStep(2); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Loan Details</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Loan Details</h2>
             <p className="text-neutral-500">Specify the amount and repayment terms</p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Input 
                 label="Principal Amount *" 
@@ -1947,7 +1984,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                   )}
                 </>
               ) : (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Frequency" options={frequencyOptions} {...register('repaymentFrequency')} />
                   <Input label="Number of Installments" type="number" placeholder="10" min="1" {...register('totalInstallments', { valueAsNumber: true })} />
                 </div>
@@ -1956,7 +1993,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           )}
 
           {(!amount || amount <= 0) && (
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select label="Repayment Frequency *" options={frequencyOptions} {...register('repaymentFrequency')} />
               <Input label="Number of Installments *" type="number" placeholder="10" min="1" {...register('totalInstallments', { valueAsNumber: true })} />
             </div>
@@ -1993,8 +2030,13 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           )}
 
-          <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(4)} disabled={!canProceedStep3()}>
+          <div className="pt-2 pb-1">
+            <Button 
+              type="button" 
+              onClick={() => goToNextStep(4)} 
+              disabled={!canProceedStep3()}
+              className="w-full rounded-2xl py-3 text-base font-semibold"
+            >
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -2004,7 +2046,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
       {/* STEP 4: Account Creation (Guest) or Disbursement (Logged-in) */}
       {/* STEP 4 - Only show bank transfer section if Dwolla is enabled for logged-in users */}
       {step === 4 && (
-        <div className="space-y-4 animate-fade-in">
+        <div className="pt-4 space-y-5 animate-fade-in">
           <button 
             type="button" 
             onClick={() => { setStep(3); setStepError(null); }} 
@@ -2016,7 +2058,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           {isLoggedIn && isDwollaEnabled ? (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">How to Receive Money</h2>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">How to Receive Money</h2>
                 <p className="text-neutral-500">Funds will be sent to your connected bank</p>
               </div>
 
@@ -2036,8 +2078,12 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 </div>
               </div>
 
-              <div className="flex justify-end pt-4">
-                <Button type="button" onClick={() => goToNextStep(5)}>
+              <div className="pt-2 pb-1">
+                <Button 
+                  type="button" 
+                  onClick={() => goToNextStep(5)}
+                  className="w-full rounded-2xl py-3 text-base font-semibold"
+                >
                   Continue <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
@@ -2045,7 +2091,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
           ) : !isLoggedIn ? (
             <>
               <div className="mb-6">
-                <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Create Your Account</h2>
+                <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Create Your Account</h2>
                 <p className="text-neutral-500">Sign up to complete your loan request</p>
               </div>
 
@@ -2101,8 +2147,12 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
                 placeholder="••••••••" 
               />
 
-              <div className="flex justify-end pt-4">
-                <Button type="button" onClick={() => goToNextStep(5)}>
+              <div className="pt-2 pb-1">
+                <Button 
+                  type="button" 
+                  onClick={() => goToNextStep(5)}
+                  className="w-full rounded-2xl py-3 text-base font-semibold"
+                >
                   Continue <ChevronRight className="w-4 h-4 ml-1" />
                 </Button>
               </div>
@@ -2127,13 +2177,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Guest Business: Identity Verification (Step 5) */}
       {!isLoggedIn && lenderType === 'business' && step === 5 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(4); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(4); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Identity Verification</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Identity Verification</h2>
             <p className="text-neutral-500">Required for business loans</p>
           </div>
 
@@ -2152,7 +2207,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="pt-2 pb-1">
             <Button type="button" onClick={() => goToNextStep(6)}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         </div>
@@ -2160,13 +2215,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Guest Business: Employment (Step 6) */}
       {!isLoggedIn && lenderType === 'business' && step === 6 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(5); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(5); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Employment Information</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Employment Information</h2>
             <p className="text-neutral-500">Help us verify your income</p>
           </div>
 
@@ -2186,7 +2246,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="pt-2 pb-1">
             <Button type="button" onClick={() => goToNextStep(7)}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         </div>
@@ -2194,13 +2254,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Guest Business: Address + Bank (Step 7) */}
       {!isLoggedIn && lenderType === 'business' && step === 7 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(6); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(6); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Address & Bank</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Address & Bank</h2>
             <p className="text-neutral-500">Final verification step</p>
           </div>
 
@@ -2243,7 +2308,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="pt-2 pb-1">
             <Button type="button" onClick={() => goToNextStep(8)}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         </div>
@@ -2251,13 +2316,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Guest Business: Disbursement (Step 8) */}
       {!isLoggedIn && lenderType === 'business' && step === 8 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(7); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(7); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">How to Receive Money</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">How to Receive Money</h2>
             <p className="text-neutral-500">Funds will be sent to your connected bank</p>
           </div>
 
@@ -2273,7 +2343,7 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="pt-2 pb-1">
             <Button type="button" onClick={() => goToNextStep(9)}>Continue <ChevronRight className="w-4 h-4 ml-1" /></Button>
           </div>
         </div>
@@ -2281,13 +2351,18 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Guest Personal: Disbursement + Bank (Step 5) */}
       {!isLoggedIn && lenderType === 'personal' && step === 5 && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { setStep(4); setStepError(null); }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { setStep(4); setStepError(null); }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">
               {requiresBankConnection ? 'Connect Your Bank' : 'How to Receive Money'}
             </h2>
             <p className="text-neutral-500">
@@ -2368,8 +2443,13 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </div>
           )}
 
-          <div className="flex justify-end pt-4">
-            <Button type="button" onClick={() => goToNextStep(6)} disabled={requiresBankConnection && !bankConnected}>
+          <div className="pt-2 pb-1">
+            <Button 
+              type="button" 
+              onClick={() => goToNextStep(6)} 
+              disabled={requiresBankConnection && !bankConnected}
+              className="w-full rounded-2xl py-3 text-base font-semibold"
+            >
               Continue <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
@@ -2378,22 +2458,27 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
 
       {/* Agreement Step - Final step */}
       {((isLoggedIn && step === 5) || (!isLoggedIn && lenderType === 'personal' && step === 6) || (!isLoggedIn && lenderType === 'business' && step === 9)) && (
-        <div className="space-y-4 animate-fade-in">
-          <button type="button" onClick={() => { 
-            // For logged-in users, go back to step 3 if Dwolla is disabled, step 4 if enabled
-            if (isLoggedIn && step === 5) {
-              setStep(isDwollaEnabled ? 4 : 3);
-            } else {
-              setStep(step - 1);
-            }
-            setStepError(null); 
-            setSubmitError(null); 
-          }} className="flex items-center gap-1 text-sm text-neutral-500 hover:text-neutral-700">
-            <ChevronLeft className="w-4 h-4" /> Back
+        <div className="pt-4 space-y-5 animate-fade-in">
+          <button 
+            type="button" 
+            onClick={() => { 
+              // For logged-in users, go back to step 3 if Dwolla is disabled, step 4 if enabled
+              if (isLoggedIn && step === 5) {
+                setStep(isDwollaEnabled ? 4 : 3);
+              } else {
+                setStep(step - 1);
+              }
+              setStepError(null); 
+              setSubmitError(null); 
+            }} 
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 -ml-1 px-2 py-1.5 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
           </button>
 
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-2">Review & Sign Agreement</h2>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white leading-tight mb-1">Review & Sign Agreement</h2>
             <p className="text-neutral-500">Review and accept the loan terms</p>
           </div>
 
@@ -2456,8 +2541,8 @@ export default function GuestLoanRequestForm({ businessSlug, businessLenderId, p
             </label>
           </Card>
 
-          <div className="flex justify-end pt-4">
-            <Button type="submit" loading={isSubmitting} disabled={!agreementAccepted}>
+          <div className="pt-2 pb-1">
+            <Button type="submit" loading={isSubmitting} disabled={!agreementAccepted} className="w-full rounded-2xl py-3.5 text-base font-semibold">
               <FileText className="w-4 h-4 mr-2" /> Sign & Submit Request
             </Button>
           </div>

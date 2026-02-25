@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   if (guard) return guard;
 
   try {
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
     const refresh_token: string | undefined = body?.refresh_token;
 
     if (!refresh_token) {
@@ -29,50 +29,41 @@ export async function POST(req: NextRequest) {
       { auth: { persistSession: false } },
     );
 
-    const {
-      data: { session, user },
-      error,
-    } = await supabase.auth.refreshSession({ refresh_token });
+    // Refresh the session
+    const { data, error } = await supabase.auth.refreshSession({ refresh_token });
 
-    // ✅ Proper null guard for TypeScript safety
-    if (error || !session || !user) {
+    // ✅ data.user can be null; guard it (TS18047 fix)
+    if (error || !data.session || !data.user) {
       return NextResponse.json(
         { error: 'Session expired. Please log in again.' },
         { status: 401 },
       );
     }
 
-    // Fetch current user profile
-    const { data: userRow, error: userError } = await supabase
+    // Fetch current user profile from your local users table
+    const { data: userRow, error: userErr } = await supabase
       .from('users')
       .select(`
         id, email, full_name, avatar_url, phone, phone_number, username,
-        verification_status, is_verified, is_blocked, is_suspended,
+        verification_status, is_blocked, is_suspended,
         trust_tier, vouch_count, active_vouches_count, created_at
       `)
-      .eq('id', user.id)
-      .single();
+      .eq('id', data.user.id)
+      .maybeSingle();
 
-    if (userError) {
-      console.error('[Partner /auth/refresh] User fetch error:', userError);
-      return NextResponse.json(
-        { error: 'Failed to fetch user profile' },
-        { status: 500 },
-      );
+    if (userErr) {
+      console.error('[Partner /auth/refresh] Failed to load user row:', userErr);
+      // Still return refreshed tokens even if profile lookup fails
     }
 
     return NextResponse.json({
-      access_token:  session.access_token,
-      refresh_token: session.refresh_token,
-      expires_in:    session.expires_in ?? 3600,
-      user:          userRow ? toPartnerUser(userRow) : null,
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_in: data.session.expires_in ?? 3600,
+      user: userRow ? toPartnerUser(userRow) : null,
     });
-
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Partner /auth/refresh]', err);
-    return NextResponse.json(
-      { error: 'Token refresh failed' },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Token refresh failed' }, { status: 500 });
   }
 }

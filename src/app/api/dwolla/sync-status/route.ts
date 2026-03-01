@@ -1,7 +1,11 @@
+import { normalizeTransferStatus } from '@/lib/users/user-lifecycle-service';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getTransfer } from '@/lib/dwolla';
 import { onPaymentCompleted, onPaymentFailed } from '@/lib/payments';
+import { logger } from '@/lib/logger';
+
+const log = logger('dwolla-sync');
 
 // POST: Sync transfer status from Dwolla API
 // This can be called manually or periodically to ensure status is up to date
@@ -38,7 +42,7 @@ export async function POST(request: NextRequest) {
       transfers = data || [];
     }
 
-    console.log(`[Sync Status] Syncing ${transfers.length} transfers`);
+    log.info(`[Sync Status] Syncing ${transfers.length} transfers`);
 
     const results = [];
 
@@ -52,16 +56,12 @@ export async function POST(request: NextRequest) {
         const dwollaStatus = dwollaTransfer.status;
         let ourStatus = transfer.status;
 
-        // Map Dwolla status to our status
-        if (dwollaStatus === 'processed') {
-          ourStatus = 'completed';  // Dwolla uses 'processed', we use 'completed'
-        } else if (dwollaStatus === 'pending') {
-          ourStatus = 'pending';
-        } else if (dwollaStatus === 'failed') {
-          ourStatus = 'failed';
-        } else if (dwollaStatus === 'cancelled') {
-          ourStatus = 'cancelled';
-        }
+        // Map Dwolla status to our status (normalizeTransferStatus replaces tr_normalize_transfer_status trigger)
+        const dwollaMapped: string = dwollaStatus === 'pending' ? 'pending'
+          : dwollaStatus === 'failed' ? 'failed'
+          : dwollaStatus === 'cancelled' ? 'cancelled'
+          : String(dwollaStatus);
+        ourStatus = normalizeTransferStatus(dwollaMapped);  // 'processed' → 'completed'
 
         // Update if changed
         if (ourStatus !== transfer.status) {
@@ -105,10 +105,10 @@ export async function POST(request: NextRequest) {
                     })
                     .eq('id', transfer.loan.borrower_id);
                   
-                  console.log(`[Sync Status] Updated borrower ${transfer.loan.borrower_id} - borrowed: +$${loanAmount}`);
+                  log.info(`[Sync Status] Updated borrower ${transfer.loan.borrower_id} - borrowed: +$${loanAmount}`);
                 }
               } else if (wasAlreadyCompleted) {
-                console.log(`[Sync Status] Skipping stats update - disbursement already completed for loan ${transfer.loan.id}`);
+                log.info(`[Sync Status] Skipping stats update - disbursement already completed for loan ${transfer.loan.id}`);
               }
             } else if (ourStatus === 'failed') {
               await supabase
@@ -123,31 +123,45 @@ export async function POST(request: NextRequest) {
           // Handle repayment completion - update trust score!
           if (transfer.type === 'repayment' && transfer.loan) {
             if (ourStatus === 'completed') {
-              console.log(`[Sync Status] Processing repayment completion for loan ${transfer.loan.id}`);
+              log.info(`[Sync Status] Processing repayment completion for loan ${transfer.loan.id}`);
               
               // Find the associated payment schedule item
               const { data: payment } = await supabase
                 .from('payment_schedule')
                 .select('id, amount, due_date')
-                .eq('transfer_id', transfer.id)
+                .eq('transfer_id', transfer.dwolla_transfer_id)
                 .single();
               
-              // Update Trust Score
+              // Update Trust Score (with idempotency guard to prevent double-processing with webhook)
               if (transfer.loan.borrower_id) {
                 try {
-                  await onPaymentCompleted({
-                    supabase,
-                    loanId: transfer.loan.id,
-                    borrowerId: transfer.loan.borrower_id,
-                    paymentId: payment?.id,
-                    scheduleId: payment?.id,
-                    amount: payment?.amount || transfer.amount,
-                    dueDate: payment?.due_date,
-                    paymentMethod: 'dwolla',
-                  });
-                  console.log(`[Sync Status] ✅ Trust score updated for borrower ${transfer.loan.borrower_id}`);
+                  // Check if trust score was already recorded for this payment
+                  const scheduleId = payment?.id;
+                  const { count: alreadyRecorded } = await supabase
+                    .from('trust_score_events')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('loan_id', transfer.loan.id)
+                    .eq('user_id', transfer.loan.borrower_id)
+                    .in('event_type', ['payment_ontime', 'payment_early', 'payment_late'])
+                    .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+                  
+                  if ((alreadyRecorded ?? 0) > 0) {
+                    log.info(`[Sync Status] Trust score already recorded for loan ${transfer.loan.id} — skipping`);
+                  } else {
+                    await onPaymentCompleted({
+                      supabase,
+                      loanId: transfer.loan.id,
+                      borrowerId: transfer.loan.borrower_id,
+                      paymentId: payment?.id,
+                      scheduleId: payment?.id,
+                      amount: payment?.amount || transfer.amount,
+                      dueDate: payment?.due_date,
+                      paymentMethod: 'dwolla',
+                    });
+                    log.info(`[Sync Status] ✅ Trust score updated for borrower ${transfer.loan.borrower_id}`);
+                  }
                 } catch (trustError) {
-                  console.error(`[Sync Status] Trust score update failed:`, trustError);
+                  log.error(`[Sync Status] Trust score update failed:`, trustError);
                 }
               }
             } else if (ourStatus === 'failed') {
@@ -160,9 +174,9 @@ export async function POST(request: NextRequest) {
                     loanId: transfer.loan.id,
                     reason: 'Dwolla transfer failed',
                   });
-                  console.log(`[Sync Status] Trust score penalty recorded for failed payment`);
+                  log.info(`[Sync Status] Trust score penalty recorded for failed payment`);
                 } catch (trustError) {
-                  console.error(`[Sync Status] Trust score penalty failed:`, trustError);
+                  log.error(`[Sync Status] Trust score penalty failed:`, trustError);
                 }
               }
             }
@@ -183,11 +197,11 @@ export async function POST(request: NextRequest) {
             updated: false,
           });
         }
-      } catch (err: any) {
-        console.error(`[Sync Status] Error syncing transfer ${transfer.dwolla_transfer_id}:`, err);
+      } catch (err: unknown) {
+        log.error(`[Sync Status] Error syncing transfer ${transfer.dwolla_transfer_id}:`, err);
         results.push({
           transfer_id: transfer.dwolla_transfer_id,
-          error: err.message,
+          error: (err as Error).message,
         });
       }
     }
@@ -198,10 +212,10 @@ export async function POST(request: NextRequest) {
       results,
     });
 
-  } catch (error: any) {
-    console.error('[Sync Status] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Sync Status] Error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to sync status' },
+      { error: (error as Error).message || 'Failed to sync status' },
       { status: 500 }
     );
   }
@@ -294,40 +308,52 @@ export async function GET(request: NextRequest) {
                     })
                     .eq('id', loanBefore.borrower_id);
                   
-                  console.log(`[Sync Status GET] Updated borrower ${loanBefore.borrower_id} - borrowed: +$${loanAmount}`);
+                  log.info(`[Sync Status GET] Updated borrower ${loanBefore.borrower_id} - borrowed: +$${loanAmount}`);
                 }
               } else if (wasAlreadyCompleted) {
-                console.log(`[Sync Status GET] Skipping stats update - disbursement already completed for loan ${loanId}`);
+                log.info(`[Sync Status GET] Skipping stats update - disbursement already completed for loan ${loanId}`);
               }
             }
 
             // Handle repayment completion - update trust score!
             if (transfer.type === 'repayment' && newStatus === 'completed') {
-              console.log(`[Sync Status GET] Processing repayment completion for transfer ${transfer.id}`);
+              log.info(`[Sync Status GET] Processing repayment completion for transfer ${transfer.id}`);
               
               // Find the associated payment schedule item
               const { data: payment } = await supabase
                 .from('payment_schedule')
                 .select('id, amount, due_date')
-                .eq('transfer_id', transfer.id)
+                .eq('transfer_id', transfer.dwolla_transfer_id)
                 .single();
               
-              // Update Trust Score
+              // Update Trust Score (with idempotency guard to prevent double-processing)
               if (loanBefore?.borrower_id) {
                 try {
-                  await onPaymentCompleted({
-                    supabase,
-                    loanId,
-                    borrowerId: loanBefore.borrower_id,
-                    paymentId: payment?.id,
-                    scheduleId: payment?.id,
-                    amount: payment?.amount || transfer.amount,
-                    dueDate: payment?.due_date,
-                    paymentMethod: 'dwolla',
-                  });
-                  console.log(`[Sync Status GET] ✅ Trust score updated for borrower ${loanBefore.borrower_id}`);
+                  const { count: alreadyRecorded } = await supabase
+                    .from('trust_score_events')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('loan_id', loanId)
+                    .eq('user_id', loanBefore.borrower_id)
+                    .in('event_type', ['payment_ontime', 'payment_early', 'payment_late'])
+                    .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+                  
+                  if ((alreadyRecorded ?? 0) > 0) {
+                    log.info(`[Sync Status GET] Trust score already recorded for loan ${loanId} — skipping`);
+                  } else {
+                    await onPaymentCompleted({
+                      supabase,
+                      loanId,
+                      borrowerId: loanBefore.borrower_id,
+                      paymentId: payment?.id,
+                      scheduleId: payment?.id,
+                      amount: payment?.amount || transfer.amount,
+                      dueDate: payment?.due_date,
+                      paymentMethod: 'dwolla',
+                    });
+                    log.info(`[Sync Status GET] ✅ Trust score updated for borrower ${loanBefore.borrower_id}`);
+                  }
                 } catch (trustError) {
-                  console.error(`[Sync Status GET] Trust score update failed:`, trustError);
+                  log.error(`[Sync Status GET] Trust score update failed:`, trustError);
                 }
               }
             } else if (transfer.type === 'repayment' && newStatus === 'failed') {
@@ -340,9 +366,9 @@ export async function GET(request: NextRequest) {
                     loanId,
                     reason: 'Dwolla transfer failed',
                   });
-                  console.log(`[Sync Status GET] Trust score penalty recorded for failed payment`);
+                  log.info(`[Sync Status GET] Trust score penalty recorded for failed payment`);
                 } catch (trustError) {
-                  console.error(`[Sync Status GET] Trust score penalty failed:`, trustError);
+                  log.error(`[Sync Status GET] Trust score penalty failed:`, trustError);
                 }
               }
             }
@@ -352,7 +378,7 @@ export async function GET(request: NextRequest) {
             updatedTransfers.push(transfer);
           }
         } catch (err) {
-          console.error(`[Sync Status] Error syncing transfer ${transfer.dwolla_transfer_id}:`, err);
+          log.error(`[Sync Status] Error syncing transfer ${transfer.dwolla_transfer_id}:`, err);
           updatedTransfers.push(transfer);
         }
       } else {
@@ -376,10 +402,10 @@ export async function GET(request: NextRequest) {
       transfers: updatedTransfers,
     });
 
-  } catch (error: any) {
-    console.error('[Sync Status] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Sync Status] Error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get status' },
+      { error: (error as Error).message || 'Failed to get status' },
       { status: 500 }
     );
   }

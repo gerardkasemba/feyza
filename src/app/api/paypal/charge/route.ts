@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
 import { onPaymentCompleted } from '@/lib/payments';
+import { logger } from '@/lib/logger';
+
+const log = logger('paypal-charge');
 
 const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
@@ -154,7 +157,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (payoutResult.error) {
-      console.error('PayPal payout error:', payoutResult);
+      log.error('PayPal payout error:', payoutResult);
       return NextResponse.json({ error: 'PayPal payment failed', details: payoutResult }, { status: 500 });
     }
 
@@ -176,7 +179,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (paymentError) {
-      console.error('Error creating payment record:', paymentError);
+      log.error('Error creating payment record:', paymentError);
     }
 
     // Update schedule item
@@ -195,10 +198,10 @@ export async function POST(request: NextRequest) {
       .eq('loan_id', loan.id);
 
     const totalScheduled = allScheduleItems?.length ?? 0;
-    const paidItems = allScheduleItems?.filter((s: any) => s.is_paid) ?? [];
+    const paidItems = allScheduleItems?.filter((s) => s.is_paid) ?? [];
     const allPaymentsPaid = totalScheduled > 0 && paidItems.length === totalScheduled;
 
-    const newAmountPaid = paidItems.reduce((sum: number, s: any) => sum + (s.amount || 0), 0);
+    const newAmountPaid = paidItems.reduce((sum: number, s) => sum + (s.amount || 0), 0);
     const loanTotal = (loan.total_amount && loan.total_amount > 0) ? loan.total_amount : loan.amount;
     const newAmountRemaining = Math.max(0, loanTotal - newAmountPaid);
     const isCompleted = allPaymentsPaid || newAmountRemaining <= 0.50;
@@ -227,9 +230,9 @@ export async function POST(request: NextRequest) {
           dueDate: scheduleItem.due_date,
           paymentMethod: 'paypal',
         });
-        console.log('[PayPal] ✅ Trust score updated');
+        log.info('[PayPal] ✅ Trust score updated');
       } catch (trustError) {
-        console.error('[PayPal] Trust score update failed:', trustError);
+        log.error('[PayPal] Trust score update failed:', trustError);
       }
     }
 
@@ -284,7 +287,7 @@ export async function POST(request: NextRequest) {
       isCompleted,
     });
   } catch (error) {
-    console.error('Auto-charge error:', error);
+    log.error('Auto-charge error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

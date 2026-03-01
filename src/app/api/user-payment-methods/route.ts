@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('user-payment-methods');
 
 // GET: Fetch user's connected payment methods
 export async function GET(request: NextRequest) {
@@ -30,10 +33,10 @@ export async function GET(request: NextRequest) {
       methods: methods || [],
       userId: targetUserId,
     });
-  } catch (error: any) {
-    console.error('Error fetching user payment methods:', error);
+  } catch (error: unknown) {
+    log.error('Error fetching user payment methods:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch payment methods' },
+      { error: (error as Error).message || 'Failed to fetch payment methods' },
       { status: 500 }
     );
   }
@@ -143,10 +146,10 @@ export async function POST(request: NextRequest) {
       success: true,
       method: newMethod,
     });
-  } catch (error: any) {
-    console.error('Error adding payment method:', error);
+  } catch (error: unknown) {
+    log.error('Error adding payment method:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to add payment method' },
+      { error: (error as Error).message || 'Failed to add payment method' },
       { status: 500 }
     );
   }
@@ -233,10 +236,10 @@ export async function PATCH(request: NextRequest) {
       success: true,
       method: updatedMethod,
     });
-  } catch (error: any) {
-    console.error('Error updating payment method:', error);
+  } catch (error: unknown) {
+    log.error('Error updating payment method:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update payment method' },
+      { error: (error as Error).message || 'Failed to update payment method' },
       { status: 500 }
     );
   }
@@ -320,10 +323,10 @@ export async function DELETE(request: NextRequest) {
       success: true,
       message: 'Payment method removed',
     });
-  } catch (error: any) {
-    console.error('Error deleting payment method:', error);
+  } catch (error: unknown) {
+    log.error('Error deleting payment method:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to delete payment method' },
+      { error: (error as Error).message || 'Failed to delete payment method' },
       { status: 500 }
     );
   }

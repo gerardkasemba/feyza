@@ -1,3 +1,5 @@
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('platformSettings');
 import { createClient } from '@/lib/supabase/client';
 import { useState, useEffect } from 'react';
 
@@ -47,7 +49,7 @@ const CACHE_TTL = 60000; // 1 minute cache
 /**
  * Parse a setting value from JSONB
  */
-function parseSettingValue(value: any): any {
+function parseSettingValue(value: unknown): unknown {
   if (typeof value === 'string') {
     // Remove surrounding quotes if present
     if (value.startsWith('"') && value.endsWith('"')) {
@@ -80,7 +82,7 @@ export async function getSettings(): Promise<Record<string, any>> {
       .select('key, value');
 
     if (error) {
-      console.error('Error fetching settings:', error);
+      log.error('Error fetching settings:', error);
       return { ...DEFAULT_SETTINGS };
     }
 
@@ -96,7 +98,7 @@ export async function getSettings(): Promise<Record<string, any>> {
 
     return settings;
   } catch (err) {
-    console.error('Error in getSettings:', err);
+    log.error('Error in getSettings:', err);
     return { ...DEFAULT_SETTINGS };
   }
 }
@@ -116,7 +118,7 @@ export async function getSetting<K extends SettingKey>(
  */
 export async function updateSetting(
   key: string,
-  value: any
+  value: unknown
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const supabase = createClient();
@@ -132,7 +134,7 @@ export async function updateSetting(
       });
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
 
     // Invalidate cache
@@ -140,8 +142,8 @@ export async function updateSetting(
     cacheTimestamp = 0;
 
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
   }
 }
 
@@ -165,7 +167,7 @@ export async function updateSettings(
       .upsert(updates, { onConflict: 'key' });
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
 
     // Invalidate cache
@@ -173,8 +175,8 @@ export async function updateSettings(
     cacheTimestamp = 0;
 
     return { success: true };
-  } catch (err: any) {
-    return { success: false, error: err.message };
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message };
   }
 }
 
@@ -250,9 +252,9 @@ export function usePlatformSettings() {
           setSettings(data);
           setError(null);
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (mounted) {
-          setError(err.message || 'Failed to load settings');
+          setError((err as Error).message || 'Failed to load settings');
           setSettings(DEFAULT_SETTINGS);
         }
       } finally {
@@ -300,7 +302,7 @@ export function usePlatformSettings() {
    */
   const updateSettingValue = async (
     key: string,
-    value: any
+    value: unknown
   ): Promise<{ success: boolean; error?: string }> => {
     try {
       const result = await updateSetting(key, value);
@@ -310,8 +312,8 @@ export function usePlatformSettings() {
         setSettings(updatedSettings);
       }
       return result;
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      return { success: false, error: (err as Error).message };
     }
   };
 
@@ -329,8 +331,8 @@ export function usePlatformSettings() {
         setSettings(updatedSettings);
       }
       return result;
-    } catch (err: any) {
-      return { success: false, error: err.message };
+    } catch (err: unknown) {
+      return { success: false, error: (err as Error).message };
     }
   };
 
@@ -347,7 +349,7 @@ export function usePlatformSettings() {
         setSettings(data);
         setLoading(false);
       }).catch(err => {
-        setError(err.message);
+        setError((err as Error).message);
         setLoading(false);
       });
     },

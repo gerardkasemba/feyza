@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { calculateSimpleTrustTier, getStoredTier } from '@/lib/trust/simple-tier';
+import { logger } from '@/lib/logger';
+
+const log = logger('trust-tier');
 
 /**
  * GET /api/trust/tier
@@ -32,8 +35,8 @@ export async function GET(request: NextRequest) {
       : await getStoredTier(user.id) ?? await calculateSimpleTrustTier(user.id);
 
     return NextResponse.json({ tier });
-  } catch (error: any) {
-    console.error('[GET /api/trust/tier]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[GET /api/trust/tier]', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

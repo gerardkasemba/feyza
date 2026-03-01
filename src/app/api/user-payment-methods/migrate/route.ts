@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('user-payment-methods-migrate');
 
 /**
  * POST: Migrate legacy payment methods (paypal_email, cashapp_username, venmo_username)
@@ -26,7 +29,12 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (profileError) {
-      return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
+      log.error('Migrate: profile fetch failed', { code: profileError.code, message: profileError.message });
+      return NextResponse.json({ error: 'Failed to fetch profile', code: profileError.code }, { status: 500 });
+    }
+    if (!profile) {
+      log.error('Migrate: no profile row for user');
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
     // Check if user already has methods in the new table
@@ -53,6 +61,7 @@ export async function POST(request: NextRequest) {
       .eq('is_enabled', true);
 
     if (providersError || !providers) {
+      log.error('Migrate: providers fetch failed', { error: providersError?.message });
       return NextResponse.json({ error: 'Failed to fetch providers' }, { status: 500 });
     }
 
@@ -68,37 +77,40 @@ export async function POST(request: NextRequest) {
       is_verified: boolean;
     }> = [];
 
-    // PayPal
-    if (profile.paypal_email && providerMap.has('paypal')) {
+    // PayPal (guard against null profile from type narrowing)
+    const paypalEmail = profile?.paypal_email;
+    const cashappUsername = profile?.cashapp_username;
+    const venmoUsername = profile?.venmo_username;
+    const preferredMethod = profile?.preferred_payment_method;
+
+    if (paypalEmail && providerMap.has('paypal')) {
       migrations.push({
         user_id: user.id,
         payment_provider_id: providerMap.get('paypal')!,
-        account_identifier: profile.paypal_email,
-        is_default: profile.preferred_payment_method === 'paypal',
+        account_identifier: paypalEmail,
+        is_default: preferredMethod === 'paypal',
         is_active: true,
         is_verified: false,
       });
     }
 
-    // Cash App
-    if (profile.cashapp_username && providerMap.has('cashapp')) {
+    if (cashappUsername && providerMap.has('cashapp')) {
       migrations.push({
         user_id: user.id,
         payment_provider_id: providerMap.get('cashapp')!,
-        account_identifier: profile.cashapp_username,
-        is_default: profile.preferred_payment_method === 'cashapp',
+        account_identifier: cashappUsername,
+        is_default: preferredMethod === 'cashapp',
         is_active: true,
         is_verified: false,
       });
     }
 
-    // Venmo
-    if (profile.venmo_username && providerMap.has('venmo')) {
+    if (venmoUsername && providerMap.has('venmo')) {
       migrations.push({
         user_id: user.id,
         payment_provider_id: providerMap.get('venmo')!,
-        account_identifier: profile.venmo_username,
-        is_default: profile.preferred_payment_method === 'venmo',
+        account_identifier: venmoUsername,
+        is_default: preferredMethod === 'venmo',
         is_active: true,
         is_verified: false,
       });
@@ -125,10 +137,11 @@ export async function POST(request: NextRequest) {
       .select('*, payment_provider:payment_provider_id(name, slug)');
 
     if (insertError) {
-      console.error('Migration insert error:', insertError);
-      return NextResponse.json({ 
+      log.error('Migrate: insert failed', { code: insertError.code, message: insertError.message, details: insertError.details });
+      return NextResponse.json({
         error: 'Failed to migrate payment methods',
-        details: insertError.message 
+        code: insertError.code,
+        details: insertError.message,
       }, { status: 500 });
     }
 
@@ -138,10 +151,33 @@ export async function POST(request: NextRequest) {
       message: `Migrated ${inserted?.length || 0} payment method(s)`,
       methods: inserted,
     });
-  } catch (error: any) {
-    console.error('Error migrating payment methods:', error);
+  } catch (error: unknown) {
+    const err = error as Error & { cause?: { code?: string } };
+    log.error('Migrate: unexpected error', {
+      message: err.message,
+      cause: err.cause,
+      stack: err.stack,
+    });
+
+    // Connection/timeout to upstream (e.g. Supabase) — return 503 so client can retry
+    const isConnectError =
+      err.message?.includes('fetch failed') ||
+      err.cause?.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+      err.cause?.code === 'ETIMEDOUT' ||
+      err.cause?.code === 'ECONNREFUSED';
+
+    if (isConnectError) {
+      return NextResponse.json(
+        {
+          error: 'Service temporarily unreachable. Please try again in a moment.',
+          code: 'SERVICE_UNAVAILABLE',
+        },
+        { status: 503 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error.message || 'Failed to migrate payment methods' },
+      { error: err.message || 'Failed to migrate payment methods' },
       { status: 500 }
     );
   }

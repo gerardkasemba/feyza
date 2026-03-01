@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('IncomeProfileCard');
 
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Input, Select } from '@/components/ui';
@@ -116,7 +118,7 @@ export function IncomeProfileCard() {
         setFeatureAvailable(false);
       }
     } catch (err) {
-      console.error('Failed to fetch financial profile:', err);
+      log.error('Failed to fetch financial profile:', err);
     } finally {
       setLoading(false);
     }
@@ -150,8 +152,8 @@ export function IncomeProfileCard() {
       setEditing(false);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setSaving(false);
     }

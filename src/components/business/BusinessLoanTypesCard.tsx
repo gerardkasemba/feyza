@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('BusinessLoanTypesCard');
 
 import React, { useState, useEffect } from 'react';
 import { Button, Card, Badge } from '@/components/ui';
@@ -60,7 +62,7 @@ export function BusinessLoanTypesCard({
         setSelectedIds(selected);
       }
     } catch (error) {
-      console.error('Failed to fetch loan types:', error);
+      log.error('Failed to fetch loan types:', error);
     } finally {
       setLoading(false);
     }

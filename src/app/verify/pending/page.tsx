@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import React, { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -40,7 +42,7 @@ function VerifyPendingContent() {
           }
         }
       } catch (err) {
-        console.error('Error checking user:', err);
+        log.error('Error checking user:', err);
       } finally {
         setLoading(false);
       }

@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('LenderSimplePolicyConfig');
 
 import React, { useEffect, useState } from 'react';
 import { Card, Button, Input } from '@/components/ui';
@@ -76,7 +78,7 @@ export function LenderSimplePolicyConfig() {
           setPolicies(merged);
         }
       })
-      .catch((e) => console.error('[LenderSimplePolicyConfig]', e))
+      .catch((e) => log.error('[LenderSimplePolicyConfig]', e))
       .finally(() => setLoading(false));
   }, []);
 
@@ -105,8 +107,8 @@ export function LenderSimplePolicyConfig() {
 
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
-    } catch (e: any) {
-      setError(e.message ?? 'Something went wrong.');
+    } catch (e: unknown) {
+      setError((e as Error).message ?? 'Something went wrong.');
     } finally {
       setSaving(false);
     }

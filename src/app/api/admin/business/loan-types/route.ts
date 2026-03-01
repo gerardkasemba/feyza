@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('admin-business-loan-types');
 
 // GET /api/business/loan-types - Get loan types for the current user's business
 export async function GET(request: NextRequest) {
@@ -51,7 +54,7 @@ export async function GET(request: NextRequest) {
       loanTypes 
     });
   } catch (error) {
-    console.error('Error fetching business loan types:', error);
+    log.error('Error fetching business loan types:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -111,7 +114,7 @@ export async function POST(request: NextRequest) {
         });
 
       if (upsertError) {
-        console.error('Error upserting business loan types:', upsertError);
+        log.error('Error upserting business loan types:', upsertError);
         return NextResponse.json({ error: 'Failed to update loan types' }, { status: 500 });
       }
     }
@@ -121,7 +124,7 @@ export async function POST(request: NextRequest) {
       message: `Updated ${loanTypeIds.length} loan type(s)` 
     });
   } catch (error) {
-    console.error('Error updating business loan types:', error);
+    log.error('Error updating business loan types:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

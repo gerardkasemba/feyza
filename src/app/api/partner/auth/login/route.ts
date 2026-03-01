@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret, toPartnerUser } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-auth-login');
 
 export async function POST(req: NextRequest) {
   const guard = verifyPartnerSecret(req);
@@ -54,7 +57,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (userError || !userRow) {
-      console.error('[Partner /auth/login] User profile fetch error:', userError);
+      log.error('[Partner /auth/login] User profile fetch error:', userError);
       return NextResponse.json(
         { error: 'User profile not found' },
         { status: 404 },
@@ -67,8 +70,8 @@ export async function POST(req: NextRequest) {
       expires_in:    authData.session.expires_in ?? 3600,
       user:          toPartnerUser(userRow),
     });
-  } catch (err: any) {
-    console.error('[Partner /auth/login]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /auth/login]', err);
     return NextResponse.json({ error: 'Login failed' }, { status: 500 });
   }
 }

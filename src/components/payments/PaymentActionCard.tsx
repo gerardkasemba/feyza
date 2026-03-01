@@ -55,7 +55,7 @@ interface PaymentActionCardProps {
   receiverPaymentMethods?: UserPaymentMethod[];
   
   // Callbacks
-  onPaymentConfirmed?: (data: any) => void;
+  onPaymentConfirmed?: (data: Record<string, unknown>) => void;
   onCancel?: () => void;
   
   // Schedule info (for repayments)
@@ -291,8 +291,8 @@ export default function PaymentActionCard({
 
       setStep('success');
       onPaymentConfirmed?.(data.transaction);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setSubmitting(false);
     }

@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Badge } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('ConnectedPaymentDisplay');
 import Link from 'next/link';
 import {
   CreditCard,
@@ -85,7 +88,7 @@ export default function ConnectedPaymentDisplay({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'payment_providers' },
         () => {
-          console.log('[ConnectedPaymentDisplay] Provider changed, refreshing...');
+          log.debug('Provider changed, refreshing');
           fetchMethods();
         }
       );
@@ -95,7 +98,7 @@ export default function ConnectedPaymentDisplay({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_payment_methods', filter: `user_id=eq.${userId}` },
         () => {
-          console.log('[ConnectedPaymentDisplay] User method changed, refreshing...');
+          log.debug('User method changed, refreshing');
           fetchMethods();
         }
       );
@@ -142,7 +145,7 @@ export default function ConnectedPaymentDisplay({
 
       setUserMethods(filteredMethods);
     } catch (err) {
-      console.error('Error fetching payment methods:', err);
+      log.error('Error fetching payment methods', err);
     } finally {
       setLoading(false);
     }

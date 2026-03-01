@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('loan-status-check');
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,7 +25,7 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (requestsError) {
-      console.error('Error fetching loan requests:', requestsError);
+      log.error('Error fetching loan requests:', requestsError);
       return NextResponse.json(
         { error: 'Failed to check status' },
         { status: 500 }
@@ -52,7 +55,7 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false });
 
     if (loansError) {
-      console.error('Error fetching loans:', loansError);
+      log.error('Error fetching loans:', loansError);
     }
 
     if (loans && loans.length > 0) {
@@ -76,7 +79,7 @@ export async function POST(request: NextRequest) {
       message: 'No loan requests found for this email',
     });
   } catch (error) {
-    console.error('Loan status check error:', error);
+    log.error('Loan status check error:', error);
     return NextResponse.json(
       { error: 'Failed to check status' },
       { status: 500 }

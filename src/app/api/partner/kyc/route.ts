@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient }              from '@supabase/supabase-js';
 import { verifyPartnerSecret }       from '../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-kyc');
 
 function serviceClient() {
   return createClient(
@@ -123,8 +126,8 @@ export async function GET(req: NextRequest) {
         address_document_url:  user.address_document_url ?? null,
       },
     });
-  } catch (err: any) {
-    console.error('[Partner /kyc GET]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /kyc GET]', err);
     return NextResponse.json({ error: 'Failed to fetch KYC status' }, { status: 500 });
   }
 }
@@ -217,7 +220,7 @@ export async function POST(req: NextRequest) {
       .eq('id', user_id);
 
     if (error) {
-      console.error('[Partner /kyc POST] Update error:', error);
+      log.error('[Partner /kyc POST] Update error:', error);
       return NextResponse.json({ error: 'Failed to submit KYC data' }, { status: 500 });
     }
 
@@ -226,8 +229,8 @@ export async function POST(req: NextRequest) {
       kyc_status: 'pending',
       message:    'KYC submission received. Under review by Feyza admins.',
     });
-  } catch (err: any) {
-    console.error('[Partner /kyc POST]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /kyc POST]', err);
     return NextResponse.json({ error: 'KYC submission failed' }, { status: 500 });
   }
 }

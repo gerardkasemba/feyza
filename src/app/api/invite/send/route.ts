@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { sendEmail, getLoanInviteEmail, getBusinessLoanRequestEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('invite-send');
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +21,7 @@ export async function POST(request: NextRequest) {
       businessId 
     } = body;
 
-    console.log('Invite send request:', { lenderType, email, businessId, borrowerName });
+    log.info('Invite send request:', { lenderType, email, businessId, borrowerName });
 
     // Personal loan - send invite email to friend/family
     if (lenderType === 'personal' && email) {
@@ -38,12 +41,12 @@ export async function POST(request: NextRequest) {
         });
 
         if (!result.success) {
-          console.error('Failed to send invite email:', result.error);
+          log.error('Failed to send invite email:', result.error);
         } else {
-          console.log('Invite email sent successfully to:', email);
+          log.info('Invite email sent successfully to:', email);
         }
       } catch (emailError) {
-        console.error('Email send error:', emailError);
+        log.error('Email send error:', emailError);
       }
     }
 
@@ -60,7 +63,7 @@ export async function POST(request: NextRequest) {
           .single();
 
         if (bizError) {
-          console.error('Error fetching business:', bizError);
+          log.error('Error fetching business:', bizError);
         }
 
         if (business?.owner?.email) {
@@ -80,28 +83,28 @@ export async function POST(request: NextRequest) {
           });
 
           if (!result.success) {
-            console.error('Failed to send business notification email:', result.error);
+            log.error('Failed to send business notification email:', result.error);
           } else {
-            console.log('Business loan request email sent to:', business.owner.email);
+            log.info('Business loan request email sent to:', business.owner.email);
           }
         } else {
-          console.log('No business owner email found for business:', businessId);
+          log.info('No business owner email found for business:', businessId);
         }
       } catch (bizError) {
-        console.error('Business email error:', bizError);
+        log.error('Business email error:', bizError);
       }
     }
 
     if (phone) {
-      console.log('SMS invite requested for:', phone, '- SMS not yet implemented');
+      log.info(`SMS invite requested for: ${ phone } - SMS not yet implemented`);
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in invite send:', error);
+    log.error('Error in invite send:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
-      message: error instanceof Error ? error.message : 'Unknown error'
+      message: error instanceof Error ? (error as Error).message : 'Unknown error'
     }, { status: 500 });
   }
 }

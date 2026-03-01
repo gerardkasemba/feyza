@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('vouches-request');
 
 /**
  * GET: Get vouch request by token (public - no auth required)
@@ -69,8 +72,8 @@ export async function GET(request: NextRequest) {
     };
 
     return NextResponse.json({ request: safeData });
-  } catch (error: any) {
-    console.error('Error fetching vouch request:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error fetching vouch request:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

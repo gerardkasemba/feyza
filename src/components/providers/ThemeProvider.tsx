@@ -33,14 +33,15 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setMounted(true);
   }, []);
 
-  // Update resolved theme and apply to document
+  // Update resolved theme and apply to document (only after explicit user change)
   useEffect(() => {
     if (!mounted) return;
 
     const resolved = theme === 'system' ? getSystemTheme() : theme;
     setResolvedTheme(resolved);
 
-    // Apply theme to document
+    // Apply theme to document (the inline script in layout.tsx handles the initial paint;
+    // this runs only when the user explicitly changes theme via setTheme)
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(resolved);
@@ -81,14 +82,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme(newTheme);
   };
 
-  // Prevent flash of wrong theme
-  if (!mounted) {
-    return (
-      <div style={{ visibility: 'hidden' }}>
-        {children}
-      </div>
-    );
-  }
+  // No visibility gate needed — layout.tsx inline script applies the correct
+  // theme class to <html> before first paint, so there is no flash to prevent here.
 
   return (
     <ThemeContext.Provider value={{ theme, resolvedTheme, setTheme, toggleTheme }}>

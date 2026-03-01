@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -80,7 +82,7 @@ function VouchAcceptContent() {
           setRelationship(data.request.suggested_relationship);
         }
       } catch (err) {
-        console.error('Error fetching vouch request:', err);
+        log.error('Error fetching vouch request:', err);
         setError('Failed to load vouch request');
       } finally {
         setLoading(false);
@@ -130,8 +132,8 @@ function VouchAcceptContent() {
       }
 
       setSuccess(true);
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit vouch');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to submit vouch');
     } finally {
       setSubmitting(false);
     }
@@ -154,7 +156,7 @@ function VouchAcceptContent() {
 
       router.push('/dashboard');
     } catch (err) {
-      console.error('Error declining:', err);
+      log.error('Error declining:', err);
     } finally {
       setSubmitting(false);
     }

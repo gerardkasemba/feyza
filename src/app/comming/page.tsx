@@ -88,8 +88,8 @@ export default function ComingSoon() {
       setSuccess(true);
       setEmail('');
       setName('');
-    } catch (err: any) {
-      setError(err?.message || 'Something went wrong');
+    } catch (err: unknown) {
+      setError((err as any)?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }

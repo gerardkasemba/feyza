@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('PaymentProofUpload');
 
 import React, { useState } from 'react';
 import { Card, Button, Input } from '@/components/ui';
@@ -24,7 +26,7 @@ interface PaymentProofUploadProps {
   currency: string;
   transactionType: 'disbursement' | 'repayment';
   receiverIdentifier?: string; // $cashtag, phone number, etc.
-  onSuccess: (transaction: any) => void;
+  onSuccess: (transaction: Record<string, unknown>) => void;
   onCancel?: () => void;
 }
 
@@ -97,7 +99,7 @@ export default function PaymentProofUpload({
       .upload(filePath, file);
 
     if (uploadError) {
-      console.error('Upload error:', uploadError);
+      log.error('Upload error:', uploadError);
       return null;
     }
 
@@ -160,8 +162,8 @@ export default function PaymentProofUpload({
       }
 
       onSuccess(data.transaction);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setUploading(false);
     }

@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
@@ -137,11 +139,11 @@ export default function MatchReviewPage() {
       });
 
       // Fetch match
-      console.log('[MatchReview] Fetching match:', matchId);
+      log.debug('[MatchReview] Fetching match:', matchId);
       const response = await fetch(`/api/matching/${matchId}`);
       const data = await response.json();
       
-      console.log('[MatchReview] Response:', response.status, data);
+      log.debug('[MatchReview] Response:', response.status, data);
       
       if (!response.ok) {
         setError(data.error || 'Failed to load match details');
@@ -162,14 +164,14 @@ export default function MatchReviewPage() {
             .single();
           
           setTrustScore(scoreData);
-          console.log('[MatchReview] Trust score:', scoreData);
+          log.debug('[MatchReview] Trust score:', scoreData);
         } catch (err) {
-          console.log('[MatchReview] No trust score found for borrower');
+          log.debug('[MatchReview] No trust score found for borrower');
         }
       }
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      log.error('Failed to fetch data:', err);
       setError('Failed to load match details. Please try again.');
     } finally {
       setLoading(false);
@@ -205,7 +207,7 @@ export default function MatchReviewPage() {
         setActionError(data.error || 'Action failed. Please try again.');
       }
     } catch (error) {
-      console.error('Action failed:', error);
+      log.error('Action failed:', error);
       setActionError('Something went wrong. Please refresh and try again.');
     } finally {
       setActionLoading(null);

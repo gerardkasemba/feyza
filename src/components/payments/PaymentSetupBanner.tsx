@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('PaymentSetupBanner');
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -107,7 +109,7 @@ export default function PaymentSetupBanner({
 
       setUserMethods(validMethods);
     } catch (err) {
-      console.error('Error fetching payment status:', err);
+      log.error('Error fetching payment status:', err);
     } finally {
       setLoading(false);
     }
@@ -255,7 +257,7 @@ export function usePaymentSetupStatus(userId: string | null, bankConnected: bool
           hasBankConnected: effectiveBankConnected,
         });
       } catch (err) {
-        console.error('Error checking payment status:', err);
+        log.error('Error checking payment status:', err);
         setStatus(prev => ({ ...prev, loading: false }));
       }
     };

@@ -1,11 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { verifyWebhookSignature } from '@/lib/dwolla';
 import { sendEmail, getDisbursementFailedEmail, getFundsArrivedEmail, getPaymentReceivedLenderEmail } from '@/lib/email';
 import { format } from 'date-fns';
 import { onPaymentCompleted, onPaymentFailed } from "@/lib/payments";
+import { logger } from '@/lib/logger';
+
+const log = logger('dwolla-webhook');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+/** Shape of a transfer row joined with its loan from the webhook query */
+interface WebhookTransfer {
+  id: string;
+  type: 'disbursement' | 'repayment' | string;
+  status: string;
+  amount: number;
+  dwolla_transfer_id: string;
+  loan: WebhookLoan | null;
+}
+
+/** Loan shape needed within the webhook handlers */
+interface WebhookLoan {
+  id: string;
+  borrower_id?: string;
+  lender_id?: string;
+  business_lender_id?: string;
+  amount: number;
+  currency: string;
+  status: string;
+  start_date?: string;
+  invite_token?: string;
+  // Denormalized contact fields
+  lender_email?: string;
+  lender_name?: string;
+  borrower_name?: string;
+  borrower_email?: string;
+  borrower_invite_email?: string;
+  amount_remaining?: number;
+}
+
+
 
 // Dwolla webhook events - from https://developers.dwolla.com/docs/webhook-events
 // Bank transfers (verified customers moving money to/from bank)
@@ -32,21 +68,21 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get('x-request-signature-sha-256') || '';
     const topic = request.headers.get('x-dwolla-topic') || '';
     
-    console.log('[Dwolla Webhook] ==========================================');
-    console.log('[Dwolla Webhook] Received webhook');
-    console.log('[Dwolla Webhook] Topic from header:', topic);
+    log.info('[Dwolla Webhook] ==========================================');
+    log.info('[Dwolla Webhook] Received webhook');
+    log.info('[Dwolla Webhook] Topic from header:', topic);
     
     // Verify webhook signature
     const webhookSecret = process.env.DWOLLA_WEBHOOK_SECRET;
     if (webhookSecret && signature) {
       const isValid = verifyWebhookSignature(body, signature, webhookSecret);
       if (!isValid) {
-        console.error('[Dwolla Webhook] ❌ Invalid signature');
+        log.error('[Dwolla Webhook] ❌ Invalid signature');
         return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }
-      console.log('[Dwolla Webhook] ✅ Signature verified');
+      log.info('[Dwolla Webhook] ✅ Signature verified');
     } else {
-      console.log('[Dwolla Webhook] ⚠️ No signature verification (missing secret or signature)');
+      log.info('[Dwolla Webhook] ⚠️ No signature verification (missing secret or signature)');
     }
 
     const payload = JSON.parse(body);
@@ -55,47 +91,47 @@ export async function POST(request: NextRequest) {
     // Use topic from payload (more reliable than header)
     const eventTopic = payloadTopic || topic;
     
-    console.log('[Dwolla Webhook] Event ID:', eventId);
-    console.log('[Dwolla Webhook] Event topic:', eventTopic);
-    console.log('[Dwolla Webhook] Resource ID:', resourceId);
-    console.log('[Dwolla Webhook] Created:', created);
+    log.info('[Dwolla Webhook] Event ID:', eventId);
+    log.info('[Dwolla Webhook] Event topic:', eventTopic);
+    log.info('[Dwolla Webhook] Resource ID:', resourceId);
+    log.info('[Dwolla Webhook] Created:', created);
 
     // Get the resource URL (transfer URL)
     const resourceUrl = _links?.resource?.href;
     if (!resourceUrl) {
-      console.log('[Dwolla Webhook] No resource URL in payload');
+      log.info('[Dwolla Webhook] No resource URL in payload');
       return NextResponse.json({ received: true });
     }
-    console.log('[Dwolla Webhook] Resource URL:', resourceUrl);
+    log.info('[Dwolla Webhook] Resource URL:', resourceUrl);
 
     // Extract transfer ID from URL (last segment)
     const transferId = resourceUrl.split('/').pop();
     if (!transferId) {
-      console.log('[Dwolla Webhook] Could not extract transfer ID');
+      log.info('[Dwolla Webhook] Could not extract transfer ID');
       return NextResponse.json({ received: true });
     }
-    console.log('[Dwolla Webhook] Transfer ID:', transferId);
+    log.info('[Dwolla Webhook] Transfer ID:', transferId);
 
     // Only process transfer events
     if (!eventTopic.includes('transfer')) {
-      console.log('[Dwolla Webhook] Ignoring non-transfer event:', eventTopic);
+      log.info('[Dwolla Webhook] Ignoring non-transfer event:', eventTopic);
       return NextResponse.json({ received: true });
     }
 
     const supabase = await createServiceRoleClient();
     await handleTransferEvent(supabase, eventTopic, transferId, resourceUrl);
 
-    console.log('[Dwolla Webhook] ==========================================');
+    log.info('[Dwolla Webhook] ==========================================');
     return NextResponse.json({ received: true });
 
-  } catch (error: any) {
-    console.error('[Dwolla Webhook] Error:', error);
-    return NextResponse.json({ received: true, error: error.message });
+  } catch (error: unknown) {
+    log.error('[Dwolla Webhook] Error:', error);
+    return NextResponse.json({ received: true, error: (error as Error).message });
   }
 }
 
 async function handleTransferEvent(
-  supabase: any, 
+  supabase: SupabaseServiceClient, 
   topic: string, 
   transferId: string,
   resourceUrl: string
@@ -113,11 +149,11 @@ async function handleTransferEvent(
   } else if (CANCELLED_EVENTS.includes(topic)) {
     newStatus = 'cancelled';
   } else {
-    console.log(`[Dwolla Webhook] Unknown event topic: ${topic}`);
+    log.info(`[Dwolla Webhook] Unknown event topic: ${topic}`);
     return;
   }
 
-  console.log(`[Dwolla Webhook] Event "${topic}" → status "${newStatus}"`);
+  log.info(`[Dwolla Webhook] Event "${topic}" → status "${newStatus}"`);
 
   // Find transfer in our database by dwolla_transfer_id
   const { data: transfer, error: findError } = await supabase
@@ -127,7 +163,7 @@ async function handleTransferEvent(
     .single();
 
   if (findError || !transfer) {
-    console.log(`[Dwolla Webhook] ❌ Transfer not found in DB: ${transferId}`);
+    log.info(`[Dwolla Webhook] ❌ Transfer not found in DB: ${transferId}`);
     
     // Debug: show what transfers we have
     const { data: recentTransfers } = await supabase
@@ -135,16 +171,16 @@ async function handleTransferEvent(
       .select('id, dwolla_transfer_id, status, type, created_at')
       .order('created_at', { ascending: false })
       .limit(5);
-    console.log('[Dwolla Webhook] Recent transfers in DB:', JSON.stringify(recentTransfers, null, 2));
+    log.info('[Dwolla Webhook] Recent transfers in DB:', JSON.stringify(recentTransfers, null, 2));
     return;
   }
 
-  console.log(`[Dwolla Webhook] Found transfer: ${transfer.id}`);
-  console.log(`[Dwolla Webhook] Current status: ${transfer.status}, New status: ${newStatus}`);
+  log.info(`[Dwolla Webhook] Found transfer: ${transfer.id}`);
+  log.info(`[Dwolla Webhook] Current status: ${transfer.status}, New status: ${newStatus}`);
 
   // Skip if status hasn't changed
   if (transfer.status === newStatus) {
-    console.log(`[Dwolla Webhook] Status unchanged, skipping`);
+    log.info(`[Dwolla Webhook] Status unchanged, skipping`);
     return;
   }
 
@@ -159,15 +195,15 @@ async function handleTransferEvent(
     .eq('id', transfer.id);
 
   if (updateError) {
-    console.error('[Dwolla Webhook] ❌ Error updating transfer:', updateError);
+    log.error('[Dwolla Webhook] ❌ Error updating transfer:', updateError);
     return;
   }
 
-  console.log(`[Dwolla Webhook] ✅ Transfer updated to "${newStatus}"`);
+  log.info(`[Dwolla Webhook] ✅ Transfer updated to "${newStatus}"`);
 
   const loan = transfer.loan;
   if (!loan) {
-    console.log('[Dwolla Webhook] No loan associated with transfer');
+    log.info('[Dwolla Webhook] No loan associated with transfer');
     return;
   }
 
@@ -179,8 +215,8 @@ async function handleTransferEvent(
   }
 }
 
-async function handleTransferCompleted(supabase: any, transfer: any, loan: any) {
-  console.log(`[Dwolla Webhook] Processing completed ${transfer.type} for loan ${loan.id}`);
+async function handleTransferCompleted(supabase: SupabaseServiceClient, transfer: WebhookTransfer, loan: WebhookLoan) {
+  log.info(`[Dwolla Webhook] Processing completed ${transfer.type} for loan ${loan.id}`);
 
   if (transfer.type === 'disbursement') {
     // Update loan status
@@ -193,26 +229,37 @@ async function handleTransferCompleted(supabase: any, transfer: any, loan: any) 
       .eq('id', loan.id);
     
     if (error) {
-      console.error('[Dwolla Webhook] ❌ Error updating loan:', error);
+      log.error('[Dwolla Webhook] ❌ Error updating loan:', error);
     } else {
-      console.log(`[Dwolla Webhook] ✅ Loan ${loan.id} updated: disbursement_status=completed, funds_sent=true`);
+      log.info(`[Dwolla Webhook] ✅ Loan ${loan.id} updated: disbursement_status=completed, funds_sent=true`);
     }
 
     // Send email notifications
     await sendFundsArrivedEmails(loan);
   } else if (transfer.type === 'repayment') {
     // Handle repayment transfer completion
-    console.log(`[Dwolla Webhook] Processing repayment completion for loan ${loan.id}`);
+    log.info(`[Dwolla Webhook] Processing repayment completion for loan ${loan.id}`);
     
     // Find the associated payment schedule item
     const { data: payment } = await supabase
       .from('payment_schedule')
-      .select('id, amount, due_date')
-      .eq('transfer_id', transfer.id)
+      .select('id, amount, due_date, is_paid')
+      .eq('transfer_id', transfer.dwolla_transfer_id)
       .single();
     
-    // Update Trust Score
-    if (loan.borrower_id) {
+    // Guard: skip trust update if payment was already marked paid (webhook fired twice)
+    if (payment?.is_paid) {
+      log.info(`[Dwolla Webhook] Payment ${payment.id} already marked paid — skipping trust update (duplicate webhook?)`);
+    } else if (loan.borrower_id) {
+      // Mark payment schedule as paid
+      if (payment?.id) {
+        await supabase
+          .from('payment_schedule')
+          .update({ is_paid: true, status: 'paid', paid_at: new Date().toISOString() })
+          .eq('id', payment.id);
+      }
+
+      // Update Trust Score
       try {
         await onPaymentCompleted({
           supabase,
@@ -224,9 +271,9 @@ async function handleTransferCompleted(supabase: any, transfer: any, loan: any) 
           dueDate: payment?.due_date,
           paymentMethod: 'dwolla',
         });
-        console.log(`[Dwolla Webhook] ✅ Trust score updated for borrower`);
+        log.info(`[Dwolla Webhook] ✅ Trust score updated for borrower`);
       } catch (trustError) {
-        console.error(`[Dwolla Webhook] Trust score update failed:`, trustError);
+        log.error(`[Dwolla Webhook] Trust score update failed:`, trustError);
       }
     }
     
@@ -235,8 +282,8 @@ async function handleTransferCompleted(supabase: any, transfer: any, loan: any) 
   }
 }
 
-async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
-  console.log(`[Dwolla Webhook] Processing failed ${transfer.type} for loan ${loan.id}`);
+async function handleTransferFailed(supabase: SupabaseServiceClient, transfer: WebhookTransfer, loan: WebhookLoan) {
+  log.info(`[Dwolla Webhook] Processing failed ${transfer.type} for loan ${loan.id}`);
 
   if (transfer.type === 'disbursement') {
     await supabase
@@ -244,7 +291,7 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
       .update({ disbursement_status: 'failed' })
       .eq('id', loan.id);
     
-    console.log(`[Dwolla Webhook] ✅ Loan ${loan.id} updated: disbursement_status=failed`);
+    log.info(`[Dwolla Webhook] ✅ Loan ${loan.id} updated: disbursement_status=failed`);
 
     // Notify lender of failure
     if (loan.lender_email) {
@@ -263,7 +310,7 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
           html: failedEmail.html,
         });
       } catch (e) {
-        console.error('[Dwolla Webhook] Failed to send failure email:', e);
+        log.error('[Dwolla Webhook] Failed to send failure email:', e);
       }
     }
   } else if (transfer.type === 'repayment') {
@@ -276,15 +323,15 @@ async function handleTransferFailed(supabase: any, transfer: any, loan: any) {
           loanId: loan.id,
           reason: 'Dwolla transfer failed',
         });
-        console.log(`[Dwolla Webhook] Trust score penalty recorded for failed payment`);
+        log.info(`[Dwolla Webhook] Trust score penalty recorded for failed payment`);
       } catch (trustError) {
-        console.error(`[Dwolla Webhook] Failed to record trust score penalty:`, trustError);
+        log.error(`[Dwolla Webhook] Failed to record trust score penalty:`, trustError);
       }
     }
   }
 }
 
-async function sendFundsArrivedEmails(loan: any) {
+async function sendFundsArrivedEmails(loan: WebhookLoan) {
   // Extract names and emails from loan
   const borrowerName = loan.borrower_name || loan.borrower_invite_email?.split('@')[0] || 'Borrower';
   const borrowerEmail = loan.borrower_invite_email || loan.borrower_email;
@@ -304,9 +351,9 @@ async function sendFundsArrivedEmails(loan: any) {
         subject: arrivedEmail.subject,
         html: arrivedEmail.html,
       });
-      console.log(`[Dwolla Webhook] ✅ Sent funds arrived email to borrower: ${borrowerEmail}`);
+      log.info(`[Dwolla Webhook] ✅ Sent funds arrived email to borrower: ${borrowerEmail}`);
     } catch (e) {
-      console.error('[Dwolla Webhook] Failed to send borrower email:', e);
+      log.error('[Dwolla Webhook] Failed to send borrower email:', e);
     }
   }
 
@@ -423,15 +470,22 @@ async function sendFundsArrivedEmails(loan: any) {
       </html>
         `,
       });
-      console.log(`[Dwolla Webhook] ✅ Sent disbursement complete email to lender: ${loan.lender_email}`);
+      log.info(`[Dwolla Webhook] ✅ Sent disbursement complete email to lender: ${loan.lender_email}`);
     } catch (e) {
-      console.error('[Dwolla Webhook] Failed to send lender email:', e);
+      log.error('[Dwolla Webhook] Failed to send lender email:', e);
     }
   }
 }
 
+/** Payment schedule row shape used in repayment email */
+interface RepaymentPayment {
+  id?: string;
+  amount?: number;
+  due_date?: string;
+}
+
 // Send repayment notification to lender
-async function sendRepaymentReceivedEmail(loan: any, transfer: any, payment: any, supabase?: any) {
+async function sendRepaymentReceivedEmail(loan: WebhookLoan, transfer: WebhookTransfer, payment: RepaymentPayment | null, supabase?: SupabaseServiceClient) {
   let lenderEmail = loan.lender_email;
   let lenderName = loan.lender_name || 'Lender';
   const borrowerName = loan.borrower_name || loan.borrower_invite_email?.split('@')[0] || 'Borrower';
@@ -475,15 +529,15 @@ async function sendRepaymentReceivedEmail(loan: any, transfer: any, payment: any
           .from('loans')
           .update({ lender_email: lenderEmail, lender_name: lenderName })
           .eq('id', loan.id);
-        console.log(`[Dwolla Webhook] Updated loan ${loan.id} with lender_email: ${lenderEmail}`);
+        log.info(`[Dwolla Webhook] Updated loan ${loan.id} with lender_email: ${lenderEmail}`);
       }
     } catch (err) {
-      console.error('[Dwolla Webhook] Error fetching lender email:', err);
+      log.error('[Dwolla Webhook] Error fetching lender email:', err);
     }
   }
 
   if (!lenderEmail) {
-    console.log('[Dwolla Webhook] No lender email for repayment notification');
+    log.info('[Dwolla Webhook] No lender email for repayment notification');
     return;
   }
 
@@ -504,9 +558,9 @@ async function sendRepaymentReceivedEmail(loan: any, transfer: any, payment: any
       html: email.html,
     });
 
-    console.log(`[Dwolla Webhook] ✅ Sent repayment received email to lender: ${lenderEmail}`);
+    log.info(`[Dwolla Webhook] ✅ Sent repayment received email to lender: ${lenderEmail}`);
   } catch (e) {
-    console.error('[Dwolla Webhook] Failed to send repayment email to lender:', e);
+    log.error('[Dwolla Webhook] Failed to send repayment email to lender:', e);
   }
 }
 

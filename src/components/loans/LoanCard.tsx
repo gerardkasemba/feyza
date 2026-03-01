@@ -66,6 +66,7 @@ export function LoanCard({ loan, role }: LoanCardProps) {
     completed: 'Completed',
     declined: 'Declined',
     cancelled: 'Cancelled',
+    defaulted: 'Defaulted',
   };
 
   const statusVariants: Record<LoanStatus, 'default' | 'success' | 'warning' | 'danger' | 'info'> = {
@@ -76,6 +77,7 @@ export function LoanCard({ loan, role }: LoanCardProps) {
     completed: 'info',
     declined: 'danger',
     cancelled: 'default',
+    defaulted: 'danger',
   };
 
   const needsPayment = loan.status === 'active' && !loan.funds_sent && role === 'lender';
@@ -136,50 +138,74 @@ export function LoanCard({ loan, role }: LoanCardProps) {
         </Badge>
       </div>
 
-      {/* Amount */}
+      {/* Amount + purpose */}
       <div className="mb-4">
-        <div className="flex items-baseline justify-between mb-1">
+        <div className="flex items-baseline justify-between gap-2 mb-1">
           <span className="text-2xl font-bold text-neutral-900 dark:text-white">
             {formatCurrency(loan.amount, loan.currency)}
           </span>
-          <span className="text-sm text-neutral-500 dark:text-neutral-400">
+          <span className="text-sm text-neutral-500 dark:text-neutral-400 shrink-0">
             {role === 'borrower' ? 'borrowed' : 'lent'}
           </span>
         </div>
-        {loan.purpose && (
-          <p className="text-sm text-neutral-600 dark:text-neutral-300 line-clamp-1">{loan.purpose}</p>
+        {loan.purpose ? (
+          <p className="text-sm text-neutral-600 dark:text-neutral-300 line-clamp-2">{loan.purpose}</p>
+        ) : (
+          <p className="text-sm text-neutral-400 dark:text-neutral-500 italic">No purpose stated</p>
         )}
       </div>
 
+      {/* Status hint for pending-style states */}
+      {(() => {
+        let hint = '';
+        if (loan.status === 'pending') {
+          if (!loan.invite_accepted && role === 'borrower') hint = 'Lender will accept or decline your request.';
+          else if (loan.invite_accepted) hint = 'Terms are being set. You’ll get a link to sign.';
+        } else if (loan.status === 'pending_funds') {
+          hint = role === 'borrower' ? 'Lender will send funds after setup.' : 'Complete setup, then send funds to the borrower.';
+        } else if (loan.status === 'pending_disbursement') {
+          hint = 'Transfer is being processed.';
+        }
+        return hint ? <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{hint}</p> : null;
+      })()}
+
       {/* Lender action needed */}
       {needsPayment && (
-        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg border border-yellow-200 dark:border-yellow-800">
-          <div className="flex items-center gap-2 text-sm text-yellow-800 dark:text-yellow-300">
-            <AlertCircle className="w-4 h-4" />
-            <span className="font-medium">Action needed: Send Payment</span>
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl border border-amber-200 dark:border-amber-800">
+          <div className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-200">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <div>
+              <span className="font-medium">Action needed</span>
+              <p className="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Send funds to the borrower to start the loan.</p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Borrower: waiting for lender to send money */}
       {awaitingFunds && role === 'borrower' && (
-        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-800">
-          <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-300">
-            <AlertCircle className="w-4 h-4" />
-            <span className="font-medium">Waiting for lender's payment</span>
+        <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+          <div className="flex items-center gap-2 text-sm text-blue-800 dark:text-blue-200">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <div>
+              <span className="font-medium">Waiting for funds</span>
+              <p className="text-xs text-blue-700 dark:text-blue-300 mt-0.5">Lender will send the money to you next.</p>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Progress (funded active loans) */}
+      {/* Progress (funded active loans) — clarify "funds received/sent" vs "repaid" */}
       {loan.status === 'active' && loan.funds_sent && (
         <div className="mb-4">
           <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400 mb-2">
-            <CheckCircle className="w-4 h-4" />
-            <span>Payment sent</span>
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span>{role === 'borrower' ? 'Funds received' : 'Funds sent'}</span>
           </div>
-          <div className="flex items-center justify-between text-sm mb-2">
-            <span className="text-neutral-500 dark:text-neutral-400">Repaid</span>
+          <div className="flex items-center justify-between text-sm mb-1.5">
+            <span className="text-neutral-500 dark:text-neutral-400">
+              {role === 'borrower' ? 'You\'ve repaid' : 'Borrower repaid'}
+            </span>
             <span className="font-medium text-neutral-700 dark:text-neutral-300">
               {formatCurrency(amountPaid, loan.currency)} of {formatCurrency(totalAmount, loan.currency)}
             </span>
@@ -230,13 +256,13 @@ export function LoanCard({ loan, role }: LoanCardProps) {
         </div>
       )}
 
-      {/* Footer */}
+      {/* Footer — always show "View details" so the card is clearly clickable */}
       <div className="flex items-center justify-between pt-4 border-t border-neutral-100 dark:border-neutral-700 mt-4">
-        <div className="flex items-center gap-1 text-sm text-neutral-500 dark:text-neutral-400">
-          <Calendar className="w-4 h-4" />
-          <span>{formatDate(loan.created_at)}</span>
+        <div className="flex items-center gap-1.5 text-sm text-neutral-500 dark:text-neutral-400">
+          <Calendar className="w-4 h-4 shrink-0" />
+          <span>Started {formatDate(loan.created_at)}</span>
         </div>
-        <span className="flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="flex items-center gap-1 text-sm font-medium text-primary-600 dark:text-primary-400">
           View details
           <ArrowRight className="w-4 h-4" />
         </span>

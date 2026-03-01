@@ -18,7 +18,7 @@ type EmailType = 'newsletter' | 'announcement' | 'personal' | 'marketing' | 'sup
 type RecipientType = 'all' | 'individual' | 'group' | 'custom';
 
 interface EmailComposerProps {
-  users: any[];
+  users: Record<string, unknown>[];
 }
 
 export function EmailComposer({ users }: EmailComposerProps) {
@@ -59,8 +59,8 @@ export function EmailComposer({ users }: EmailComposerProps) {
 
   // Filter users based on search
   const filteredUsers = users.filter(user => 
-    user.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    (user.full_name as string | undefined)?.toLowerCase().includes((String(searchQuery)).toLowerCase()) ||
+    (user.email as string | undefined)?.toLowerCase().includes((String(searchQuery)).toLowerCase())
   );
 
   // Calculate recipient count
@@ -306,22 +306,22 @@ export function EmailComposer({ users }: EmailComposerProps) {
                 <div className="max-h-60 overflow-y-auto space-y-2">
                   {filteredUsers.map((user) => (
                     <label
-                      key={user.id}
+                      key={user.id as string}
                       className="flex items-center justify-between p-3 rounded-lg border border-neutral-200 dark:border-neutral-700 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800"
                     >
                       <div className="flex items-center gap-3">
                         <input
                           type="checkbox"
-                          checked={selectedUsers.includes(user.id)}
-                          onChange={() => toggleUser(user.id)}
+                          checked={selectedUsers.includes(user.id as string)}
+                          onChange={() => toggleUser(user.id as string)}
                           className="w-4 h-4 text-blue-600 rounded"
                         />
                         <div>
-                          <div className="font-medium text-neutral-900 dark:text-white">{user.full_name}</div>
-                          <div className="text-sm text-neutral-500">{user.email}</div>
+                          <div className="font-medium text-neutral-900 dark:text-white">{String(user.full_name ?? "")}</div>
+                          <div className="text-sm text-neutral-500">{String(user.email ?? "")}</div>
                         </div>
                       </div>
-                      <Badge variant="secondary" size="sm">{user.user_type}</Badge>
+                      <Badge variant="secondary" size="sm">{String(user.user_type ?? "")}</Badge>
                     </label>
                   ))}
                 </div>

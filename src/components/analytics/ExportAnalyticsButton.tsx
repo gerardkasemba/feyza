@@ -1,4 +1,6 @@
 'use client'
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('ExportAnalyticsButton');
 
 import React, { useState } from 'react'
 import { Button } from '@/components/ui'
@@ -25,7 +27,7 @@ export default function ExportAnalyticsButton() {
 
       window.URL.revokeObjectURL(url)
     } catch (e) {
-      console.error(e)
+      log.error(String(e))
       alert('Export failed. Please try again.')
     } finally {
       setLoading(false)

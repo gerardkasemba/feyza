@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-auth-forgot-password');
 
 export async function POST(req: NextRequest) {
   const guard = verifyPartnerSecret(req);
@@ -31,7 +34,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (error) {
-      console.error('[Partner /auth/forgot-password]', error);
+      log.error('[Partner /auth/forgot-password]', error);
       // Don't reveal if email exists — always return 200
     }
 
@@ -39,8 +42,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       message: 'If an account exists with that email, a reset link has been sent.',
     });
-  } catch (err: any) {
-    console.error('[Partner /auth/forgot-password]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /auth/forgot-password]', err);
     return NextResponse.json({ error: 'Request failed' }, { status: 500 });
   }
 }

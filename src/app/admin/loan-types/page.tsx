@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -75,7 +77,7 @@ export default function LoanTypesPage() {
         .order('display_order', { ascending: true });
 
       if (error) {
-        console.error('Error fetching loan types:', error);
+        log.error('Error fetching loan types:', error);
         setLoanTypes(defaultLoanTypes);
       } else if (data && data.length > 0) {
         setLoanTypes(data);
@@ -83,7 +85,7 @@ export default function LoanTypesPage() {
         setLoanTypes(defaultLoanTypes);
       }
     } catch (err) {
-      console.error('Error:', err);
+      log.error('Error:', err);
       setLoanTypes(defaultLoanTypes);
     }
     setLoading(false);
@@ -161,9 +163,9 @@ export default function LoanTypesPage() {
       await fetchLoanTypes();
       setEditingType(null);
       setIsNew(false);
-    } catch (err: any) {
-      console.error('Error saving loan type:', err);
-      alert('Failed to save loan type: ' + err.message);
+    } catch (err: unknown) {
+      log.error('Error saving loan type:', err);
+      alert('Failed to save loan type: ' + (err as Error).message);
     }
     setSaving(false);
   };
@@ -181,7 +183,7 @@ export default function LoanTypesPage() {
         .eq('id', loanType.id);
       await fetchLoanTypes();
     } catch (err) {
-      console.error('Error toggling active:', err);
+      log.error('Error toggling active:', err);
     }
   };
 
@@ -197,7 +199,7 @@ export default function LoanTypesPage() {
       await supabase.from('loan_types').delete().eq('id', loanType.id);
       await fetchLoanTypes();
     } catch (err) {
-      console.error('Error deleting:', err);
+      log.error('Error deleting:', err);
     }
   };
 

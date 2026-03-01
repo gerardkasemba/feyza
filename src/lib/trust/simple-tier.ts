@@ -1,4 +1,7 @@
+import { logger } from '@/lib/logger';
+const log = logger('simple-tier');
 import { createServiceRoleClientDirect } from '@/lib/supabase/server';
+import { recalculateVoucherVouches } from '@/lib/users/user-lifecycle-service';
 
 export interface SimpleTrustTier {
   tier: 'tier_1' | 'tier_2' | 'tier_3' | 'tier_4';
@@ -51,8 +54,18 @@ export async function calculateSimpleTrustTier(userId: string): Promise<SimpleTr
     nextTierVouches = 3 - vouchCount;
   }
 
-  // Persist to users table (fire-and-forget; non-blocking for callers)
-  void (async () => {
+  // Persist to users table — MUST be awaited so the write completes before
+  // Vercel's serverless runtime kills the function after the response is sent.
+  // Previously this was fire-and-forget (void async), which meant the tier
+  // never actually persisted to the database on serverless platforms.
+  try {
+    // Read old tier first so we know if it changed
+    const { data: oldUser } = await supabase
+      .from('users')
+      .select('trust_tier')
+      .eq('id', userId)
+      .single();
+
     const { error } = await supabase
       .from('users')
       .update({
@@ -64,9 +77,22 @@ export async function calculateSimpleTrustTier(userId: string): Promise<SimpleTr
       .eq('id', userId);
 
     if (error) {
-      console.error('[SimpleTier] Failed to persist tier:', error.message);
+      log.error('[SimpleTier] Failed to persist tier:', (error as Error).message);
+    } else {
+      log.info(`[SimpleTier] Persisted tier=${tier} vouchCount=${vouchCount} for user ${userId}`);
     }
-  })();
+
+    // If tier changed, cascade-recalculate vouch strengths (replaces tr_cascade_vouch_on_tier_change trigger)
+    if (oldUser?.trust_tier !== tier) {
+      try {
+        await recalculateVoucherVouches(supabase, userId, tier);
+      } catch (err) {
+        log.error('[SimpleTier] Failed to cascade vouch recalculation:', err);
+      }
+    }
+  } catch (persistErr) {
+    log.error('[SimpleTier] Tier persistence error:', persistErr);
+  }
 
   return { tier, tierNumber, tierName, vouchCount, nextTierVouches };
 }

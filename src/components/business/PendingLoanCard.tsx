@@ -8,7 +8,7 @@ import { formatCurrency } from '@/lib/utils';
 import { AlertCircle, ChevronDown, ChevronUp, User } from 'lucide-react';
 
 interface PendingLoanCardProps {
-  loan: any;
+  loan: import("@/types").Loan;
 }
 
 export function PendingLoanCard({ loan }: PendingLoanCardProps) {
@@ -52,8 +52,8 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
 
       // Refresh the page
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || 'Failed to accept loan');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to accept loan');
     } finally {
       setIsAccepting(false);
     }
@@ -79,8 +79,8 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
 
       // Refresh the page
       router.refresh();
-    } catch (err: any) {
-      setError(err.message || 'Failed to decline loan');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to decline loan');
     } finally {
       setIsDeclining(false);
     }
@@ -97,7 +97,7 @@ export function PendingLoanCard({ loan }: PendingLoanCardProps) {
           </div>
           <div>
             <p className="font-medium text-neutral-900 dark:text-white">
-              {loan.borrower?.full_name || 'Unknown'}
+              {loan.borrower?.full_name || (loan as { borrower_name?: string })?.borrower_name || 'Borrower'}
             </p>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">{loan.borrower?.email}</p>
           </div>

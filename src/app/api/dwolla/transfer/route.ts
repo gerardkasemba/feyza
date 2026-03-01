@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer, getTransfer, getMasterAccountBalance } from '@/lib/dwolla';
 import { sendEmail, getFundsOnTheWayEmail, getPaymentReceivedLenderEmail } from '@/lib/email';
+import { onVoucheeNewLoan } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('dwolla-transfer');
 
 // POST: Create a transfer (loan disbursement or repayment)
 export async function POST(request: NextRequest) {
@@ -46,8 +50,8 @@ export async function POST(request: NextRequest) {
 
     let sourceFundingUrl: string;
     let destinationFundingUrl: string;
-    let sourceUser: any;
-    let destinationUser: any;
+    let sourceUser: unknown;
+    let destinationUser: unknown;
 
     if (type === 'disbursement') {
       // Lender sends money to borrower
@@ -133,7 +137,7 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (existingTransfer) {
-        console.log(`[Dwolla Transfer] Disbursement already exists for loan ${loan_id}: ${existingTransfer.dwolla_transfer_id}`);
+        log.info(`[Dwolla Transfer] Disbursement already exists for loan ${loan_id}: ${existingTransfer.dwolla_transfer_id}`);
         return NextResponse.json({
           success: true,
           message: 'Disbursement already processed',
@@ -173,8 +177,8 @@ export async function POST(request: NextRequest) {
           amount: parseFloat(amount),
           currency: 'USD',
           status: 'pending',
-          source_user_id: sourceUser.id,
-          destination_user_id: destinationUser.id,
+          source_user_id: (sourceUser as any).id,
+          destination_user_id: (destinationUser as any).id,
         }, {
           onConflict: 'dwolla_transfer_id',
           ignoreDuplicates: true,
@@ -192,6 +196,15 @@ export async function POST(request: NextRequest) {
           disbursed_at: new Date().toISOString(),
         })
         .eq('id', loan_id);
+
+      // Increment loans_active on all vouchers for this borrower (voucher accountability)
+      if (loan.borrower_id) {
+        try {
+          await onVoucheeNewLoan(adminSupabase as any, loan.borrower_id, loan_id);
+        } catch (err) {
+          log.error('[DwollaTransfer] onVoucheeNewLoan error (non-fatal):', err);
+        }
+      }
     }
 
     // Get names and emails for notifications
@@ -244,10 +257,10 @@ export async function POST(request: NextRequest) {
       transfer_ids: transferIds,
       status: 'pending',
     });
-  } catch (error: any) {
-    console.error('Error creating transfer:', error);
+  } catch (error: unknown) {
+    log.error('Error creating transfer:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create transfer' },
+      { error: (error as Error).message || 'Failed to create transfer' },
       { status: 500 }
     );
   }
@@ -271,10 +284,10 @@ export async function GET(request: NextRequest) {
       amount: transfer.amount,
       created: transfer.created,
     });
-  } catch (error: any) {
-    console.error('Error getting transfer:', error);
+  } catch (error: unknown) {
+    log.error('Error getting transfer:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get transfer status' },
+      { error: (error as Error).message || 'Failed to get transfer status' },
       { status: 500 }
     );
   }

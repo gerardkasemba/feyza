@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('paypal-connect');
 
 const PAYPAL_CLIENT_ID = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID;
 const PAYPAL_SECRET = process.env.PAYPAL_SECRET;
@@ -53,13 +56,13 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id);
 
     if (error) {
-      console.error('Error saving PayPal connection:', error);
+      log.error('Error saving PayPal connection:', error);
       return NextResponse.json({ error: 'Failed to save PayPal connection' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('PayPal connect error:', error);
+    log.error('PayPal connect error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -86,13 +89,13 @@ export async function DELETE(request: NextRequest) {
       .eq('id', user.id);
 
     if (error) {
-      console.error('Error disconnecting PayPal:', error);
+      log.error('Error disconnecting PayPal:', error);
       return NextResponse.json({ error: 'Failed to disconnect PayPal' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('PayPal disconnect error:', error);
+    log.error('PayPal disconnect error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

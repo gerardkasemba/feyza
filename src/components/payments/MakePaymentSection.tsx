@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('MakePaymentSection');
 
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Badge } from '@/components/ui';
@@ -89,7 +91,7 @@ export default function MakePaymentSection({
       const dwolla = (data.providers || []).find((p: any) => p.slug === 'dwolla');
       setDwollaEnabled(!!dwolla);
     } catch (err) {
-      console.error('Failed to check Dwolla status:', err);
+      log.error('Failed to check Dwolla status:', err);
     }
   };
 
@@ -125,8 +127,8 @@ export default function MakePaymentSection({
       await onProcessAutoPay(selectedPayment.id);
       setStep('completed');
       onPaymentComplete?.();
-    } catch (err: any) {
-      setError(err.message || 'Auto-pay failed');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Auto-pay failed');
     } finally {
       setIsProcessing(false);
     }
@@ -146,7 +148,7 @@ export default function MakePaymentSection({
   };
 
   // Handle payment proof submission success
-  const handleProofSuccess = (transaction: any) => {
+  const handleProofSuccess = (transaction: Record<string, unknown>) => {
     if (transaction.awaiting_confirmation) {
       setStep('awaiting-confirmation');
     } else {

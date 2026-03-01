@@ -25,6 +25,20 @@ export interface User {
   // Notification preferences
   email_reminders: boolean;
   reminder_days_before: number;
+  // Borrower stats & rating
+  borrower_rating?: 'great' | 'good' | 'neutral' | 'poor' | 'bad' | 'worst';
+  borrower_rating_updated_at?: string;
+  payments_missed?: number;
+  payments_early?: number;
+  payments_on_time?: number;
+  payments_late?: number;
+  total_payments_made?: number;
+  total_amount_repaid?: number;
+  current_outstanding_amount?: number;
+  total_loans_completed?: number;
+  borrowing_tier?: number;
+  loans_at_current_tier?: number;
+  max_borrowing_amount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +88,23 @@ export interface BusinessProfile {
   verified_by?: string;
   // Relation
   owner?: User;
+  // Bank / Dwolla fields (mirrors User)
+  bank_connected?: boolean;
+  bank_connected_at?: string;
+  bank_name?: string;
+  bank_account_mask?: string;
+  dwolla_customer_id?: string;
+  dwolla_customer_url?: string;
+  dwolla_funding_source_id?: string;
+  dwolla_funding_source_url?: string;
+  // Payment handles
+  paypal_email?: string;
+  cashapp_username?: string;
+  venmo_username?: string;
+  zelle_email?: string;
+  zelle_phone?: string;
+  // Business display name helper
+  full_name?: string;
 }
 
 // Disbursement types
@@ -82,7 +113,7 @@ export type MobileMoneyProvider = 'mpesa' | 'airtel' | 'mtn' | 'orange' | 'tigo'
 export type PickerIdType = 'passport' | 'national_id' | 'drivers_license';
 
 // Loan types
-export type LoanStatus = 'pending' | 'pending_funds' | 'pending_disbursement' | 'active' | 'completed' | 'declined' | 'cancelled';
+export type LoanStatus = 'pending' | 'pending_funds' | 'pending_disbursement' | 'active' | 'completed' | 'declined' | 'cancelled' | 'defaulted';
 export type PaymentStatus = 'pending' | 'confirmed' | 'disputed';
 export type RepaymentFrequency = 'weekly' | 'biweekly' | 'monthly' | 'custom';
 export type LenderType = 'business' | 'personal';
@@ -369,4 +400,61 @@ export interface BusinessLoanType {
   is_active: boolean;
   created_at: string;
   loan_type?: LoanType;
+}
+
+// ─── Supabase / API generic shapes ───────────────────────────────────────────
+
+/** Basic user profile shape returned from auth or DB lookups */
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string;
+  username?: string;
+  user_type?: 'individual' | 'business';
+  avatar_url?: string;
+  [key: string]: unknown;
+}
+
+/** Generic key-value record for DB rows with unknown extra columns */
+export type DbRecord = Record<string, unknown>;
+
+/** Error-like object (e.g., Supabase PostgrestError) */
+export interface ErrorLike {
+  message: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
+// ─── Dwolla ───────────────────────────────────────────────────────────────────
+
+export interface DwollaTransfer {
+  id?: string;
+  status: 'pending' | 'processed' | 'failed' | 'cancelled';
+  type?: 'disbursement' | 'repayment';
+  amount?: { value: string; currency: string };
+  created_at?: string;
+  _links?: Record<string, { href: string }>;
+}
+
+// ─── Payment Provider ─────────────────────────────────────────────────────────
+
+export interface PaymentProvider {
+  id: string;
+  name: string;
+  slug: string;
+  is_enabled: boolean;
+  is_automated: boolean;
+  is_available_for_repayment?: boolean;
+  supported_countries?: string[];
+}
+
+export interface UserPaymentMethod {
+  id: string;
+  user_id: string;
+  account_identifier: string;
+  account_name?: string;
+  is_active: boolean;
+  is_default: boolean;
+  payment_provider?: PaymentProvider;
 }

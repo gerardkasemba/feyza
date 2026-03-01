@@ -3,11 +3,9 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
-import { Button, Badge } from '@/components/ui';
+import { Button } from '@/components/ui';
 import {
   Search,
-  BookOpen,
-  CreditCard,
   Shield,
   Users,
   Settings,
@@ -16,63 +14,96 @@ import {
   MessageCircle,
   Mail,
   FileText,
-  Zap,
   Building2,
   Clock,
-  ArrowRight,
+  Wallet,
 } from 'lucide-react';
 
 const categories = [
   {
     icon: Users,
     title: 'Getting Started',
-    description: 'Learn the basics of using Feyza',
-    articles: ['Creating an account', 'Verifying your identity', 'Connecting your bank', 'Understanding loan tiers'],
+    description: 'Account, verification, and trust',
+    articles: [
+      { label: 'Creating an account', href: '/auth/signup' },
+      { label: 'Verifying your identity', href: '/verify' },
+      { label: 'Connecting your bank (Plaid)', href: '/faq' },
+      { label: 'Understanding trust score & tiers', href: '/how-vouching-works' },
+      { label: 'What is vouching?', href: '/how-vouching-works' },
+    ],
     color: 'blue',
   },
   {
-    icon: CreditCard,
-    title: 'Loans & Payments',
-    description: 'Everything about borrowing and repaying',
-    articles: ['Requesting a loan', 'Understanding interest', 'Setting up auto-pay', 'Making manual payments'],
+    icon: Wallet,
+    title: 'Borrowing & Loans',
+    description: 'Request loans and repay',
+    articles: [
+      { label: 'How to request a loan', href: '/borrow' },
+      { label: 'Requesting as a guest', href: '/apply' },
+      { label: 'Understanding interest & terms', href: '/faq' },
+      { label: 'Setting up auto-pay', href: '/dashboard' },
+      { label: 'Making manual payments', href: '/dashboard' },
+      { label: 'Checking loan status', href: '/loan-status' },
+    ],
     color: 'green',
   },
   {
     icon: Building2,
-    title: 'For Lenders',
-    description: 'Guide for business lenders',
-    articles: ['Becoming a lender', 'Setting preferences', 'Managing loans', 'Understanding fees'],
+    title: 'For Business Lenders',
+    description: 'Lend and manage your portfolio',
+    articles: [
+      { label: 'Becoming a verified lender', href: '/for-business' },
+      { label: 'Setting lending preferences', href: '/business/setup' },
+      { label: 'Managing matches & funding loans', href: '/lender/matches' },
+      { label: 'Platform fees for lenders', href: '/faq' },
+      { label: 'Your public lender page', href: '/for-business' },
+    ],
     color: 'purple',
   },
   {
     icon: Shield,
     title: 'Security & Privacy',
-    description: 'Keeping your account safe',
-    articles: ['Two-factor authentication', 'Password security', 'Data protection', 'Reporting fraud'],
+    description: 'How we protect your data',
+    articles: [
+      { label: 'How we protect your data', href: '/faq' },
+      { label: 'Bank connections (Plaid)', href: '/faq' },
+      { label: 'Reporting fraud or issues', href: '/contact' },
+    ],
     color: 'rose',
   },
   {
     icon: Settings,
-    title: 'Account Settings',
-    description: 'Manage your account preferences',
-    articles: ['Updating profile', 'Notification settings', 'Changing bank account', 'Closing account'],
+    title: 'Account & Settings',
+    description: 'Profile and preferences',
+    articles: [
+      { label: 'Updating your profile', href: '/settings' },
+      { label: 'Notification preferences', href: '/notifications' },
+      { label: 'Payment methods & bank', href: '/dashboard' },
+      { label: 'Trust score & vouches', href: '/dashboard' },
+    ],
     color: 'amber',
   },
   {
     icon: HelpCircle,
     title: 'Troubleshooting',
-    description: 'Common issues and solutions',
-    articles: ['Payment failed', 'Bank connection issues', 'Account locked', 'Missing funds'],
+    description: 'Common issues and fixes',
+    articles: [
+      { label: 'Payment failed or delayed', href: '/faq' },
+      { label: 'Bank connection issues', href: '/faq' },
+      { label: 'Account restricted or locked', href: '/faq' },
+      { label: 'Missing or late funds', href: '/contact' },
+    ],
     color: 'cyan',
   },
 ];
 
 const popularArticles = [
-  { title: 'How to request your first loan', category: 'Getting Started', time: '3 min read' },
-  { title: 'Understanding borrower tiers', category: 'Getting Started', time: '5 min read' },
-  { title: 'Setting up automatic payments', category: 'Payments', time: '2 min read' },
-  { title: 'What happens if I miss a payment?', category: 'Payments', time: '4 min read' },
-  { title: 'How to become a verified lender', category: 'For Lenders', time: '6 min read' },
+  { title: 'How to request your first loan', category: 'Borrowing', href: '/borrow', time: '2 min' },
+  { title: 'Understanding trust score & tiers', category: 'Getting Started', href: '/how-vouching-works', time: '5 min' },
+  { title: 'Setting up automatic payments', category: 'Borrowing', href: '/dashboard', time: '2 min' },
+  { title: 'What happens if I miss a payment?', category: 'FAQ', href: '/faq', time: '2 min' },
+  { title: 'How to become a verified lender', category: 'For Lenders', href: '/for-business', time: '4 min' },
+  { title: 'What is vouching and how does it work?', category: 'Getting Started', href: '/how-vouching-works', time: '5 min' },
 ];
 
 const colorClasses: Record<string, { bg: string; icon: string; hover: string }> = {
@@ -87,6 +118,17 @@ const colorClasses: Record<string, { bg: string; icon: string; hover: string }> 
 export default function HelpCenterPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
+  const filteredCategories = searchQuery.trim()
+    ? categories.map((cat) => ({
+        ...cat,
+        articles: cat.articles.filter(
+          (a) =>
+            a.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            cat.title.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+      })).filter((cat) => cat.articles.length > 0)
+    : categories;
+
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
       <Navbar />
@@ -98,13 +140,13 @@ export default function HelpCenterPage() {
             How can we help you?
           </h1>
           <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8">
-            Search our knowledge base or browse categories below
+            Find guides, FAQs, and links to the right place on Feyza.
           </p>
           <div className="relative max-w-xl mx-auto">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
             <input
               type="text"
-              placeholder="Search for help..."
+              placeholder="Search topics..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-12 pr-4 py-4 rounded-xl border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -120,13 +162,13 @@ export default function HelpCenterPage() {
             Browse by Category
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {categories.map((category, i) => {
+            {filteredCategories.map((category, i) => {
               const Icon = category.icon;
               const colors = colorClasses[category.color];
               return (
                 <div
                   key={i}
-                  className={`bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700 ${colors.hover} transition-colors cursor-pointer`}
+                  className={`bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700 ${colors.hover} transition-colors`}
                 >
                   <div className={`w-12 h-12 rounded-xl ${colors.bg} flex items-center justify-center mb-4`}>
                     <Icon className={`w-6 h-6 ${colors.icon}`} />
@@ -138,14 +180,14 @@ export default function HelpCenterPage() {
                     {category.description}
                   </p>
                   <ul className="space-y-2">
-                    {category.articles.map((article, j) => (
-                      <li key={j}>
+                    {category.articles.map((article) => (
+                      <li key={article.label}>
                         <Link
-                          href={`/help/${category.title.toLowerCase().replace(/ /g, '-')}/${article.toLowerCase().replace(/ /g, '-')}`}
+                          href={article.href}
                           className="flex items-center text-sm text-neutral-600 dark:text-neutral-400 hover:text-green-600 dark:hover:text-green-400"
                         >
-                          <ChevronRight className="w-4 h-4 mr-1" />
-                          {article}
+                          <ChevronRight className="w-4 h-4 mr-1 flex-shrink-0" />
+                          {article.label}
                         </Link>
                       </li>
                     ))}
@@ -154,6 +196,15 @@ export default function HelpCenterPage() {
               );
             })}
           </div>
+          {filteredCategories.length === 0 && (
+            <p className="text-center text-neutral-500 dark:text-neutral-400 py-8">
+              No topics match your search. Try different words or{' '}
+              <Link href="/contact" className="text-green-600 dark:text-green-400 hover:underline">
+                contact support
+              </Link>
+              .
+            </p>
+          )}
         </div>
       </section>
 
@@ -161,13 +212,13 @@ export default function HelpCenterPage() {
       <section className="py-16 bg-neutral-50 dark:bg-neutral-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-8">
-            Popular Articles
+            Popular Topics
           </h2>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {popularArticles.map((article, i) => (
               <Link
                 key={i}
-                href="#"
+                href={article.href}
                 className="flex items-start gap-4 bg-white dark:bg-neutral-800 rounded-xl p-4 border border-neutral-200 dark:border-neutral-700 hover:border-green-300 dark:hover:border-green-700 transition-colors"
               >
                 <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
@@ -186,6 +237,7 @@ export default function HelpCenterPage() {
                     </span>
                   </div>
                 </div>
+                <ChevronRight className="w-4 h-4 text-neutral-400 flex-shrink-0 mt-1 ml-auto" />
               </Link>
             ))}
           </div>
@@ -199,7 +251,7 @@ export default function HelpCenterPage() {
             <MessageCircle className="w-16 h-16 mx-auto mb-6 opacity-90" />
             <h2 className="text-3xl font-bold mb-4">Still need help?</h2>
             <p className="text-green-100 mb-8 text-lg">
-              Our support team is here to assist you with any questions.
+              Email us at support@feyza.app or use the contact form. We typically respond within 24 hours.
             </p>
             <div className="flex flex-col sm:flex-row justify-center gap-4">
               <Link href="/contact">

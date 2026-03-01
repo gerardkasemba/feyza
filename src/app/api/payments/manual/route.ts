@@ -6,11 +6,14 @@ import {
   getPaymentProcessedBorrowerEmail,
   getPaymentReceivedGuestLenderEmail,
 } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('payments-manual');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
 export async function POST(request: NextRequest) {
-  console.log('[Manual Payment API] Starting...');
+  log.info('[Manual Payment API] Starting...');
 
   try {
     // Verify the user is authenticated
@@ -20,16 +23,16 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (!user) {
-      console.log('[Manual Payment API] Unauthorized - no user');
+      log.info('[Manual Payment API] Unauthorized - no user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    console.log('[Manual Payment API] User authenticated:', user.id);
+    log.info('[Manual Payment API] User authenticated:', user.id);
 
     const body = await request.json();
     const { loanId, paymentId, paymentMethod, transactionReference, proofUrl, platformFee } = body;
 
-    console.log('[Manual Payment API] Request body:', {
+    log.info('[Manual Payment API] Request body:', {
       loanId,
       paymentId,
       paymentMethod,
@@ -60,11 +63,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (loanError || !loan) {
-      console.error('[Manual Payment API] Error fetching loan:', loanError);
+      log.error('[Manual Payment API] Error fetching loan:', loanError);
       return NextResponse.json({ error: 'Loan not found', details: loanError?.message }, { status: 404 });
     }
 
-    console.log('[Manual Payment API] Loan found:', {
+    log.info('[Manual Payment API] Loan found:', {
       id: loan.id,
       amount: loan.amount,
       total_amount: (loan as any).total_amount,
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     // Verify the user is the borrower
     if (loan.borrower_id !== user.id) {
-      console.log('[Manual Payment API] User is not borrower:', { userId: user.id, borrowerId: loan.borrower_id });
+      log.info('[Manual Payment API] User is not borrower:', { userId: user.id, borrowerId: loan.borrower_id });
       return NextResponse.json({ error: 'Only the borrower can submit payments' }, { status: 403 });
     }
 
@@ -87,11 +90,11 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (paymentError || !payment) {
-      console.error('[Manual Payment API] Error fetching payment:', paymentError);
+      log.error('[Manual Payment API] Error fetching payment:', paymentError);
       return NextResponse.json({ error: 'Payment not found', details: paymentError?.message }, { status: 404 });
     }
 
-    console.log('[Manual Payment API] Payment found:', {
+    log.info('[Manual Payment API] Payment found:', {
       id: payment.id,
       amount: payment.amount,
       is_paid: payment.is_paid,
@@ -116,7 +119,7 @@ export async function POST(request: NextRequest) {
       marked_paid_by: user.id,
     };
 
-    console.log('[Manual Payment API] Updating payment_schedule with:', paymentUpdateData);
+    log.info('[Manual Payment API] Updating payment_schedule with:', paymentUpdateData);
 
     const { data: updatedPayment, error: updatePaymentError } = await serviceClient
       .from('payment_schedule')
@@ -126,17 +129,24 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (updatePaymentError) {
-      console.error('[Manual Payment API] Error updating payment schedule:', updatePaymentError);
+      log.error('[Manual Payment API] Error updating payment schedule:', updatePaymentError);
       return NextResponse.json(
         { error: 'Failed to update payment', details: updatePaymentError.message },
         { status: 500 }
       );
     }
 
-    console.log('[Manual Payment API] Payment schedule updated:', updatedPayment);
+    log.info('[Manual Payment API] Payment schedule updated:', updatedPayment);
 
     // ── INSERT INTO payments TABLE ──────────────────────────────────────────
-    // Auto-pay always creates a payments row; manual was missing this entirely.
+    // Columns must match the deployed payments table exactly:
+    //   id, loan_id, schedule_id, amount, payment_date, status,
+    //   confirmed_by, confirmation_date, note, proof_url, paypal_transaction_id, created_at
+    //
+    // IMPORTANT: `transaction_reference` is NOT a column on payments (only on
+    // payment_schedule). Including it caused the insert to fail with a
+    // PostgreSQL "unknown column" error, silently suppressed as "Non-fatal",
+    // leaving payment_schedule.payment_id unlinked.
     const { data: paymentRecord, error: paymentInsertError } = await serviceClient
       .from('payments')
       .insert({
@@ -148,18 +158,19 @@ export async function POST(request: NextRequest) {
         note: `Manual payment via ${paymentMethod}${
           transactionReference ? ` — ref: ${transactionReference}` : ''
         }${proofUrl ? ' (proof uploaded)' : ''}`,
-        ...(transactionReference ? { transaction_reference: transactionReference } : {}),
+        // proof_url is the correct column name on payments (not payment_proof_url)
+        ...(proofUrl ? { proof_url: proofUrl } : {}),
       })
       .select()
       .single();
 
     if (paymentInsertError) {
-      console.error('[Manual Payment API] Error creating payments record:', paymentInsertError);
+      log.error('[Manual Payment API] Error creating payments record:', paymentInsertError);
       // Non-fatal: payment_schedule is already marked paid; proceed.
     } else if (paymentRecord) {
       // Link payment record back to the schedule row
       await serviceClient.from('payment_schedule').update({ payment_id: paymentRecord.id }).eq('id', paymentId);
-      console.log('[Manual Payment API] payments record created:', paymentRecord.id);
+      log.info('[Manual Payment API] payments record created:', paymentRecord.id);
     }
 
     // ── Calculate new amounts (numeric-safe) ────────────────────────────────
@@ -184,7 +195,7 @@ export async function POST(request: NextRequest) {
     const allSchedulePaid = (unpaidCount ?? 1) === 0;
     const isComplete = allSchedulePaid || newAmountRemaining <= 0.5;
 
-    console.log('[Manual Payment API] Calculated amounts:', {
+    log.info('[Manual Payment API] Calculated amounts:', {
       paymentAmount: paymentAmountNum,
       currentAmountPaid,
       loanTotal,
@@ -203,7 +214,7 @@ export async function POST(request: NextRequest) {
       completed_at: isComplete ? new Date().toISOString() : null,
     };
 
-    console.log('[Manual Payment API] Updating loan with:', loanUpdateData);
+    log.info('[Manual Payment API] Updating loan with:', loanUpdateData);
 
     const { data: updatedLoan, error: updateLoanError } = await serviceClient
       .from('loans')
@@ -213,21 +224,21 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (updateLoanError) {
-      console.error('[Manual Payment API] Error updating loan:', updateLoanError);
+      log.error('[Manual Payment API] Error updating loan:', updateLoanError);
       return NextResponse.json(
         { error: 'Payment recorded but failed to update loan totals', details: updateLoanError.message },
         { status: 500 }
       );
     }
 
-    console.log('[Manual Payment API] Loan updated successfully:', {
+    log.info('[Manual Payment API] Loan updated successfully:', {
       loanId,
       newAmountPaid: updatedLoan?.amount_paid,
       newAmountRemaining: updatedLoan?.amount_remaining,
       status: updatedLoan?.status,
     });
 
-    console.log(
+    log.info(
       `Manual payment processed: Loan ${loanId}, Payment ${paymentId}, Amount: ${paymentAmountNum}, New total paid: ${newAmountPaid}`
     );
 
@@ -295,9 +306,9 @@ export async function POST(request: NextRequest) {
           html: lenderEmailContent.html,
         });
 
-        console.log(`Payment notification email sent to lender: ${lenderEmail}`);
+        log.info(`Payment notification email sent to lender: ${lenderEmail}`);
       } catch (emailError) {
-        console.error('Failed to send lender email:', emailError);
+        log.error('Failed to send lender email:', emailError);
       }
     }
 
@@ -320,9 +331,9 @@ export async function POST(request: NextRequest) {
           html: borrowerEmailContent.html,
         });
 
-        console.log(`Payment confirmation email sent to borrower: ${borrowerEmail}`);
+        log.info(`Payment confirmation email sent to borrower: ${borrowerEmail}`);
       } catch (emailError) {
-        console.error('Failed to send borrower email:', emailError);
+        log.error('Failed to send borrower email:', emailError);
       }
     }
 
@@ -365,17 +376,17 @@ export async function POST(request: NextRequest) {
         paymentMethod: 'manual',
       });
 
-      console.log('[Manual Payment] Trust score update result:', result);
+      log.info('[Manual Payment] Trust score update result:', result);
 
       if (!result.trustScoreUpdated) {
-        console.error('[Manual Payment] Trust score failed to update:', result.error);
+        log.error('[Manual Payment] Trust score failed to update:', result.error);
       }
 
       if (result.loanCompleted) {
-        console.log('[Manual Payment] 🎉 Loan completed, tier/eligibility updated!');
+        log.info('[Manual Payment] 🎉 Loan completed, tier/eligibility updated!');
       }
     } catch (trustError) {
-      console.error('[Manual Payment] Failed to update trust score:', trustError);
+      log.error('[Manual Payment] Failed to update trust score:', trustError);
       // Don't fail the payment if trust score update fails
     }
 
@@ -386,8 +397,8 @@ export async function POST(request: NextRequest) {
       isComplete,
       message: 'Payment recorded successfully',
     });
-  } catch (error: any) {
-    console.error('Error processing manual payment:', error);
-    return NextResponse.json({ error: error.message || 'Failed to process payment' }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error processing manual payment:', error);
+    return NextResponse.json({ error: (error as Error).message || 'Failed to process payment' }, { status: 500 });
   }
 }

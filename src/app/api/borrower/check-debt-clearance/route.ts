@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
 import { onVoucheeDefaultResolved } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('borrower-check-debt-clearance');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const RESTRICTION_DAYS = 90;
@@ -68,13 +71,13 @@ export async function POST(request: NextRequest) {
       .in('status', ['pending', 'overdue', 'failed', 'defaulted']);
 
     if (paymentsError) {
-      console.error('[DebtClearance] Error fetching payments:', paymentsError);
+      log.error('[DebtClearance] Error fetching payments:', paymentsError);
       return NextResponse.json({ error: 'Failed to check payments' }, { status: 500 });
     }
 
     const totalOutstanding = outstandingPayments?.reduce((sum, p) => sum + (p.amount || 0), 0) || 0;
 
-    console.log(`[DebtClearance] Borrower ${borrower.id} has ${loan.currency} ${totalOutstanding} outstanding`);
+    log.info(`[DebtClearance] Borrower ${borrower.id} has ${loan.currency} ${totalOutstanding} outstanding`);
 
     if (totalOutstanding > 0) {
       // Still has debt
@@ -94,14 +97,14 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const restrictionEndsAt = new Date(now.getTime() + RESTRICTION_DAYS * 24 * 60 * 60 * 1000);
 
-    console.log(`[DebtClearance] Debt cleared for borrower ${borrower.id}. Starting 90-day restriction.`);
+    log.info(`[DebtClearance] Debt cleared for borrower ${borrower.id}. Starting 90-day restriction.`);
 
     // ── Notify vouchers that this default has been resolved (non-blocking) ─
     // This may unlock vouchers who had their vouching ability suspended
     // because of this specific default.
     onVoucheeDefaultResolved(serviceSupabase, borrower.id, loan_id)
-      .then(() => console.log(`[DebtClearance] Voucher unlock pipeline complete`))
-      .catch(err => console.error(`[DebtClearance] Voucher unlock error:`, err));
+      .then(() => log.info(`[DebtClearance] Voucher unlock pipeline complete`))
+      .catch(err => log.error(`[DebtClearance] Voucher unlock error:`, err));
 
     // Update borrower - still blocked but with restriction end date
     await serviceSupabase
@@ -180,7 +183,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('[DebtClearance] Error:', error);
+    log.error('[DebtClearance] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

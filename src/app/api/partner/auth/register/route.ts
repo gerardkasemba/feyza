@@ -8,6 +8,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret, toPartnerUser } from '../../_auth';
+import { logger } from '@/lib/logger';
+import { bootstrapTrustScore } from '@/lib/users/user-lifecycle-service';
+
+const log = logger('partner-auth-register');
 
 export async function POST(req: NextRequest) {
   const guard = verifyPartnerSecret(req);
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (authError || !authData.user) {
-      console.error('[Partner /auth/register] Auth error:', authError);
+      log.error('[Partner /auth/register] Auth error:', authError);
       return NextResponse.json(
         { error: authError?.message ?? 'Registration failed' },
         { status: 400 },
@@ -84,7 +88,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (profileError) {
-      console.error('[Partner /auth/register] Profile error:', profileError);
+      log.error('[Partner /auth/register] Profile error:', profileError);
       // Rollback: delete the auth user we just created
       await serviceClient.auth.admin.deleteUser(authData.user.id);
       return NextResponse.json(
@@ -92,6 +96,10 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    // Bootstrap trust score (replaces create_trust_score_on_user_create DB trigger)
+    // Partner register inserts directly into users, bypassing the auth trigger chain
+    await bootstrapTrustScore(serviceClient as any, authData.user.id);
 
     // Sign in to get session tokens
     const anonClient = createClient(
@@ -147,8 +155,8 @@ export async function POST(req: NextRequest) {
       expires_in:    sessionData.session.expires_in ?? 3600,
       user:          userRow ? toPartnerUser(userRow) : null,
     }, { status: 201 });
-  } catch (err: any) {
-    console.error('[Partner /auth/register]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /auth/register]', err);
     return NextResponse.json({ error: 'Registration failed' }, { status: 500 });
   }
 }

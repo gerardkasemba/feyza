@@ -6,12 +6,9 @@ import { Button, Badge } from '@/components/ui';
 import {
   Mail,
   Phone,
-  MapPin,
   MessageCircle,
-  Clock,
   Send,
   CheckCircle,
-  Building2,
   HelpCircle,
   Briefcase,
 } from 'lucide-react';
@@ -29,17 +26,9 @@ const contactMethods = [
     icon: Phone,
     title: 'Call Us',
     description: 'Mon-Fri, 9am-5pm EST',
-    value: '+1 (555) 123-4567',
-    action: 'tel:+15551234567',
+    value: '+1 978 918 0688',
+    action: 'tel:+19789180688',
     color: 'green',
-  },
-  {
-    icon: MapPin,
-    title: 'Visit Us',
-    description: 'Our headquarters',
-    value: '123 Finance St, New York, NY 10001',
-    action: '#',
-    color: 'purple',
   },
 ];
 
@@ -61,16 +50,30 @@ export default function ContactPage() {
   });
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
-    
-    // Simulate form submission
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    
-    setLoading(false);
-    setSubmitted(true);
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data.error || 'Failed to send. Please try again or email us at support@feyza.app.');
+        return;
+      }
+      setSubmitted(true);
+      setFormData({ name: '', email: '', topic: '', message: '' });
+    } catch {
+      setError('Something went wrong. Please try again or email us at support@feyza.app.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -101,7 +104,6 @@ export default function ContactPage() {
               const colorClasses = {
                 blue: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
                 green: 'bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400',
-                purple: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
               }[method.color];
 
               return (
@@ -222,6 +224,11 @@ export default function ContactPage() {
                     />
                   </div>
 
+                  {error && (
+                    <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-3 rounded-xl">
+                      {error}
+                    </p>
+                  )}
                   <Button
                     type="submit"
                     size="lg"

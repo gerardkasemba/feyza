@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+import { bootstrapTrustScore } from '@/lib/users/user-lifecycle-service';
+
+const log = logger('auth-user');
 
 /**
  * POST: Create user record in users table after signup
@@ -17,37 +21,57 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { fullName, userType } = body;
 
-    // Use service role to bypass RLS for user creation
     const serviceClient = await createServiceRoleClient();
 
-    // Create (or update) the user record — upsert is safe on conflict
+    // Only set user_type when explicitly provided; never overwrite 'business' with default 'individual'
+    const { data: existing } = await serviceClient
+      .from('users')
+      .select('full_name, user_type')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    // Only set full_name when a non-empty value is provided; empty string must not overwrite
+    const nextFullName =
+      fullName !== undefined && fullName !== null && String(fullName).trim() !== ''
+        ? String(fullName).trim()
+        : (existing?.full_name ?? user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'User');
+    const nextUserType =
+      userType !== undefined && userType !== null && userType !== ''
+        ? userType
+        : (existing?.user_type ?? user.user_metadata?.user_type ?? 'individual');
+
     const { error: upsertError } = await serviceClient
       .from('users')
       .upsert(
         {
           id: user.id,
           email: user.email,
-          full_name: fullName || user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          user_type: userType || user.user_metadata?.user_type || 'individual',
+          full_name: nextFullName,
+          user_type: nextUserType,
           updated_at: new Date().toISOString(),
         },
         {
           onConflict: 'id',
-          ignoreDuplicates: false, // Always update full_name/user_type if they changed
+          ignoreDuplicates: false,
         }
       );
 
     if (upsertError) {
-      console.error('[Auth] Error upserting user record:', upsertError);
+      log.error('[Auth] Error upserting user record:', upsertError);
       return NextResponse.json({ error: upsertError.message }, { status: 500 });
     }
 
-    console.log(`[Auth] User record ensured for ${user.id}`);
+    log.info(`[Auth] User record ensured for ${user.id}`);
+
+    // Bootstrap trust score for new users (replaces create_trust_score_on_user_create DB trigger)
+    // Using upsert so safe to call on every signup attempt - no-ops if score already exists
+    bootstrapTrustScore(serviceClient as any, user.id)
+      .catch(err => log.error('[Auth] bootstrapTrustScore error:', err));
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error in user creation:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error in user creation:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -83,7 +107,7 @@ export async function GET(request: NextRequest) {
       .rpc('check_email_exists', { email_to_check: normalizedEmail });
 
     if (!functionError && functionResult === true) {
-      console.log(`[Auth Check] Email ${normalizedEmail} exists (via function)`);
+      log.info(`[Auth Check] Email ${normalizedEmail} exists (via function)`);
       return NextResponse.json({ 
         exists: true,
         message: 'Email already registered'
@@ -98,7 +122,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (existingUser) {
-      console.log(`[Auth Check] Email ${normalizedEmail} exists in users table`);
+      log.info(`[Auth Check] Email ${normalizedEmail} exists in users table`);
       return NextResponse.json({ 
         exists: true,
         message: 'Email already registered'
@@ -108,7 +132,7 @@ export async function GET(request: NextRequest) {
     // Method 3: Final fallback - use admin API to list and search
     // This is slower but works without the database function
     if (functionError) {
-      console.log('[Auth Check] Function not available, using admin API fallback');
+      log.info('[Auth Check] Function not available, using admin API fallback');
       try {
         const { data: { users }, error: listError } = await serviceClient.auth.admin.listUsers({
           page: 1,
@@ -118,7 +142,7 @@ export async function GET(request: NextRequest) {
         if (!listError && users) {
           const userExists = users.some(u => u.email?.toLowerCase() === normalizedEmail);
           if (userExists) {
-            console.log(`[Auth Check] Email ${normalizedEmail} exists in auth.users (admin API)`);
+            log.info(`[Auth Check] Email ${normalizedEmail} exists in auth.users (admin API)`);
             return NextResponse.json({ 
               exists: true,
               message: 'Email already registered'
@@ -126,17 +150,17 @@ export async function GET(request: NextRequest) {
           }
         }
       } catch (adminError) {
-        console.error('[Auth Check] Admin API error:', adminError);
+        log.error('[Auth Check] Admin API error:', adminError);
       }
     }
 
-    console.log(`[Auth Check] Email ${normalizedEmail} is available`);
+    log.info(`[Auth Check] Email ${normalizedEmail} is available`);
     return NextResponse.json({ 
       exists: false,
       message: 'Email available'
     });
-  } catch (error: any) {
-    console.error('[Auth Check] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Auth Check] Error:', error);
     // On error, return false but log it - don't block registration
     // The actual signup will fail if email exists anyway
     return NextResponse.json({ 

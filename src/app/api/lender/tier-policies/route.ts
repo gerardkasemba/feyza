@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClientDirect } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('lender-tier-policies');
 
 const VALID_TIERS = ['tier_1', 'tier_2', 'tier_3', 'tier_4'] as const;
 
@@ -22,9 +25,9 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ policies: policies ?? [] });
-  } catch (error: any) {
-    console.error('[GET /api/lender/tier-policies]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[GET /api/lender/tier-policies]', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -80,8 +83,8 @@ export async function PUT(request: NextRequest) {
     if (error) throw error;
 
     return NextResponse.json({ policies: data });
-  } catch (error: any) {
-    console.error('[PUT /api/lender/tier-policies]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[PUT /api/lender/tier-policies]', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

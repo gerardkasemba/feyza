@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -80,39 +82,40 @@ export default function AdminBusinessesPage() {
       const { data, count, error } = await query;
 
       if (error) {
-        console.error('Error fetching businesses:', error);
+        log.error('Error fetching businesses:', error);
         setBusinesses([]);
       } else {
         setBusinesses(data || []);
         setTotalCount(count || 0);
       }
     } catch (err) {
-      console.error('Error in fetchBusinesses:', err);
+      log.error('Error in fetchBusinesses:', err);
       setBusinesses([]);
     }
     setLoading(false);
   };
 
   const handleVerify = async (businessId: string) => {
-    const { error } = await supabase
-      .from('business_profiles')
-      .update({ is_verified: true, verification_status: 'approved' })
-      .eq('id', businessId);
-
-    if (!error) {
+    // Use API route so syncBusinessToLenderPrefs fires (replaces tr_sync_business_lender_prefs trigger)
+    const res = await fetch('/api/admin/business/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business_id: businessId, action: 'approve' }),
+    });
+    if (res.ok) {
       fetchBusinesses();
     }
   };
 
   const handleReject = async (businessId: string) => {
     if (!confirm('Reject this business verification?')) return;
-    
-    const { error } = await supabase
-      .from('business_profiles')
-      .update({ is_verified: false, verification_status: 'rejected' })
-      .eq('id', businessId);
-
-    if (!error) {
+    // Use API route so syncBusinessToLenderPrefs fires (replaces tr_sync_business_lender_prefs trigger)
+    const res = await fetch('/api/admin/business/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business_id: businessId, action: 'reject' }),
+    });
+    if (res.ok) {
       fetchBusinesses();
     }
   };

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createServerSupabaseClient } from '@/lib/supabase/server'
 import React from 'react'
 import { Document, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer'
+import type { Loan } from '@/types'
 
 export const runtime = 'nodejs'
 
@@ -312,21 +313,21 @@ export async function GET() {
 
   // ---- analytics ----
   const totalLoans = loans.length
-  const activeLoans = loans.filter((l: any) => l.status === 'active')
-  const completedLoans = loans.filter((l: any) => l.status === 'completed')
-  const defaultedLoans = loans.filter((l: any) => l.status === 'defaulted')
-  const cancelledLoans = loans.filter((l: any) => l.status === 'cancelled')
+  const activeLoans = loans.filter((l: Loan) => l.status === 'active')
+  const completedLoans = loans.filter((l: Loan) => l.status === 'completed')
+  const defaultedLoans = loans.filter((l: Loan) => l.status === 'defaulted')
+  const cancelledLoans = loans.filter((l: Loan) => l.status === 'cancelled')
 
-  const totalLent = loans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
-  const totalInterestEarned = completedLoans.reduce((sum: number, l: any) => sum + Number(l.total_interest || 0), 0)
-  const totalOutstanding = activeLoans.reduce((sum: number, l: any) => sum + Number(l.amount_remaining || 0), 0)
+  const totalLent = loans.reduce((sum: number, l: Loan) => sum + Number(l.amount || 0), 0)
+  const totalInterestEarned = completedLoans.reduce((sum: number, l: Loan) => sum + Number(l.total_interest || 0), 0)
+  const totalOutstanding = activeLoans.reduce((sum: number, l: Loan) => sum + Number(l.amount_remaining || 0), 0)
 
   const averageLoanAmount = totalLoans > 0 ? totalLent / totalLoans : 0
   const completionRate = totalLoans > 0 ? (completedLoans.length / totalLoans) * 100 : 0
   const defaultRate = totalLoans > 0 ? (defaultedLoans.length / totalLoans) * 100 : 0
 
   const avgInterestRate = loans.length > 0
-    ? loans.reduce((sum: number, l: any) => sum + Number(l.interest_rate || 0), 0) / loans.length
+    ? loans.reduce((sum: number, l: Loan) => sum + Number(l.interest_rate || 0), 0) / loans.length
     : 0
 
   const capitalPool = Number(lenderPrefs?.capital_pool || 0)
@@ -344,7 +345,7 @@ export async function GET() {
     monthlyData[key] = { loans: 0, amount: 0, interest: 0, completed: 0 }
   }
 
-  loans.forEach((loan: any) => {
+  loans.forEach((loan: Loan) => {
     const date = loan.created_at ? new Date(loan.created_at) : null
     if (!date) return
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -484,7 +485,7 @@ export async function GET() {
               View,
               { style: styles.summaryRow },
               React.createElement(Text, { style: styles.summaryLabel }, 'Active Loans'),
-              React.createElement(Text, { style: styles.summaryValue }, `${activeLoans.length} loans • ${money(activeLoans.reduce((s: number, l: any) => s + Number(l.amount || 0), 0))}`)
+              React.createElement(Text, { style: styles.summaryValue }, `${activeLoans.length} loans • ${money(activeLoans.reduce((s: number, l: Loan) => s + Number(l.amount || 0), 0))}`)
             ),
             React.createElement(
               View,

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createWebhookSubscription, listWebhookSubscriptions } from '@/lib/dwolla';
+import { logger } from '@/lib/logger';
+
+const log = logger('dwolla-setup-webhook');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -14,7 +17,7 @@ export async function POST(request: NextRequest) {
 
     const webhookUrl = `${APP_URL}/api/dwolla/webhook`;
     
-    console.log('Creating Dwolla webhook subscription for:', webhookUrl);
+    log.info('Creating Dwolla webhook subscription for:', webhookUrl);
     
     const subscriptionUrl = await createWebhookSubscription(webhookUrl);
     
@@ -24,10 +27,10 @@ export async function POST(request: NextRequest) {
       webhook_url: webhookUrl,
     });
 
-  } catch (error: any) {
-    console.error('Error setting up webhook:', error);
+  } catch (error: unknown) {
+    log.error('Error setting up webhook:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to set up webhook' },
+      { error: (error as Error).message || 'Failed to set up webhook' },
       { status: 500 }
     );
   }
@@ -46,10 +49,10 @@ export async function GET(request: NextRequest) {
       })),
     });
 
-  } catch (error: any) {
-    console.error('Error listing webhooks:', error);
+  } catch (error: unknown) {
+    log.error('Error listing webhooks:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to list webhooks' },
+      { error: (error as Error).message || 'Failed to list webhooks' },
       { status: 500 }
     );
   }

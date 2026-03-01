@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('fund_page');
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -53,7 +55,7 @@ export default function FundLoanPage() {
   const [confirmManualSent, setConfirmManualSent] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Borrower's preferred payment method (from user_payment_methods table)
+  // Borrower's preferred payment method (from API so lender can see it despite RLS)
   const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<{
     slug: string;
     name: string;
@@ -61,6 +63,11 @@ export default function FundLoanPage() {
     account_name?: string; // Zelle: recipient's full name
   } | null>(null);
   const [loadingPreferredMethod, setLoadingPreferredMethod] = useState(false);
+  // Fund-details from API (borrower name + email when loan.borrower is hidden by RLS)
+  const [fundDetails, setFundDetails] = useState<{
+    borrowerName: string;
+    borrowerEmail: string | null;
+  } | null>(null);
 
   // Check payment providers
   useEffect(() => {
@@ -78,14 +85,14 @@ export default function FundLoanPage() {
           const data = await response.json();
           // Check if Dwolla (ACH auto-pay) is enabled
           const dwollaEnabled = data.dwollaEnabled === true || data.autoPayEnabled === true;
-          console.log('[Fund Page] Payment providers check:', { dwollaEnabled, data });
+          log.debug('[Fund Page] Payment providers check:', { dwollaEnabled, data });
           setIsDwollaEnabled(dwollaEnabled);
         } else {
-          console.warn('[Fund Page] Payment providers API returned non-OK status:', response.status);
+          log.warn('[Fund Page] Payment providers API returned non-OK status:', response.status);
           setIsDwollaEnabled(false);
         }
       } catch (err) {
-        console.error('[Fund Page] Error checking providers:', err);
+        log.error('[Fund Page] Error checking providers:', err);
         // Default to manual payment if we can't check
         setIsDwollaEnabled(false);
       } finally {
@@ -154,58 +161,35 @@ export default function FundLoanPage() {
     fetchData();
   }, [loanId, router]);
 
-  // Fetch borrower's preferred payment method from user_payment_methods table
+  // Fetch borrower name + preferred payment method from API (works even when RLS hides loan.borrower)
   useEffect(() => {
-    const fetchPreferredMethod = async () => {
-      if (!loan?.borrower?.id) return;
+    const fetchFundDetails = async () => {
+      if (!loanId || !loan?.id) return;
 
       setLoadingPreferredMethod(true);
+      setFundDetails(null);
+      setPreferredPaymentMethod(null);
       try {
-        const supabase = createClient();
-
-        const { data: methods } = await supabase
-          .from('user_payment_methods')
-          .select(`
-            account_identifier,
-            account_name,
-            is_default,
-            payment_provider_id (
-              slug,
-              name,
-              is_enabled
-            )
-          `)
-          .eq('user_id', loan.borrower.id)
-          .eq('is_active', true)
-          .order('is_default', { ascending: false })
-          .limit(1);
-
-        const row = methods?.[0];
-        if (!row) return;
-
-        // Supabase returns the join as either an object or array depending on key type
-        // Normalise to a plain object safely
-        const providerRaw = row.payment_provider_id;
-        const provider = Array.isArray(providerRaw) ? providerRaw[0] : providerRaw;
-
-        if (provider?.is_enabled) {
-          setPreferredPaymentMethod({
-            slug: provider.slug as string,
-            name: provider.name as string,
-            account_identifier: row.account_identifier as string,
-            account_name: (row.account_name as string) || undefined,
-          });
-          setSelectedApp(provider.slug as string);
+        const res = await fetch(`/api/loans/${loanId}/fund-details`);
+        if (!res.ok) return;
+        const data = await res.json();
+        setFundDetails({
+          borrowerName: data.borrowerName || 'the borrower',
+          borrowerEmail: data.borrowerEmail ?? null,
+        });
+        if (data.preferredPaymentMethod) {
+          setPreferredPaymentMethod(data.preferredPaymentMethod);
+          setSelectedApp(data.preferredPaymentMethod.slug);
         }
       } catch (err) {
-        console.error('Error fetching preferred payment method:', err);
+        log.error('Error fetching fund details:', err);
       } finally {
         setLoadingPreferredMethod(false);
       }
     };
 
-    fetchPreferredMethod();
-  }, [loan?.borrower?.id]);
+    fetchFundDetails();
+  }, [loanId, loan?.id]);
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
@@ -213,7 +197,7 @@ export default function FundLoanPage() {
       setCopied(type);
       setTimeout(() => setCopied(null), 2000);
     } catch (err) {
-      console.error('Failed to copy:', err);
+      log.error('Failed to copy:', err);
     }
   };
 
@@ -259,8 +243,8 @@ export default function FundLoanPage() {
 
       setSuccess(true);
       setTimeout(() => router.push(`/loans/${loanId}`), 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fund loan');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to fund loan');
     } finally {
       setIsFunding(false);
     }
@@ -297,7 +281,7 @@ export default function FundLoanPage() {
           .upload(fileName, receiptFile);
         
         if (uploadError) {
-          console.error('Upload error:', uploadError);
+          log.error('Upload error:', uploadError);
         } else if (uploadData) {
           const { data: { publicUrl } } = supabase.storage
             .from('payment-receipts')
@@ -327,8 +311,8 @@ export default function FundLoanPage() {
 
       setSuccess(true);
       setTimeout(() => router.push(`/loans/${loanId}`), 2000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fund loan');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to fund loan');
     } finally {
       setIsFunding(false);
     }
@@ -346,6 +330,12 @@ export default function FundLoanPage() {
   if (!loan) return null;
 
   const borrower = loan.borrower;
+  const borrowerDisplayName =
+    fundDetails?.borrowerName ??
+    loan.borrower_name ??
+    borrower?.full_name ??
+    'the borrower';
+  const borrowerDisplayEmail = fundDetails?.borrowerEmail ?? borrower?.email ?? null;
   const hasPreferredPaymentMethod = !!preferredPaymentMethod;
 
   // Helper: get icon and display prefix for a payment provider slug
@@ -410,7 +400,7 @@ export default function FundLoanPage() {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-neutral-900 dark:text-white">Fund This Loan</h1>
-                <p className="text-neutral-500">Send {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name}</p>
+                <p className="text-neutral-500">Send {formatCurrency(loan.amount, loan.currency)} to {borrowerDisplayName}</p>
               </div>
             </div>
 
@@ -422,7 +412,7 @@ export default function FundLoanPage() {
               <div className="grid grid-cols-2 gap-3 text-sm">
                 <div>
                   <span className="text-neutral-500">Borrower</span>
-                  <p className="font-medium text-neutral-900 dark:text-white">{borrower?.full_name || 'Unknown'}</p>
+                  <p className="font-medium text-neutral-900 dark:text-white">{borrowerDisplayName}</p>
                 </div>
                 <div>
                   <span className="text-neutral-500">Amount</span>
@@ -517,7 +507,7 @@ export default function FundLoanPage() {
                 </h3>
 
                 <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                  Send {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name}'s preferred payment method:
+                  Send {formatCurrency(loan.amount, loan.currency)} to {borrowerDisplayName}'s preferred payment method:
                 </p>
 
                 {hasPreferredPaymentMethod ? (() => {
@@ -532,7 +522,7 @@ export default function FundLoanPage() {
                   // Zelle: pull full contact info from borrower profile (legacy fields)
                   const zelleEmail = slug === 'zelle' ? (borrower?.zelle_email || null) : null;
                   const zellePhone = slug === 'zelle' ? (borrower?.zelle_phone || null) : null;
-                  const zelleName = slug === 'zelle' ? (account_name || borrower?.full_name || null) : null;
+                  const zelleName = slug === 'zelle' ? (account_name || borrowerDisplayName || null) : null;
 
                   return (
                     <>
@@ -703,7 +693,7 @@ export default function FundLoanPage() {
                           className="w-5 h-5 mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-primary-600"
                         />
                         <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                          I confirm that I have sent {formatCurrency(loan.amount, loan.currency)} to {borrower?.full_name} via {name} ({displayIdentifier})
+                          I confirm that I have sent {formatCurrency(loan.amount, loan.currency)} to {borrowerDisplayName} via {name} ({displayIdentifier})
                         </span>
                       </label>
                     </>
@@ -718,16 +708,16 @@ export default function FundLoanPage() {
                           No preferred payment method set
                         </p>
                         <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                          {borrower?.full_name} hasn't set a preferred payment method yet.
+                          {borrowerDisplayName} hasn't set a preferred payment method yet.
                           Please contact them to get their Cash App, Venmo, or Zelle details.
                         </p>
-                        {borrower?.email && (
+                        {borrowerDisplayEmail && (
                           <div className="mt-3 flex items-center gap-2">
                             <span className="text-sm text-amber-700 dark:text-amber-400">Email:</span>
-                            <span className="font-medium text-amber-800 dark:text-amber-300">{borrower.email}</span>
+                            <span className="font-medium text-amber-800 dark:text-amber-300">{borrowerDisplayEmail}</span>
                             <button
                               type="button"
-                              onClick={() => copyToClipboard(borrower.email, 'email')}
+                              onClick={() => copyToClipboard(borrowerDisplayEmail, 'email')}
                               className="p-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 rounded"
                             >
                               {copied === 'email' ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-amber-600" />}

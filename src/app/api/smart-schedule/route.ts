@@ -6,6 +6,9 @@ import {
   type PayFrequency,
   type ComfortLevel,
 } from '@/lib/smartSchedule';
+import { logger } from '@/lib/logger';
+
+const log = logger('smart-schedule');
 
 // POST - Calculate smart repayment schedule
 export async function POST(request: NextRequest) {
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
       .single();
     
     if (error && error.code !== 'PGRST116') {
-      console.error('Error fetching financial profile:', error);
+      log.error('Error fetching financial profile:', error);
       return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
     }
     
@@ -94,7 +97,7 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json(result);
   } catch (error) {
-    console.error('Error in POST /api/smart-schedule:', error);
+    log.error('Error in POST /api/smart-schedule:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

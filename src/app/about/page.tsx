@@ -5,81 +5,59 @@ import Link from 'next/link';
 import { Navbar, Footer } from '@/components/layout';
 import { Button, Badge } from '@/components/ui';
 import {
-  Heart,
   Users,
   Shield,
+  FileText,
   Zap,
+  Heart,
   Globe,
   Target,
-  Award,
   ArrowRight,
   CheckCircle,
   Linkedin,
-  Twitter,
+  MapPin,
+  Award,
 } from 'lucide-react';
-
-const values = [
-  {
-    icon: Heart,
-    title: 'People First',
-    description: 'We believe everyone deserves access to fair financial services, regardless of their credit history.',
-  },
-  {
-    icon: Shield,
-    title: 'Trust & Security',
-    description: 'Your security is our priority. We use bank-level encryption and never compromise on protecting your data.',
-  },
-  {
-    icon: Zap,
-    title: 'Simplicity',
-    description: 'Finance shouldn\'t be complicated. We make borrowing and lending as simple as sending a message.',
-  },
-  {
-    icon: Globe,
-    title: 'Accessibility',
-    description: 'We\'re building a platform that works for everyone, everywhere, on any device.',
-  },
-];
-
-const stats = [
-  { value: '$5M+', label: 'Loans Facilitated' },
-  { value: '10,000+', label: 'Happy Users' },
-  { value: '95%', label: 'Repayment Rate' },
-  { value: '50+', label: 'States Served' },
-];
 
 const team = [
   {
-    name: 'Sarah Chen',
-    role: 'CEO & Co-Founder',
-    bio: 'Former fintech executive with 15 years in consumer lending.',
-    image: 'SC',
+    name: 'Gerard Kasemba',
+    role: 'Co-Founder, Developer & CEO',
+    links: [
+      { href: 'https://www.linkedin.com/in/gerard-kasemba-9374a367/', label: 'LinkedIn', icon: Linkedin },
+      { href: 'https://x.com/MzeeGerard', label: 'X', icon: null },
+    ],
   },
   {
-    name: 'Marcus Johnson',
-    role: 'CTO & Co-Founder',
-    bio: 'Engineering leader from Stripe and Square.',
-    image: 'MJ',
-  },
-  {
-    name: 'Emily Rodriguez',
-    role: 'Head of Operations',
-    bio: 'Previously scaled operations at multiple fintech startups.',
-    image: 'ER',
-  },
-  {
-    name: 'David Kim',
-    role: 'Head of Product',
-    bio: 'Product leader focused on user-centric financial tools.',
-    image: 'DK',
+    name: 'Dorcas Sami',
+    role: 'Co-Founder & CFO',
+    links: [
+      { href: 'https://www.linkedin.com/in/dorcas-sami-829229309/', label: 'LinkedIn', icon: Linkedin },
+    ],
   },
 ];
 
-const milestones = [
-  { year: '2022', event: 'Feyza founded with a mission to democratize lending' },
-  { year: '2023', event: 'Launched platform and processed first $1M in loans' },
-  { year: '2023', event: 'Expanded to business lenders nationwide' },
-  { year: '2024', event: 'Reached 10,000 users and $5M in facilitated loans' },
+const differentPoints = [
+  {
+    icon: Users,
+    title: 'Community-Based Trust',
+    description: 'Instead of relying only on traditional credit scores, Feyza introduces a trust model: vouching systems, reputation tiers, behavioral scoring, and transparent repayment history. Trust is earned, visible, and measurable.',
+  },
+  {
+    icon: Globe,
+    title: 'Diaspora-Backed Micro-Lending',
+    description: 'We enable structured lending between diaspora supporters, African entrepreneurs, and community members—with proper documentation, repayment tracking, and accountability.',
+  },
+  {
+    icon: FileText,
+    title: 'Structured & Transparent Agreements',
+    description: 'Every loan on Feyza includes clear terms, repayment schedule, defined interest, and a digital agreement. No confusion. No hidden rules.',
+  },
+  {
+    icon: Zap,
+    title: 'Technology with Purpose',
+    description: 'We integrate secure payment rails, bank connections, mobile money support (where applicable), and automated repayment tracking. Our goal is not just to move money—but to build financial dignity.',
+  },
 ];
 
 export default function AboutPage() {
@@ -94,86 +72,83 @@ export default function AboutPage() {
           <Badge className="mb-6 bg-white/20 text-white border-0">
             About Feyza
           </Badge>
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6">
-            Making Lending
-            <span className="block text-green-200">Human Again</span>
+          <h1 className="text-7xl md:text-7xl lg:text-6xl font-bold text-white mb-6">
+            Community-Powered Lending
+            <span className="block text-green-200">Built on Trust</span>
           </h1>
-          <p className="text-xl text-green-100 max-w-3xl mx-auto mb-8">
-            We're on a mission to create a fairer, more accessible financial system where anyone can borrow or lend money with confidence.
+          <p className="text-xl text-green-100 max-w-3xl mx-auto">
+            Feyza is a community-powered lending platform built on trust, accountability, and real human relationships.
+          </p>
+          <p className="text-lg text-green-200/90 max-w-3xl mx-auto mt-4">
+            We believe access to capital should not depend solely on a credit score, paperwork, or geography. Around the world—especially across Africa and the diaspora—trust has always been currency. Feyza turns that trust into a structured, transparent financial system.
           </p>
         </div>
       </section>
 
-      {/* Mission */}
+      {/* Why We Exist */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                Our Mission
-              </Badge>
-              <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-6">
-                Democratizing Access to Capital
-              </h2>
-              <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-6">
-                Traditional lending is broken. Credit scores don't tell the whole story, and millions of people are locked out of fair financial services.
-              </p>
-              <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8">
-                Feyza is different. We connect people directly—borrowers with lenders who understand their needs. Our reputation-based system rewards responsible behavior, creating opportunities for everyone to build their financial future.
-              </p>
-              <div className="flex flex-wrap gap-4">
-                {['No credit score required', 'Build your reputation', 'Transparent terms'].map((item) => (
-                  <div key={item} className="flex items-center gap-2">
-                    <CheckCircle className="w-5 h-5 text-green-500" />
-                    <span className="text-neutral-700 dark:text-neutral-300">{item}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              {stats.map((stat, i) => (
-                <div key={i} className="bg-green-50 dark:bg-green-900/20 rounded-2xl p-6 text-center">
-                  <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-1">
-                    {stat.value}
-                  </div>
-                  <div className="text-neutral-600 dark:text-neutral-400 text-sm">
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            Why We Exist
+          </Badge>
+          <h2 className="text-3xl md:text-7xl font-bold text-neutral-900 dark:text-white mb-6">
+            Bridging the Gap
+          </h2>
+          <p className="text-lg text-neutral-600 dark:text-neutral-300 mb-6">
+            Millions of entrepreneurs and individuals have strong character, strong communities, and strong ideas—but limited access to traditional banking.
+          </p>
+          <p className="text-lg text-neutral-600 dark:text-neutral-300 mb-6">
+            At the same time, members of the diaspora want to support businesses and people back home, but lack:
+          </p>
+          <ul className="space-y-2 text-lg text-neutral-600 dark:text-neutral-300 mb-8">
+            {['Transparency', 'Security', 'Structured repayment systems', 'Legal clarity'].map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xl font-medium text-neutral-900 dark:text-white">
+            Feyza bridges that gap.
+          </p>
+          <p className="text-lg text-neutral-600 dark:text-neutral-300 mt-4">
+            We combine technology, community validation, and structured agreements to make lending safer, smarter, and more human.
+          </p>
         </div>
       </section>
 
-      {/* Values */}
-      <section className="py-20 bg-neutral-50 dark:bg-neutral-900">
+      {/* What Makes Feyza Different */}
+      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-              Our Values
+              What Makes Us Different
             </Badge>
-            <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-4">
-              What We Stand For
+            <h2 className="text-3xl md:text-7xl font-bold text-neutral-900 dark:text-white mb-4">
+              What Makes Feyza Different
             </h2>
-            <p className="text-lg text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              These principles guide everything we do at Feyza.
-            </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {values.map((value, i) => {
-              const Icon = value.icon;
+          <div className="grid md:grid-cols-2 gap-8">
+            {differentPoints.map((point, i) => {
+              const Icon = point.icon;
               return (
-                <div key={i} className="bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700 text-center">
-                  <div className="w-14 h-14 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-                    <Icon className="w-7 h-7 text-green-600 dark:text-green-400" />
+                <div
+                  key={i}
+                  className="bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                      <Icon className="w-6 h-6 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
+                        {i + 1}. {point.title}
+                      </h3>
+                      <p className="text-neutral-600 dark:text-neutral-300 text-sm leading-relaxed">
+                        {point.description}
+                      </p>
+                    </div>
                   </div>
-                  <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
-                    {value.title}
-                  </h3>
-                  <p className="text-neutral-600 dark:text-neutral-400 text-sm">
-                    {value.description}
-                  </p>
                 </div>
               );
             })}
@@ -181,42 +156,107 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Team */}
+      {/* Vision & Mission */}
       <section className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+          <div className="grid md:grid-cols-2 gap-12">
+            <div>
+              <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                Our Vision
+              </Badge>
+              <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">
+                Where We&apos;re Headed
+              </h2>
+              <p className="text-neutral-600 dark:text-neutral-300 mb-4">
+                We envision a future where:
+              </p>
+              <ul className="space-y-2 text-neutral-600 dark:text-neutral-300">
+                {[
+                  'A young entrepreneur in Kinshasa can raise capital from Boston.',
+                  'A lender in New York can confidently support a business in Nairobi.',
+                  'Trust becomes transferable.',
+                  'Reputation becomes an asset.',
+                  'Community becomes financial infrastructure.',
+                ].map((item) => (
+                  <li key={item} className="flex items-start gap-2">
+                    <span className="text-green-500 mt-1">•</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-neutral-600 dark:text-neutral-300 mt-6 italic">
+                Feyza is not just another fintech platform. It is a step toward rebuilding financial systems around relationships, accountability, and shared growth.
+              </p>
+            </div>
+            <div>
+              <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                Our Mission
+              </Badge>
+              <h2 className="text-2xl font-bold text-neutral-900 dark:text-white mb-4">
+                Why We Build
+              </h2>
+              <ul className="space-y-3 text-lg text-neutral-600 dark:text-neutral-300">
+                <li className="flex items-start gap-2">
+                  <Target className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  To unlock capital through trust.
+                </li>
+                <li className="flex items-start gap-2">
+                  <Heart className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  To empower entrepreneurs through community.
+                </li>
+                <li className="flex items-start gap-2">
+                  <Shield className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
+                  To create financial systems that are human before they are institutional.
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Team */}
+      <section className="py-20 bg-neutral-50 dark:bg-neutral-900/50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
             <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
               Our Team
             </Badge>
-            <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-4">
-              Meet the People Behind Feyza
+            <h2 className="text-3xl md:text-7xl font-bold text-neutral-900 dark:text-white mb-4">
+              Two People. One Mission.
             </h2>
-            <p className="text-lg text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              We're a diverse team of finance, technology, and design experts united by a common goal.
+            <p className="text-neutral-600 dark:text-neutral-300">
+              There are only two people working on Feyza—and we&apos;re just getting started.
             </p>
           </div>
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {team.map((member, i) => (
-              <div key={i} className="bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700 text-center">
-                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-green-400 to-emerald-600 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-white text-2xl font-bold">{member.image}</span>
-                </div>
-                <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
+          <div className="grid md:grid-cols-2 gap-8">
+            {team.map((member) => (
+              <div
+                key={member.name}
+                className="bg-white dark:bg-neutral-800 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-700"
+              >
+                <h3 className="text-xl font-semibold text-neutral-900 dark:text-white">
                   {member.name}
                 </h3>
-                <p className="text-green-600 dark:text-green-400 text-sm mb-2">
+                <p className="text-green-600 dark:text-green-400 text-sm mb-4">
                   {member.role}
                 </p>
-                <p className="text-neutral-600 dark:text-neutral-400 text-sm mb-4">
-                  {member.bio}
-                </p>
-                <div className="flex justify-center gap-3">
-                  <a href="#" className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
-                    <Linkedin className="w-5 h-5" />
-                  </a>
-                  <a href="#" className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
-                    <Twitter className="w-5 h-5" />
-                  </a>
+                <div className="flex flex-wrap gap-3">
+                  {member.links.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm font-medium text-neutral-600 dark:text-neutral-300 hover:text-green-600 dark:hover:text-green-400"
+                    >
+                      {link.icon ? <link.icon className="w-4 h-4" /> : null}
+                      {link.label === 'X' ? (
+                        <span className="font-mono">X</span>
+                      ) : (
+                        link.label
+                      )}
+                    </a>
+                  ))}
                 </div>
               </div>
             ))}
@@ -224,45 +264,79 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Timeline */}
-      <section className="py-20 bg-neutral-50 dark:bg-neutral-900">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-              Our Journey
-            </Badge>
-            <h2 className="text-3xl md:text-4xl font-bold text-neutral-900 dark:text-white mb-4">
-              Key Milestones
-            </h2>
-          </div>
-          <div className="relative">
-            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-green-200 dark:bg-green-800" />
-            <div className="space-y-8">
-              {milestones.map((milestone, i) => (
-                <div key={i} className="relative flex gap-6">
-                  <div className="w-16 h-16 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0 z-10">
-                    <span className="text-white font-bold text-sm">{milestone.year}</span>
-                  </div>
-                  <div className="bg-white dark:bg-neutral-800 rounded-xl p-6 border border-neutral-200 dark:border-neutral-700 flex-1">
-                    <p className="text-neutral-900 dark:text-white font-medium">
-                      {milestone.event}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* Founder's Story - Gerard */}
+      <section className="py-20">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            Founder&apos;s Story
+          </Badge>
+          <h2 className="text-3xl md:text-7xl font-bold text-neutral-900 dark:text-white mb-2">
+            Gerard B. Kasemba
+          </h2>
+          <p className="flex items-center gap-2 text-neutral-500 dark:text-neutral-400 text-sm mb-8">
+            <MapPin className="w-4 h-4" />
+            Kongolo, Katanga   Democratic Republic of Congo
+          </p>
+          <div className="prose prose-neutral dark:prose-invert prose-lg max-w-none">
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              I was born in Kongolo, in the great Katanga region of the Democratic Republic of Congo.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              As a child, I experienced loss early—I lost someone who meant the world to me. That kind of loss changes how you see life. It forces you to grow faster. It forces you to understand responsibility before you are ready.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              I watched my mother raise us with relentless strength. She worked hard—harder than anyone I knew. But even with all her effort, she did not have the support system she deserved. She did not lack character. She did not lack discipline. She lacked access. She lacked structure. She lacked opportunity.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              That stayed with me.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              At 15 years old, I moved to the United States. To me, America was not just a new country—it was a responsibility. I understood that this opportunity was not something to take lightly. It was something to use.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              Not only to build a life for myself.
+              <br />
+              Not only to contribute to America.
+              <br />
+              But to build bridges back home to Congo, and to Africa as a whole.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              I have always believed that opportunity is meaningless if it ends with you.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              The difference between struggle and progress is often not talent—it is access. Access to capital. Access to systems. Access to structured support.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              My journey has been about learning how systems work—technology systems, financial systems, institutional systems and asking one question:
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6 font-medium">
+              How can these systems serve the people I grew up watching struggle?
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              Feyza is part of that answer.
+            </p>
+            <p className="text-neutral-600 dark:text-neutral-300 mb-6">
+              It is my attempt to build structured trust. To create systems that protect relationships. To connect diaspora strength with African ambition. To turn opportunity into infrastructure.
+            </p>
+            <p className="text-neutral-900 dark:text-white font-medium">
+              I come from Kongolo.
+              <br />
+              I was raised by resilience.
+              <br />
+              And I am building for something bigger than myself.
+            </p>
           </div>
         </div>
       </section>
 
       {/* CTA */}
       <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="bg-gradient-to-br from-green-600 to-emerald-700 rounded-3xl p-12 text-center text-white">
             <Award className="w-16 h-16 mx-auto mb-6 opacity-90" />
             <h2 className="text-3xl font-bold mb-4">Join Our Mission</h2>
             <p className="text-green-100 mb-8 text-lg max-w-2xl mx-auto">
-              Whether you're looking to borrow, lend, or join our team—we'd love to have you be part of the Feyza community.
+              Whether you&apos;re looking to borrow, lend, or join our community—we&apos;d love to have you be part of Feyza.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Link href="/auth/signup">

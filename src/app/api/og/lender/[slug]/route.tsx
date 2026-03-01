@@ -1,8 +1,9 @@
 import { ImageResponse } from '@vercel/og'
 import { NextRequest } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
-export const runtime = 'edge'
+const log = logger('og-lender')
 
 type RouteContext = {
   params: Promise<{ slug: string }>
@@ -225,7 +226,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
       { width: 1200, height: 630 }
     )
   } catch (error) {
-    console.error('OG Image Error:', error)
+    log.error('OG image generation failed', {}, error)
 
     return new ImageResponse(
       (

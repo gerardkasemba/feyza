@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('loans-id-decline');
 
 export async function POST(
   request: NextRequest,
@@ -62,7 +65,7 @@ export async function POST(
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('Error declining loan:', updateError);
+      log.error('Error declining loan:', updateError);
       return NextResponse.json({ error: 'Failed to decline loan' }, { status: 500 });
     }
 
@@ -92,12 +95,12 @@ export async function POST(
             .update({ capital_reserved: newReserved })
             .eq('id', lenderPref.id);
 
-          console.log(`[Decline] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+          log.info(`[Decline] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
         } else {
-          console.log(`[Decline] No lender preference found for filter: ${lenderFilter}`);
+          log.info(`[Decline] No lender preference found for filter: ${lenderFilter}`);
         }
       } catch (releaseError) {
-        console.error('[Decline] Error releasing capital:', releaseError);
+        log.error('[Decline] Error releasing capital:', releaseError);
         // Don't fail the decline if capital release fails
       }
     }
@@ -112,7 +115,7 @@ export async function POST(
         message: `Your loan request for ${loan.currency} ${loan.amount} was declined.`,
       });
     } catch (notifError) {
-      console.error('Error creating notification:', notifError);
+      log.error('Error creating notification:', notifError);
     }
 
     return NextResponse.json({ 
@@ -120,7 +123,7 @@ export async function POST(
       redirectUrl: loan.business_lender_id ? '/business' : '/dashboard' 
     });
   } catch (error) {
-    console.error('Error declining loan:', error);
+    log.error('Error declining loan:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

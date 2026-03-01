@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { normalizeTransferStatus } from '@/lib/users/user-lifecycle-service';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getTransfer } from '@/lib/dwolla';
+import { logger } from '@/lib/logger';
+
+const log = logger('dwolla-debug');
+
+interface DwollaStatusCheck {
+  db_id: string;
+  dwolla_id: string;
+  db_status?: string;
+  dwolla_status?: string;
+  match?: boolean;
+  error?: string;
+}
+
+interface DebugLoan {
+  id: string;
+  status: string;
+  disbursement_status?: string;
+  funds_sent?: boolean;
+  borrower_name?: string;
+  lender_name?: string;
+}
+
 
 // GET: Debug endpoint to check transfers and their status
 export async function GET(request: NextRequest) {
@@ -35,11 +58,11 @@ export async function GET(request: NextRequest) {
     const { data: transfers, error } = await query;
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: (error as Error).message }, { status: 500 });
     }
 
     // Optionally check Dwolla API for real status
-    let dwollaStatuses: any[] = [];
+    let dwollaStatuses: DwollaStatusCheck[] = [];
     if (checkDwolla && transfers && transfers.length > 0) {
       for (const transfer of transfers) {
         if (transfer.dwolla_transfer_id) {
@@ -51,15 +74,15 @@ export async function GET(request: NextRequest) {
               db_id: transfer.id,
               dwolla_id: transfer.dwolla_transfer_id,
               db_status: transfer.status,
-              dwolla_status: dwollaTransfer.status,
+              dwolla_status: (dwollaTransfer as any).status as string | undefined,
               match: transfer.status === dwollaTransfer.status || 
                      (dwollaTransfer.status === 'processed' && transfer.status === 'processed'),
             });
-          } catch (err: any) {
+          } catch (err: unknown) {
             dwollaStatuses.push({
               db_id: transfer.id,
               dwolla_id: transfer.dwolla_transfer_id,
-              error: err.message,
+              error: (err as Error).message,
             });
           }
         }
@@ -68,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     // Get associated loans
     const loanIds = Array.from(new Set(transfers?.map(t => t.loan_id).filter(Boolean)));
-    let loans: any[] = [];
+    let loans: DebugLoan[] = [];
     if (loanIds.length > 0) {
       const { data: loanData } = await supabase
         .from('loans')
@@ -88,9 +111,9 @@ export async function GET(request: NextRequest) {
       },
     });
 
-  } catch (error: any) {
-    console.error('[Debug] Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[Debug] Error:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -144,13 +167,14 @@ export async function POST(request: NextRequest) {
       }, { status: 404 });
     }
 
-    // Update transfer status
+    // Update transfer status — normalize 'processed' → 'completed' (replaces tr_normalize_transfer_status)
+    const normalizedStatus = normalizeTransferStatus(new_status);
     const { error: updateError } = await supabase
       .from('transfers')
       .update({ 
-        status: new_status,
+        status: normalizedStatus,
         updated_at: new Date().toISOString(),
-        processed_at: new_status === 'processed' ? new Date().toISOString() : transfer.processed_at,
+        processed_at: normalizedStatus === 'completed' ? new Date().toISOString() : transfer.processed_at,
       })
       .eq('id', transfer.id);
 
@@ -161,7 +185,7 @@ export async function POST(request: NextRequest) {
     // Optionally update loan disbursement status
     let loanUpdated = false;
     if (update_loan !== false && transfer.type === 'disbursement' && transfer.loan) {
-      if (new_status === 'processed') {
+      if (normalizedStatus === 'completed') {
         await supabase
           .from('loans')
           .update({
@@ -170,7 +194,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', transfer.loan.id);
         loanUpdated = true;
-      } else if (new_status === 'failed') {
+      } else if (normalizedStatus === 'failed') {
         await supabase
           .from('loans')
           .update({
@@ -200,8 +224,8 @@ export async function POST(request: NextRequest) {
       loan_updated: loanUpdated,
     });
 
-  } catch (error: any) {
-    console.error('[Debug] Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[Debug] Error:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { cn } from '@/lib/utils';
+import { cn, formatRelativeDate } from '@/lib/utils';
 import { Avatar, Button } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
 import Image from 'next/image';
@@ -13,6 +13,8 @@ import {
   FileText,
   Building2,
   Bell,
+  CheckCheck,
+  Loader2,
   Settings,
   LogOut,
   Menu,
@@ -30,8 +32,6 @@ import {
   TrendingUp,
   Info,
   BarChart3,
-  CreditCard as PayIcon,
-  TrendingUp as TrackIcon,
   LogIn,
   Star
 } from 'lucide-react';
@@ -41,7 +41,7 @@ interface NavbarProps {
     id: string;
     email: string;
     full_name: string;
-    user_type: 'individual' | 'business';
+    user_type?: 'individual' | 'business';
     avatar_url?: string;
   } | null;
 }
@@ -65,16 +65,17 @@ interface ActionItem {
 
 type MenuItem = NavItem | DividerItem | ActionItem;
 
-// Theme hook
+// Lightweight theme hook — only reads/writes localStorage and syncs the icon.
+// The layout.tsx inline script already applies the class to <html> before paint,
+// so this hook must NOT touch document.documentElement on mount to avoid fighting it.
 function useThemeToggle() {
-  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('system');
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
-  const [mounted, setMounted] = useState(false);
+  const getSystemTheme = (): 'light' | 'dark' =>
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
 
-  const getSystemTheme = (): 'light' | 'dark' => {
-    if (typeof window === 'undefined') return 'light';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  };
+  const [theme, setThemeState] = useState<'light' | 'dark' | 'system'>('system');
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem('feyza-theme') as 'light' | 'dark' | 'system' | null;
@@ -82,33 +83,15 @@ function useThemeToggle() {
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!mounted) return;
-    const resolved = theme === 'system' ? getSystemTheme() : theme;
-    setResolvedTheme(resolved);
-    const root = document.documentElement;
-    root.classList.remove('light', 'dark');
-    root.classList.add(resolved);
-  }, [theme, mounted]);
-
-  useEffect(() => {
-    if (!mounted) return;
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      if (theme === 'system') {
-        const resolved = getSystemTheme();
-        setResolvedTheme(resolved);
-        document.documentElement.classList.remove('light', 'dark');
-        document.documentElement.classList.add(resolved);
-      }
-    };
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme, mounted]);
+  const resolvedTheme: 'light' | 'dark' = theme === 'system' ? getSystemTheme() : theme;
 
   const setTheme = (newTheme: 'light' | 'dark' | 'system') => {
     setThemeState(newTheme);
     localStorage.setItem('feyza-theme', newTheme);
+    // Apply to DOM only on explicit user toggle, not on page load
+    const resolved = newTheme === 'system' ? getSystemTheme() : newTheme;
+    document.documentElement.classList.remove('light', 'dark');
+    document.documentElement.classList.add(resolved);
   };
 
   return { theme, resolvedTheme, setTheme, mounted };
@@ -120,15 +103,19 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [themeDropdownOpen, setThemeDropdownOpen] = useState(false);
-  const [guestLoansDropdownOpen, setGuestLoansDropdownOpen] = useState(false);
   const [user, setUser] = useState(initialUser);
-  const [loading, setLoading] = useState(true);
+  // When no initialUser, wait for first auth check before showing guest vs logged-in to avoid blink
+  const [authChecked, setAuthChecked] = useState(!!initialUser);
+  const [loading, setLoading] = useState(false);
   const [notificationCount, setNotificationCount] = useState(0);
+  const [notificationDropdownOpen, setNotificationDropdownOpen] = useState(false);
+  const [notificationList, setNotificationList] = useState<Array<{ id: string; type: string; title: string; message: string; is_read: boolean; loan_id?: string; created_at: string }>>([]);
+  const [markingAllRead, setMarkingAllRead] = useState(false);
   const [liveIndicator, setLiveIndicator] = useState(false);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const themeDropdownRef = useRef<HTMLDivElement>(null);
-  const guestLoansDropdownRef = useRef<HTMLDivElement>(null);
+  const notificationDropdownRef = useRef<HTMLDivElement>(null);
   const { theme, resolvedTheme, setTheme, mounted } = useThemeToggle();
 
   // Guest links with icons
@@ -138,24 +125,13 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
     { href: '/about', label: 'About', icon: Info },
   ];
 
-  // My Loans dropdown items for guests
-  const guestLoansItems = [
-    { href: '/borrower/access', label: 'Pay My Loan', icon: PayIcon },
-    { href: '/lender/access', label: 'Track What I\'m Owed', icon: TrackIcon },
-  ];
-
   // Close dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setUserDropdownOpen(false);
-      }
-      if (themeDropdownRef.current && !themeDropdownRef.current.contains(event.target as Node)) {
-        setThemeDropdownOpen(false);
-      }
-      if (guestLoansDropdownRef.current && !guestLoansDropdownRef.current.contains(event.target as Node)) {
-        setGuestLoansDropdownOpen(false);
-      }
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) setUserDropdownOpen(false);
+      if (themeDropdownRef.current && !themeDropdownRef.current.contains(target)) setThemeDropdownOpen(false);
+      if (notificationDropdownRef.current && !notificationDropdownRef.current.contains(target)) setNotificationDropdownOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -166,11 +142,10 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
     const supabase = createClient();
     
     const fetchUser = async () => {
-      setLoading(true);
       try {
         const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (!authUser) { setUser(null); setLoading(false); return; }
-        if (initialUser?.id === authUser.id) { setUser(initialUser); setLoading(false); return; }
+        if (!authUser) { setUser(null); setAuthChecked(true); return; }
+        if (initialUser?.id === authUser.id) { setUser(initialUser); setAuthChecked(true); return; }
 
         const { data: profile } = await supabase
           .from('users')
@@ -180,11 +155,11 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
         
         setUser(profile || null);
       } catch { setUser(null); }
-      finally { setLoading(false); }
+      setAuthChecked(true);
     };
 
     if (!initialUser) fetchUser();
-    else { setUser(initialUser); setLoading(false); }
+    else setUser(initialUser);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
@@ -208,16 +183,25 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
     
     const supabase = createClient();
     
-    const fetchNotifications = async () => {
+    const fetchCount = async () => {
       const { count } = await supabase
         .from('notifications')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('read', false);
-      setNotificationCount(count || 0);
+        .eq('is_read', false);
+      setNotificationCount(count ?? 0);
     };
-    
-    fetchNotifications();
+    const fetchList = async () => {
+      const { data } = await supabase
+        .from('notifications')
+        .select('id, type, title, message, is_read, loan_id, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(20);
+      setNotificationList(data || []);
+    };
+    fetchCount();
+    fetchList();
     
     // Realtime subscriptions
     const channel = supabase
@@ -225,7 +209,8 @@ export function Navbar({ user: initialUser = null }: NavbarProps) {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
         setLiveIndicator(true);
         setTimeout(() => setLiveIndicator(false), 2000);
-        fetchNotifications();
+        fetchCount();
+        fetchList();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'loans', filter: `borrower_id=eq.${user.id}` }, () => {
         setLiveIndicator(true);
@@ -383,7 +368,12 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
               </div>
             )}
 
-            {user ? (
+            {!authChecked ? (
+              <div className="flex items-center gap-2 h-10 px-2 opacity-60" aria-hidden="true">
+                <div className="w-20 h-6 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+                <div className="w-8 h-8 rounded-full bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+              </div>
+            ) : user ? (
               <>
                 <Link href="/loans/new" className="hidden sm:block" onClick={() => setMobileMenuOpen(false)}>
                   <Button size="sm" className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 shadow-lg shadow-green-500/25">
@@ -391,10 +381,80 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
                   </Button>
                 </Link>
 
-                <Link href="/notifications" className="relative p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group" aria-label="Notifications" onClick={() => { setMobileMenuOpen(false); setUserDropdownOpen(false); }}>
-                  <Bell className="w-5 h-5 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors" />
-                  {notificationCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full animate-pulse" />}
-                </Link>
+                <div className="relative" ref={notificationDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => { setNotificationDropdownOpen(!notificationDropdownOpen); setUserDropdownOpen(false); setMobileMenuOpen(false); }}
+                    className="relative p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group"
+                    aria-label={notificationCount > 0 ? `Notifications (${notificationCount} unread)` : 'Notifications'}
+                  >
+                    <Bell className="w-5 h-5 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors" />
+                    {notificationCount > 0 && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-bold text-white bg-red-500 rounded-full">
+                        {notificationCount > 99 ? '99+' : notificationCount}
+                      </span>
+                    )}
+                  </button>
+                  {notificationDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white dark:bg-neutral-900 rounded-xl shadow-xl border border-neutral-200 dark:border-neutral-700 overflow-hidden z-[100]">
+                      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-neutral-200 dark:border-neutral-700">
+                        <h3 className="font-semibold text-neutral-900 dark:text-white">Notifications</h3>
+                        <div className="flex items-center gap-2">
+                          {notificationCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setMarkingAllRead(true);
+                                try {
+                                  const res = await fetch('/api/notifications/mark-all-read', { method: 'POST' });
+                                  if (res.ok) {
+                                    setNotificationCount(0);
+                                    setNotificationList((prev) => prev.map((n) => ({ ...n, is_read: true })));
+                                  }
+                                } finally {
+                                  setMarkingAllRead(false);
+                                }
+                              }}
+                              disabled={markingAllRead}
+                              className="text-xs font-medium text-green-600 dark:text-green-400 hover:underline disabled:opacity-50 flex items-center gap-1"
+                            >
+                              {markingAllRead ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCheck className="w-3 h-3" />}
+                              Mark all read
+                            </button>
+                          )}
+                          <Link href="/notifications" onClick={() => setNotificationDropdownOpen(false)} className="text-xs font-medium text-green-600 dark:text-green-400 hover:underline">
+                            View all
+                          </Link>
+                        </div>
+                      </div>
+                      <div className="max-h-[min(24rem,60vh)] overflow-y-auto">
+                        {notificationList.length === 0 ? (
+                          <div className="px-4 py-8 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                            No notifications yet
+                          </div>
+                        ) : (
+                          <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
+                            {notificationList.map((n) => (
+                              <Link
+                                key={n.id}
+                                href={n.loan_id ? `/loans/${n.loan_id}` : '/notifications'}
+                                onClick={() => setNotificationDropdownOpen(false)}
+                                className={cn(
+                                  'block px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left',
+                                  !n.is_read && 'bg-green-50/50 dark:bg-green-900/10'
+                                )}
+                              >
+                                <p className={cn('text-sm', !n.is_read && 'font-medium')}>{n.title}</p>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 line-clamp-2">{n.message}</p>
+                                <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">{formatRelativeDate(n.created_at)}</p>
+                              </Link>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="relative" ref={dropdownRef}>
                   <button onClick={() => { setUserDropdownOpen(!userDropdownOpen); setMobileMenuOpen(false); }} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors group" aria-label="User menu">
@@ -470,56 +530,6 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
                     );
                   })}
 
-                  {/* My Loans Dropdown for Guests */}
-                  <div className="relative" ref={guestLoansDropdownRef}>
-                    {/* <button 
-                      onClick={() => setGuestLoansDropdownOpen(!guestLoansDropdownOpen)} 
-                      className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors',
-                        guestLoansDropdownOpen || pathname?.startsWith('/borrower/access') 
-                          ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
-                          : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border border-transparent')}
-                    >
-                      <FileText className="w-4 h-4" />
-                      <span className="hidden lg:inline">My Loans</span>
-                      <ChevronDown className={cn("w-3 h-3 transition-transform", guestLoansDropdownOpen && "rotate-180")} />
-                    </button> */}
-
-                    {guestLoansDropdownOpen && (
-                      <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700 py-2 animate-fade-in z-50">
-                        <div className="px-3 py-2 border-b border-neutral-100 dark:border-neutral-700">
-                          <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">Guest Access</p>
-                        </div>
-                        <div className="py-1">
-                          {guestLoansItems.map((item) => {
-                            const Icon = item.icon;
-                            const isActive = pathname === item.href;
-                            return (
-                              <Link 
-                                key={item.href} 
-                                href={item.href} 
-                                onClick={() => { setGuestLoansDropdownOpen(false); setMobileMenuOpen(false); }}
-                                className={cn('flex items-center gap-3 px-4 py-3 text-sm transition-colors',
-                                  isActive ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-700')}
-                              >
-                                <Icon className="w-4 h-4" />
-                                {item.label}
-                              </Link>
-                            );
-                          })}
-                        </div>
-                        <div className="border-t border-neutral-100 dark:border-neutral-700 pt-2 mt-1">
-                          <Link 
-                            href="/auth/signin" 
-                            onClick={() => { setGuestLoansDropdownOpen(false); }}
-                            className="flex items-center gap-3 px-4 py-3 text-sm text-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors"
-                          >
-                            <LogIn className="w-4 h-4" />
-                            Sign in for full access
-                          </Link>
-                        </div>
-                      </div>
-                    )}
-                  </div>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -559,7 +569,15 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
         <div className="md:hidden border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 animate-fade-in">
           <div className="px-4 py-3 space-y-1">
             {/* User Info Section (if logged in) */}
-            {user ? (
+            {!authChecked ? (
+              <div className="px-4 py-3 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+                <div className="flex-1 space-y-1">
+                  <div className="w-24 h-4 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+                  <div className="w-32 h-3 rounded bg-neutral-200 dark:bg-neutral-700 animate-pulse" />
+                </div>
+              </div>
+            ) : user ? (
               <>
                 <div className="px-4 py-3 mb-2 bg-neutral-50 dark:bg-neutral-800 rounded-lg">
                   <div className="flex items-center gap-3">
@@ -619,23 +637,6 @@ const userMenuItems: MenuItem[] = React.useMemo(() => {
                       </Link>
                     );
                   })}
-                  
-                  {/* My Loans Dropdown for Guests - Mobile */}
-                  <div className="border-t border-neutral-100 dark:border-neutral-800 pt-2 mt-2">
-                    <h3 className="px-4 py-2 text-xs font-semibold text-neutral-500 uppercase tracking-wider">My Loans</h3>
-                    {guestLoansItems.map((item) => {
-                      const Icon = item.icon;
-                      const isActive = pathname === item.href;
-                      return (
-                        <Link key={item.href} href={item.href} onClick={() => setMobileMenuOpen(false)}
-                          className={cn('flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-colors',
-                            isActive ? 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800')}>
-                          <Icon className="w-5 h-5" />
-                          {item.label}
-                        </Link>
-                      );
-                    })}
-                  </div>
                 </div>
                 
                 <div className="border-t border-neutral-100 dark:border-neutral-800 pt-4 mt-2 space-y-2">

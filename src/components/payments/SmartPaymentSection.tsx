@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('SmartPaymentSection');
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -132,7 +134,7 @@ export default function SmartPaymentSection({
       );
       setUserMethods(validMethods);
     } catch (err) {
-      console.error('Error fetching payment data:', err);
+      log.error('Error fetching payment data:', err);
     } finally {
       setLoading(false);
     }

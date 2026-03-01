@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Shield, Loader2, Info, CheckCircle } from 'lucide-react';
-import GuestLoanRequestForm from '@/components/GuestLoanRequestForm';
+import GuestLoanRequestForm from '@/components/loans/GuestLoanRequestForm';
 import { Footer, Navbar } from '@/components/layout';
 import { Card } from '@/components/ui';
 
@@ -44,8 +44,8 @@ function BorrowPageContent() {
           <h1 className="text-4xl font-bold text-neutral-900 dark:text-white mb-3">
             {isDirectBusinessLoan ? 'Apply for a Loan' : 'Request a Loan'}
           </h1>
-          
-          <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-4">
+          <h2 className="sr-only">Loan request options</h2>
+          <p className="text-lg text-neutral-600 dark:text-neutral-300 mb-4">
             {isDirectBusinessLoan
               ? 'Complete your loan application with your trusted lender'
               : 'Borrow from friends, family, or get matched with trusted business lenders'
@@ -83,7 +83,7 @@ function BorrowPageContent() {
                     <span className="text-2xl">⚡</span>
                   </div>
                   <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Fast Approval</h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Get matched with lenders in minutes</p>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300">Get matched with lenders in minutes</p>
                 </div>
               </Card>
               
@@ -93,7 +93,7 @@ function BorrowPageContent() {
                     <span className="text-2xl">🔒</span>
                   </div>
                   <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Secure Process</h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Bank-level encryption protects your data</p>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300">Bank-level encryption protects your data</p>
                 </div>
               </Card>
               
@@ -103,7 +103,7 @@ function BorrowPageContent() {
                     <span className="text-2xl">💰</span>
                   </div>
                   <h3 className="font-semibold text-neutral-900 dark:text-white mb-1">Flexible Terms</h3>
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">Choose repayment schedules that work for you</p>
+                  <p className="text-xs text-neutral-600 dark:text-neutral-300">Choose repayment schedules that work for you</p>
                 </div>
               </Card>
             </div>
@@ -113,10 +113,10 @@ function BorrowPageContent() {
         {/* Application Form */}
         <div className="bg-white dark:bg-neutral-800/50 rounded-2xl border border-neutral-200 dark:border-neutral-700 shadow-sm">
           <div className="p-6 md:p-8">
-            <GuestLoanRequestForm 
-              businessSlug={businessSlug || null} 
-              businessLenderId={businessId || null}
-              presetMaxAmount={maxAmount ? Number(maxAmount) : undefined}
+            <GuestLoanRequestForm
+              businessSlug={businessSlug ?? undefined}
+              businessLenderId={businessId ?? undefined}
+              presetMaxAmount={maxAmount != null && maxAmount !== '' ? Number(maxAmount) : undefined}
             />
           </div>
         </div>

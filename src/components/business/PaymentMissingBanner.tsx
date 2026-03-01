@@ -6,7 +6,7 @@ import { Card, Button } from '@/components/ui';
 import { AlertCircle, CreditCard, Settings } from 'lucide-react';
 
 interface PaymentMissingBannerProps {
-  businessProfile: any;
+  businessProfile: import("@/types").BusinessProfile;
   isDwollaEnabled: boolean;
 }
 

@@ -1,8 +1,11 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('useRealtimeSubscription');
 
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
+import type { Loan, PaymentScheduleItem, Notification } from '@/types';
 
 type PostgresChangeEvent = 'INSERT' | 'UPDATE' | 'DELETE' | '*';
 
@@ -14,7 +17,7 @@ export interface BaseDatabaseRecord {
   [key: string]: unknown;
 }
 
-interface SubscriptionConfig<T extends BaseDatabaseRecord> {
+interface SubscriptionConfig<T extends Record<string, unknown>> {
   table: string;
   schema?: string;
   event?: PostgresChangeEvent;
@@ -26,15 +29,21 @@ interface SubscriptionConfig<T extends BaseDatabaseRecord> {
 }
 
 /**
- * Hook for subscribing to real-time Postgres changes on a table
+ * Hook for subscribing to real-time Postgres changes on a table.
+ * Use across the platform so pages get live data without refresh.
+ * Callbacks are stored in refs so the subscription is stable and always calls the latest handlers.
  */
-export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
+export function useRealtimeSubscription<T extends Record<string, unknown>>(
   config: SubscriptionConfig<T>,
   enabled: boolean = true
 ) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const supabase = createClient();
+
+  // Refs for callbacks so we don't re-subscribe when parent re-renders with new callback refs
+  const configRef = useRef(config);
+  configRef.current = config;
 
   useEffect(() => {
     if (!enabled) return;
@@ -44,17 +53,13 @@ export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
       schema = 'public',
       event = '*',
       filter,
-      onInsert,
-      onUpdate,
-      onDelete,
-      onChange,
-    } = config;
+    } = configRef.current;
 
     // Create unique channel name
     const channelName = `realtime:${schema}:${table}:${filter || 'all'}`;
 
     // Build the channel config
-    const channelConfig: any = {
+    const channelConfig: Record<string, unknown> = {
       event,
       schema,
       table,
@@ -64,19 +69,18 @@ export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
       channelConfig.filter = filter;
     }
 
-    // Subscribe to the channel
+    // Subscribe to the channel — callbacks read from configRef.current so always up to date
     const channel = supabase
       .channel(channelName)
       .on(
+        // @ts-expect-error - RealtimeChannel type mismatch
         'postgres_changes',
         channelConfig,
         (payload: RealtimePostgresChangesPayload<T>) => {
-          console.log(`[Realtime] ${table} change:`, payload.eventType);
+          const { onInsert, onUpdate, onDelete, onChange } = configRef.current;
+          log.debug(`[Realtime] ${table} change:`, payload.eventType);
 
-          // Call the general onChange handler
           onChange?.(payload);
-
-          // Call specific event handlers
           switch (payload.eventType) {
             case 'INSERT':
               onInsert?.(payload.new as T);
@@ -91,13 +95,12 @@ export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
         }
       )
       .subscribe((status) => {
-        console.log(`[Realtime] ${table} subscription status:`, status);
+        log.debug(`[Realtime] ${table} subscription status:`, status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
     channelRef.current = channel;
 
-    // Cleanup on unmount
     return () => {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
@@ -105,7 +108,7 @@ export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
         setIsConnected(false);
       }
     };
-  }, [enabled, config.table, config.filter, config.event]);
+  }, [enabled, config.table, config.schema ?? 'public', config.filter ?? '', config.event ?? '*']);
 
   // Manual unsubscribe function
   const unsubscribe = useCallback(() => {
@@ -125,7 +128,7 @@ export function useRealtimeSubscription<T extends BaseDatabaseRecord>(
 export function useBroadcastChannel(
   channelName: string,
   eventName: string,
-  onMessage: (payload: any) => void,
+  onMessage: (payload: RealtimePostgresChangesPayload<BaseDatabaseRecord>) => void,
   enabled: boolean = true
 ) {
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -138,11 +141,11 @@ export function useBroadcastChannel(
     const channel = supabase
       .channel(channelName)
       .on('broadcast', { event: eventName }, (payload) => {
-        console.log(`[Broadcast] ${channelName}:${eventName}`, payload);
+        log.debug(`[Broadcast] ${channelName}:${eventName}`, payload);
         onMessage(payload.payload);
       })
       .subscribe((status) => {
-        console.log(`[Broadcast] ${channelName} status:`, status);
+        log.debug(`[Broadcast] ${channelName} status:`, status);
         setIsConnected(status === 'SUBSCRIBED');
       });
 
@@ -159,7 +162,7 @@ export function useBroadcastChannel(
 
   // Send a message to the channel
   const send = useCallback(
-    async (payload: any) => {
+    async (payload: RealtimePostgresChangesPayload<BaseDatabaseRecord>) => {
       if (channelRef.current) {
         return channelRef.current.send({
           type: 'broadcast',
@@ -194,14 +197,14 @@ export function usePresence(
       .channel(channelName)
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
-        console.log('[Presence] Sync:', state);
+        log.debug('[Presence] Sync:', state);
         setPresenceState(state);
       })
       .on('presence', { event: 'join' }, ({ key, newPresences }) => {
-        console.log('[Presence] Join:', key, newPresences);
+        log.debug('[Presence] Join:', key, newPresences);
       })
       .on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-        console.log('[Presence] Leave:', key, leftPresences);
+        log.debug('[Presence] Leave:', key, leftPresences);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -230,10 +233,10 @@ export function usePresence(
 export function useLoanSubscription(
   loanId: string | null,
   callbacks: {
-    onUpdate?: (loan: any) => void;
+    onUpdate?: (loan: Partial<Loan>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'loans',
       event: 'UPDATE',
@@ -250,13 +253,13 @@ export function useLoanSubscription(
 export function useUserLoansSubscription(
   userId: string | null,
   callbacks: {
-    onInsert?: (loan: any) => void;
-    onUpdate?: (loan: any) => void;
-    onDelete?: (loan: any) => void;
+    onInsert?: (loan: Partial<Loan>) => void;
+    onUpdate?: (loan: Partial<Loan>) => void;
+    onDelete?: (loan: Partial<Loan>) => void;
   }
 ) {
   // Subscribe to loans where user is borrower
-  useRealtimeSubscription<any>(
+  useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'loans',
       filter: userId ? `borrower_id=eq.${userId}` : undefined,
@@ -268,7 +271,7 @@ export function useUserLoansSubscription(
   );
 
   // Subscribe to loans where user is lender
-  useRealtimeSubscription<any>(
+  useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'loans',
       filter: userId ? `lender_id=eq.${userId}` : undefined,
@@ -286,11 +289,11 @@ export function useUserLoansSubscription(
 export function usePaymentScheduleSubscription(
   loanId: string | null,
   callbacks: {
-    onUpdate?: (payment: any) => void;
-    onInsert?: (payment: any) => void;
+    onUpdate?: (payment: Partial<PaymentScheduleItem>) => void;
+    onInsert?: (payment: Partial<PaymentScheduleItem>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'payment_schedule',
       filter: loanId ? `loan_id=eq.${loanId}` : undefined,
@@ -307,12 +310,12 @@ export function usePaymentScheduleSubscription(
 export function useNotificationsSubscription(
   userId: string | null,
   callbacks: {
-    onInsert?: (notification: any) => void;
-    onUpdate?: (notification: any) => void;
-    onDelete?: (notification: any) => void;
+    onInsert?: (notification: Partial<Notification>) => void;
+    onUpdate?: (notification: Partial<Notification>) => void;
+    onDelete?: (notification: Partial<Notification>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'notifications',
       filter: userId ? `user_id=eq.${userId}` : undefined,
@@ -330,11 +333,11 @@ export function useNotificationsSubscription(
 export function useLoanRequestSubscription(
   requestId: string | null,
   callbacks: {
-    onInsert?: (request: any) => void;
-    onUpdate?: (request: any) => void;
+    onInsert?: (request: Record<string, unknown>) => void;
+    onUpdate?: (request: Record<string, unknown>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'loan_requests',
       filter: requestId ? `id=eq.${requestId}` : undefined,
@@ -351,11 +354,11 @@ export function useLoanRequestSubscription(
 export function useTransferSubscription(
   loanId: string | null,
   callbacks: {
-    onInsert?: (transfer: any) => void;
-    onUpdate?: (transfer: any) => void;
+    onInsert?: (transfer: Record<string, unknown>) => void;
+    onUpdate?: (transfer: Record<string, unknown>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'transfers',
       filter: loanId ? `loan_id=eq.${loanId}` : undefined,
@@ -372,10 +375,10 @@ export function useTransferSubscription(
 export function useBusinessProfileSubscription(
   businessId: string | null,
   callbacks: {
-    onUpdate?: (profile: any) => void;
+    onUpdate?: (profile: Record<string, unknown>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'business_profiles',
       event: 'UPDATE',
@@ -391,12 +394,12 @@ export function useBusinessProfileSubscription(
  */
 export function usePendingVerificationsSubscription(
   callbacks: {
-    onInsert?: (profile: any) => void;
-    onUpdate?: (profile: any) => void;
+    onInsert?: (profile: Record<string, unknown>) => void;
+    onUpdate?: (profile: Record<string, unknown>) => void;
   },
   enabled: boolean = true
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'business_profiles',
       filter: 'verification_status=eq.pending',
@@ -413,11 +416,11 @@ export function usePendingVerificationsSubscription(
 export function usePaymentsSubscription(
   loanId: string | null,
   callbacks: {
-    onInsert?: (payment: any) => void;
-    onUpdate?: (payment: any) => void;
+    onInsert?: (payment: Partial<PaymentScheduleItem>) => void;
+    onUpdate?: (payment: Partial<PaymentScheduleItem>) => void;
   }
 ) {
-  return useRealtimeSubscription<any>(
+  return useRealtimeSubscription<Record<string, unknown>>(
     {
       table: 'payments',
       filter: loanId ? `loan_id=eq.${loanId}` : undefined,

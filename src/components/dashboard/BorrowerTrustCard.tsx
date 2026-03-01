@@ -1,7 +1,9 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('BorrowerTrustCard');
 
 import React, { useState, useEffect } from 'react';
-import { Card, Badge, Button } from '@/components/ui';
+import { Card, Badge, Button, Modal } from '@/components/ui';
 import Link from 'next/link';
 import { 
   Shield, 
@@ -11,12 +13,9 @@ import {
   Star,
   TrendingUp,
   CheckCircle,
-  AlertCircle,
   Loader2,
   Building2,
-  ArrowRight,
   Plus,
-  History
 } from 'lucide-react';
 
 interface BusinessTrust {
@@ -41,7 +40,7 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
   const [trustRecords, setTrustRecords] = useState<BusinessTrust[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDetails, setShowDetails] = useState(!compact);
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   useEffect(() => {
     fetchTrustData();
@@ -55,7 +54,7 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
         setTrustRecords(data.trustRecords || []);
       }
     } catch (error) {
-      console.error('Failed to fetch trust data:', error);
+      log.error('Failed to fetch trust data:', error);
     } finally {
       setLoading(false);
     }
@@ -129,47 +128,16 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
           </div>
           <div>
             <h3 className="font-semibold text-neutral-900 dark:text-white">Business Relationships</h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Your trust with specific lenders</p>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">Trust you&apos;ve built with each business lender. Separate from your public Trust Score.</p>
           </div>
-          <div className="relative">
-            <button
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-              onClick={() => setShowTooltip(!showTooltip)}
-              className="p-1 rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
-            >
-              <HelpCircle className="w-4 h-4 text-neutral-400" />
-            </button>
-            
-            {showTooltip && (
-              <div className="absolute left-0 top-8 z-50 w-80 p-4 bg-white dark:bg-neutral-800 rounded-xl shadow-lg border border-neutral-200 dark:border-neutral-700">
-                <h4 className="font-semibold text-neutral-900 dark:text-white mb-2">Business Trust vs Trust Score</h4>
-                <div className="space-y-3 text-sm">
-                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                    <p className="font-medium text-blue-800 dark:text-blue-200 flex items-center gap-1">
-                      <Building2 className="w-4 h-4" /> Business Relationships
-                    </p>
-                    <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
-                      Your history with each specific business lender. Build trust through repeat loans to unlock higher amounts.
-                    </p>
-                  </div>
-                  <div className="p-2 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
-                    <p className="font-medium text-purple-800 dark:text-purple-200 flex items-center gap-1">
-                      <Shield className="w-4 h-4" /> Trust Score
-                    </p>
-                    <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
-                      Your universal score (0-100) visible to ALL lenders. Based on payment history, vouches, and verification.
-                    </p>
-                  </div>
-                </div>
-                <div className="mt-3 pt-3 border-t border-neutral-200 dark:border-neutral-700">
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    <strong>Tip:</strong> When you apply for a new loan, lenders see your Trust Score. Business relationships are private.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowInfoModal(true)}
+            className="p-1 rounded-full text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+            aria-label="Learn about Business Relationships"
+          >
+            <HelpCircle className="w-4 h-4" />
+          </button>
         </div>
         {trustRecords.length > 0 && (
           <button
@@ -185,15 +153,9 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
         <div className="text-center py-6 bg-neutral-50 dark:bg-neutral-800 rounded-xl">
           <Building2 className="w-8 h-8 text-neutral-300 dark:text-neutral-600 mx-auto mb-2" />
           <p className="text-sm text-neutral-500 dark:text-neutral-400">No business lender history yet</p>
-          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1 mb-4">
+          <p className="text-xs text-neutral-400 dark:text-neutral-500 mt-1">
             Borrow from a business lender to start building trust
           </p>
-          <Link href="/marketplace">
-            <Button size="sm" variant="outline">
-              <Plus className="w-4 h-4 mr-1" />
-              Browse Lenders
-            </Button>
-          </Link>
         </div>
       ) : (
         <>
@@ -282,6 +244,37 @@ export function BorrowerTrustCard({ userId, compact = false }: BorrowerTrustCard
           )}
         </>
       )}
+
+      <Modal isOpen={showInfoModal} onClose={() => setShowInfoModal(false)} title="Business Relationships" size="md">
+        <div className="space-y-4">
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            This card shows your trust history with specific business lenders. It’s separate from your public Trust Score.
+          </p>
+          <div className="space-y-3 text-sm">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/50">
+              <p className="font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                <Building2 className="w-4 h-4" /> Business Relationships
+              </p>
+              <p className="text-blue-700 dark:text-blue-300 text-xs mt-1">
+                Your history with each specific business lender. Build trust through repeat loans to unlock higher amounts with that business.
+              </p>
+            </div>
+            <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-200 dark:border-purple-800/50">
+              <p className="font-medium text-purple-800 dark:text-purple-200 flex items-center gap-2">
+                <Shield className="w-4 h-4" /> Trust Score
+              </p>
+              <p className="text-purple-700 dark:text-purple-300 text-xs mt-1">
+                Your universal score (0–100) visible to all lenders. Based on payment history, vouches, and verification.
+              </p>
+            </div>
+          </div>
+          <div className="pt-3 border-t border-neutral-200 dark:border-neutral-700">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
+              <strong>Tip:</strong> When you apply for a new loan, lenders see your Trust Score. Business relationships are private and only affect what you can borrow from each business you’ve worked with.
+            </p>
+          </div>
+        </div>
+      </Modal>
     </Card>
   );
 }

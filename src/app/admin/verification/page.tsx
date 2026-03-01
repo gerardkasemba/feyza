@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
@@ -123,9 +125,9 @@ export default function VerificationPage() {
       
       setPendingUsers(data.users || []);
       setPendingBusinesses(data.businesses || []);
-    } catch (err: any) {
-      console.error('Error fetching verifications:', err);
-      setError(err.message || 'Failed to fetch verifications');
+    } catch (err: unknown) {
+      log.error('Error fetching verifications:', err);
+      setError((err as Error).message || 'Failed to fetch verifications');
     } finally {
       setLoading(false);
     }
@@ -160,9 +162,9 @@ export default function VerificationPage() {
         setPendingBusinesses(pendingBusinesses.filter(b => b.id !== id));
         setSelectedBusiness(null);
       }
-    } catch (err: any) {
-      console.error('Error processing verification:', err);
-      alert(err.message || 'Failed to process verification');
+    } catch (err: unknown) {
+      log.error('Error processing verification:', err);
+      alert((err as Error).message || 'Failed to process verification');
     } finally {
       setProcessing(null);
     }

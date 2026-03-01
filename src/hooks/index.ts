@@ -14,14 +14,6 @@ export {
   usePaymentsSubscription,
 } from './useRealtimeSubscription';
 
-// Guest session management
-export {
-  useGuestSession,
-  getAllGuestSessions,
-  hasGuestSessions,
-  getMostRecentSession,
-} from './useGuestSession';
-
 // Payment providers hook
 export { usePaymentProviders, isBankConnectionRequired, hasAutomatedPayments } from './usePaymentProviders';
 

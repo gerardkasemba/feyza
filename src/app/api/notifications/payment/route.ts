@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentConfirmationEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('notifications-payment');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -68,18 +72,18 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error sending payment notification:', error);
+    log.error('Error sending payment notification:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 async function handleDirectLoanRequest(
-  supabase: any,
+  supabase: SupabaseServiceClient,
   params: { loanId: string; businessId: string; borrowerName: string; amount: number }
 ) {
   const { loanId, businessId, borrowerName, amount } = params;
 
-  console.log('[Notification] Handling direct loan request:', { loanId, businessId, borrowerName, amount });
+  log.info('[Notification] Handling direct loan request:', { loanId, businessId, borrowerName, amount });
 
   // Get business with owner info
   const { data: business, error: bizError } = await supabase
@@ -89,7 +93,7 @@ async function handleDirectLoanRequest(
     .single();
 
   if (bizError || !business) {
-    console.error('[Notification] Business not found:', bizError);
+    log.error('[Notification] Business not found:', bizError);
     return NextResponse.json({ error: 'Business not found' }, { status: 404 });
   }
 
@@ -101,7 +105,7 @@ async function handleDirectLoanRequest(
     .single();
 
   if (loanError) {
-    console.error('[Notification] Loan not found:', loanError);
+    log.error('[Notification] Loan not found:', loanError);
   }
 
   // Create in-app notification for business owner
@@ -116,9 +120,9 @@ async function handleDirectLoanRequest(
     });
 
     if (notifError) {
-      console.error('[Notification] Failed to create in-app notification:', notifError);
+      log.error('[Notification] Failed to create in-app notification:', notifError);
     } else {
-      console.log('[Notification] In-app notification created for user:', business.owner.id);
+      log.info('[Notification] In-app notification created for user:', business.owner.id);
     }
   }
 
@@ -270,12 +274,12 @@ async function handleDirectLoanRequest(
     });
 
     if (result.success) {
-      console.log('[Notification] Email sent to business owner:', business.owner.email);
+      log.info('[Notification] Email sent to business owner:', business.owner.email);
     } else {
-      console.error('[Notification] Failed to send email:', result.error);
+      log.error('[Notification] Failed to send email:', result.error);
     }
   } else {
-    console.log('[Notification] No business owner email found');
+    log.info('[Notification] No business owner email found');
   }
 
   return NextResponse.json({ success: true });

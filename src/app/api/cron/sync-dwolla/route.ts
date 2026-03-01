@@ -1,7 +1,11 @@
+import { normalizeTransferStatus } from '@/lib/users/user-lifecycle-service';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { getTransfer } from '@/lib/dwolla';
 import { onPaymentCompleted, onPaymentFailed } from '@/lib/payments';
+import { logger } from '@/lib/logger';
+
+const log = logger('cron-sync-dwolla');
 
 export async function POST(request: NextRequest) {
   const startTime = Date.now();
@@ -12,7 +16,7 @@ export async function POST(request: NextRequest) {
     const cronSecret = process.env.CRON_SECRET;
     
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.log('[Sync Dwolla Cron] Unauthorized request');
+      log.info('[Sync Dwolla Cron] Unauthorized request');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -26,12 +30,12 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: true });
 
     if (fetchError) {
-      console.error('[Sync Dwolla Cron] Error fetching transfers:', fetchError);
+      log.error('[Sync Dwolla Cron] Error fetching transfers:', fetchError);
       return NextResponse.json({ error: 'Failed to fetch transfers' }, { status: 500 });
     }
 
     if (!transfers || transfers.length === 0) {
-      console.log('[Sync Dwolla Cron] No pending transfers to sync');
+      log.info('[Sync Dwolla Cron] No pending transfers to sync');
       return NextResponse.json({ 
         success: true, 
         message: 'No pending transfers',
@@ -40,7 +44,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    console.log(`[Sync Dwolla Cron] Syncing ${transfers.length} transfers`);
+    log.info(`[Sync Dwolla Cron] Syncing ${transfers.length} transfers`);
 
     const results = {
       total: transfers.length,
@@ -61,16 +65,11 @@ export async function POST(request: NextRequest) {
         const dwollaStatus = dwollaTransfer.status;
         let newStatus = transfer.status;
 
-        // Map Dwolla status to our status
-        if (dwollaStatus === 'processed') {
-          newStatus = 'completed';
-          results.completed++;
-        } else if (dwollaStatus === 'failed') {
-          newStatus = 'failed';
-          results.failed++;
-        } else if (dwollaStatus === 'cancelled') {
-          newStatus = 'cancelled';
-        }
+        // Map Dwolla status to our status (normalizeTransferStatus replaces tr_normalize_transfer_status trigger)
+        const rawMapped: string = dwollaStatus === 'failed' ? 'failed' : dwollaStatus === 'cancelled' ? 'cancelled' : String(dwollaStatus);
+        newStatus = normalizeTransferStatus(rawMapped);  // 'processed' → 'completed'
+        if (newStatus === 'completed' && transfer.status !== 'completed') results.completed++;
+        else if (newStatus === 'failed') results.failed++;
 
         // Skip if no change
         if (newStatus === transfer.status) {
@@ -89,7 +88,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', transfer.id);
 
-        console.log(`[Sync Dwolla Cron] Transfer ${transfer.dwolla_transfer_id}: ${transfer.status} → ${newStatus}`);
+        log.info(`[Sync Dwolla Cron] Transfer ${transfer.dwolla_transfer_id}: ${transfer.status} → ${newStatus}`);
 
         const loan = transfer.loan;
         if (!loan) continue;
@@ -105,7 +104,7 @@ export async function POST(request: NextRequest) {
               })
               .eq('id', loan.id);
             
-            console.log(`[Sync Dwolla Cron] ✅ Loan ${loan.id} disbursement completed`);
+            log.info(`[Sync Dwolla Cron] ✅ Loan ${loan.id} disbursement completed`);
           } else if (newStatus === 'failed') {
             await supabase
               .from('loans')
@@ -119,7 +118,7 @@ export async function POST(request: NextRequest) {
         // Handle repayment completion - update trust score!
         if (transfer.type === 'repayment') {
           if (newStatus === 'completed') {
-            console.log(`[Sync Dwolla Cron] Processing repayment completion for loan ${loan.id}`);
+            log.info(`[Sync Dwolla Cron] Processing repayment completion for loan ${loan.id}`);
             
             // Find the associated payment schedule item
             const { data: payment } = await supabase
@@ -128,23 +127,35 @@ export async function POST(request: NextRequest) {
               .eq('transfer_id', transfer.id)
               .single();
             
-            // Update Trust Score
+            // Update Trust Score (with idempotency guard - webhook may have already fired)
             if (loan.borrower_id) {
               try {
-                await onPaymentCompleted({
-                  supabase,
-                  loanId: loan.id,
-                  borrowerId: loan.borrower_id,
-                  paymentId: payment?.id,
-                  scheduleId: payment?.id,
-                  amount: payment?.amount || transfer.amount,
-                  dueDate: payment?.due_date,
-                  paymentMethod: 'dwolla',
-                });
-                results.trustScoreUpdates++;
-                console.log(`[Sync Dwolla Cron] ✅ Trust score updated for borrower ${loan.borrower_id}`);
+                const { count: alreadyRecorded } = await supabase
+                  .from('trust_score_events')
+                  .select('id', { count: 'exact', head: true })
+                  .eq('loan_id', loan.id)
+                  .eq('user_id', loan.borrower_id)
+                  .in('event_type', ['payment_ontime', 'payment_early', 'payment_late'])
+                  .gte('created_at', new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString());
+                
+                if ((alreadyRecorded ?? 0) > 0) {
+                  log.info(`[Sync Dwolla Cron] Trust score already recorded for loan ${loan.id} — skipping`);
+                } else {
+                  await onPaymentCompleted({
+                    supabase,
+                    loanId: loan.id,
+                    borrowerId: loan.borrower_id,
+                    paymentId: payment?.id,
+                    scheduleId: payment?.id,
+                    amount: payment?.amount || transfer.amount,
+                    dueDate: payment?.due_date,
+                    paymentMethod: 'dwolla',
+                  });
+                  results.trustScoreUpdates++;
+                  log.info(`[Sync Dwolla Cron] ✅ Trust score updated for borrower ${loan.borrower_id}`);
+                }
               } catch (trustError) {
-                console.error(`[Sync Dwolla Cron] Trust score update failed:`, trustError);
+                log.error(`[Sync Dwolla Cron] Trust score update failed:`, trustError);
               }
             }
           } else if (newStatus === 'failed') {
@@ -157,22 +168,22 @@ export async function POST(request: NextRequest) {
                   loanId: loan.id,
                   reason: 'Dwolla transfer failed',
                 });
-                console.log(`[Sync Dwolla Cron] Trust score penalty recorded for failed payment`);
+                log.info(`[Sync Dwolla Cron] Trust score penalty recorded for failed payment`);
               } catch (trustError) {
-                console.error(`[Sync Dwolla Cron] Trust score penalty failed:`, trustError);
+                log.error(`[Sync Dwolla Cron] Trust score penalty failed:`, trustError);
               }
             }
           }
         }
 
-      } catch (err: any) {
-        console.error(`[Sync Dwolla Cron] Error syncing transfer ${transfer.dwolla_transfer_id}:`, err.message);
+      } catch (err: unknown) {
+        log.error(`[Sync Dwolla Cron] Error syncing transfer ${transfer.dwolla_transfer_id}:`, (err as Error).message);
         results.errors++;
       }
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[Sync Dwolla Cron] Completed in ${duration}ms:`, results);
+    log.info(`[Sync Dwolla Cron] Completed in ${duration}ms:`, results);
 
     return NextResponse.json({
       success: true,
@@ -180,10 +191,10 @@ export async function POST(request: NextRequest) {
       duration_ms: duration,
     });
 
-  } catch (error: any) {
-    console.error('[Sync Dwolla Cron] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Sync Dwolla Cron] Error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to sync transfers' },
+      { error: (error as Error).message || 'Failed to sync transfers' },
       { status: 500 }
     );
   }
@@ -206,7 +217,7 @@ export async function GET(request: NextRequest) {
       pending_transfers: pendingCount || 0,
       how_to_run: 'POST to this endpoint to sync all pending transfers',
     });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

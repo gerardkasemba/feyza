@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('business-terms');
 
 // GET /api/business/terms - Get lending terms for current user's business
 export async function GET(request: NextRequest) {
@@ -27,7 +30,7 @@ export async function GET(request: NextRequest) {
       updated_at: business.lending_terms_updated_at
     });
   } catch (error) {
-    console.error('Error fetching lending terms:', error);
+    log.error('Error fetching lending terms:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -66,7 +69,7 @@ export async function POST(request: NextRequest) {
       .eq('id', business.id);
 
     if (updateError) {
-      console.error('Error updating lending terms:', updateError);
+      log.error('Error updating lending terms:', updateError);
       return NextResponse.json({ error: 'Failed to update terms' }, { status: 500 });
     }
 
@@ -84,7 +87,7 @@ export async function POST(request: NextRequest) {
       message: lending_terms ? 'Lending terms updated' : 'Lending terms removed'
     });
   } catch (error) {
-    console.error('Error updating lending terms:', error);
+    log.error('Error updating lending terms:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

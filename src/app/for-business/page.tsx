@@ -17,77 +17,106 @@ import {
   DollarSign,
   FileText,
   Award,
+  Target,
 } from 'lucide-react';
 
 const benefits = [
   {
     icon: Users,
-    title: 'Access More Borrowers',
+    title: 'Access Matched Borrowers',
     description:
-      'Reach thousands of qualified borrowers actively seeking loans that match your criteria.',
+      'Reach borrowers who match your criteria. Our system matches loan requests to your preferences by amount, term, trust tier, and location.',
   },
   {
     icon: CreditCard,
     title: 'Automated Payments',
     description:
-      'Let technology handle collections with auto-pay, reducing overhead and late payments.',
+      'Collect repayments via ACH (Dwolla). Offer auto-pay so borrowers pay on time—reducing overhead and late payments.',
   },
   {
     icon: BarChart3,
-    title: 'Powerful Analytics',
+    title: 'Analytics & Reporting',
     description:
-      'Track performance, monitor repayment rates, and gain insights into your portfolio.',
+      'Track your portfolio, monitor repayment rates, and export data. Business dashboard and analytics help you manage risk.',
   },
   {
     icon: Shield,
-    title: 'Verified Borrowers',
+    title: 'Trust Tiers, Not Just Credit',
     description:
-      "Every borrower has a tier rating built from payment history. Know who you're lending to.",
+      'Every borrower has a tier (1–4) based on vouches and repayment history. You choose which tiers to lend to and set limits per tier.',
   },
   {
     icon: Globe,
     title: 'Geographic Control',
     description:
-      'Choose exactly which countries and states you want to serve for compliance.',
+      'Set which countries and states you serve. Ideal for diaspora lending and compliance.',
   },
   {
     icon: Settings,
     title: 'Flexible Preferences',
     description:
-      'Set your min/max amounts, interest rates, terms, and auto-accept rules.',
+      'Set min/max amounts, interest rates (including 0%), terms, loan types, and first-time borrower limits. You’re in control.',
   },
   {
-    icon: Shield,
-    title: '90-Day Default Restriction',
+    icon: Target,
+    title: 'Default & Restriction Policy',
     description:
-      'Defaulters face 90-day loan restrictions and lose all accumulated trust, ensuring higher quality borrowers over time.',
+      'Borrowers who default face restrictions and lose trust standing. Single active business loan per borrower to reduce over-borrowing.',
   },
   {
     icon: Clock,
-    title: 'Automated Payment Reminders',
+    title: 'Payment Reminders & Retries',
     description:
-      "Payment reminders and retries occur every 3 days for up to 9 days, after which the user's account is blocked for added security.",
+      'Automated reminders and retry logic help borrowers stay on track. Account restrictions apply after sustained non-payment.',
   },
   {
     icon: CheckCircle,
-    title: 'Single Active Loan Policy',
+    title: 'Public Lender Profile',
     description:
-      'Borrowers cannot request a new business loan while having an active one, preventing over-borrowing and reducing default risks.',
+      'Get a shareable page (e.g. feyza.app/lend/your-business) so borrowers can find you and apply directly.',
   },
 ];
 
-const stats = [
-  { value: '$2.5M+', label: 'Loans Facilitated' },
-  { value: '95%', label: 'On-Time Payments' },
-  { value: '500+', label: 'Active Lenders' },
-  { value: '24h', label: 'Avg. Match Time' },
+const highlights = [
+  { label: 'Trust-based matching', sub: 'Tiers & vouches' },
+  { label: 'Structured agreements', sub: 'Clear terms' },
+  { label: 'Verified businesses', sub: 'You get verified' },
+  { label: 'Fast matching', sub: 'Receive requests' },
 ];
 
 const steps = [
-  { icon: FileText, title: 'Apply', description: 'Fill out our business application with your details' },
-  { icon: Shield, title: 'Get Verified', description: 'Our team reviews and verifies your business' },
-  { icon: Settings, title: 'Configure', description: 'Set your lending preferences and criteria' },
-  { icon: DollarSign, title: 'Start Lending', description: 'Receive matches and start growing your business' },
+  {
+    icon: FileText,
+    title: 'Sign up & Apply',
+    description: 'Create an account as a business and submit your business details for verification.',
+    href: '/auth/signup',
+  },
+  {
+    icon: Shield,
+    title: 'Get Verified',
+    description: 'Our team reviews your business. Once approved, you can set lending preferences.',
+  },
+  {
+    icon: Settings,
+    title: 'Set Preferences',
+    description: 'Configure amounts, rates, terms, loan types, and regions you want to serve.',
+    href: '/business/setup',
+  },
+  {
+    icon: DollarSign,
+    title: 'Receive Matches & Lend',
+    description: 'Get matched with borrowers. Review requests, fund loans, and track repayments.',
+    href: '/lender/matches',
+  },
+];
+
+const dashboardFeatures = [
+  'Real-time loan tracking and status updates',
+  'Automated payment processing and reminders',
+  'Borrower trust tier and repayment visibility',
+  'Per-tier loan limits and interest settings',
+  'Public profile page to attract borrowers',
+  'Match management and funding workflow',
 ];
 
 export default function ForBusinessPage() {
@@ -106,15 +135,15 @@ export default function ForBusinessPage() {
               </Badge>
 
               <h1 className="text-4xl md:text-5xl font-bold text-white mb-6">
-                Grow Your Lending Business with Feyza
+                Lend to Qualified Borrowers on Feyza
               </h1>
 
               <p className="text-xl text-green-100 mb-8">
-                Access qualified borrowers, automate payments, and scale your operations with our powerful platform.
+                Join as a verified business lender. Set your terms, get matched with borrowers by trust tier and preference, and grow your portfolio with structured, transparent lending.
               </p>
 
               <div className="flex flex-wrap gap-4">
-                <Link href="/business/register">
+                <Link href="/auth/signup">
                   <Button size="lg" className="bg-white text-green-700 hover:bg-green-50">
                     Apply to Become a Lender
                     <ArrowRight className="w-4 h-4 ml-2" />
@@ -127,20 +156,20 @@ export default function ForBusinessPage() {
                     variant="outline"
                     className="border-white text-white hover:bg-white/10 hover:text-white"
                   >
-                    Talk to Sales
+                    Contact Us
                   </Button>
                 </Link>
               </div>
             </div>
 
             <div className="hidden lg:grid grid-cols-2 gap-4">
-              {stats.map((stat, i) => (
+              {highlights.map((stat, i) => (
                 <div
                   key={i}
                   className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center border border-white/20"
                 >
-                  <div className="text-3xl font-bold text-white mb-1">{stat.value}</div>
-                  <div className="text-green-200 text-sm">{stat.label}</div>
+                  <div className="text-lg font-bold text-white mb-1">{stat.label}</div>
+                  <div className="text-green-200 text-sm">{stat.sub}</div>
                 </div>
               ))}
             </div>
@@ -148,13 +177,13 @@ export default function ForBusinessPage() {
         </div>
       </section>
 
-      {/* Stats Mobile */}
+      {/* Highlights Mobile */}
       <section className="lg:hidden py-8 bg-green-700">
         <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 gap-4">
-          {stats.map((stat, i) => (
+          {highlights.map((stat, i) => (
             <div key={i} className="text-center">
-              <div className="text-2xl font-bold text-white">{stat.value}</div>
-              <div className="text-green-200 text-sm">{stat.label}</div>
+              <div className="text-base font-bold text-white">{stat.label}</div>
+              <div className="text-green-200 text-sm">{stat.sub}</div>
             </div>
           ))}
         </div>
@@ -168,7 +197,7 @@ export default function ForBusinessPage() {
               Why Lenders Choose Feyza
             </h2>
             <p className="text-lg text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
-              Everything you need to run a successful lending operation in one platform.
+              Trust-based matching, full control over terms, and tools to run your lending operation.
             </p>
           </div>
 
@@ -186,7 +215,7 @@ export default function ForBusinessPage() {
                   <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
                     {benefit.title}
                   </h3>
-                  <p className="text-neutral-600 dark:text-neutral-400">
+                  <p className="text-neutral-600 dark:text-neutral-400 text-sm">
                     {benefit.description}
                   </p>
                 </div>
@@ -201,30 +230,37 @@ export default function ForBusinessPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold text-neutral-900 dark:text-white mb-4">
-              Get Started in 4 Simple Steps
+              Get Started in 4 Steps
             </h2>
           </div>
 
           <div className="grid md:grid-cols-4 gap-8">
             {steps.map((step, i) => {
               const Icon = step.icon;
+              const content = (
+                <div className="relative bg-white dark:bg-neutral-950 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-800 h-full flex flex-col">
+                  <div className="w-16 h-16 mx-auto rounded-2xl bg-green-100 dark:bg-green-900/25 flex items-center justify-center mb-4 relative">
+                    <Icon className="w-8 h-8 text-green-600 dark:text-green-400" />
+                    <span className="absolute -top-2 -right-2 w-6 h-6 bg-green-600 text-white rounded-full text-sm font-bold flex items-center justify-center">
+                      {i + 1}
+                    </span>
+                  </div>
+                  <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">{step.title}</h3>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400 flex-1">{step.description}</p>
+                  {step.href && (
+                    <Link href={step.href} className="mt-3 text-sm font-medium text-green-600 dark:text-green-400 hover:underline inline-flex items-center gap-1">
+                      {i === 0 ? 'Sign up' : i === 2 ? 'Set preferences' : i === 3 ? 'View matches' : null}
+                      {step.href && <ArrowRight className="w-3 h-3" />}
+                    </Link>
+                  )}
+                </div>
+              );
               return (
                 <div key={i} className="relative text-center">
                   {i < steps.length - 1 && (
                     <div className="hidden md:block absolute top-8 left-1/2 w-full h-0.5 bg-green-200 dark:bg-green-800" />
                   )}
-
-                  <div className="relative bg-white dark:bg-neutral-950 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-800">
-                    <div className="w-16 h-16 mx-auto rounded-2xl bg-green-100 dark:bg-green-900/25 flex items-center justify-center mb-4 relative">
-                      <Icon className="w-8 h-8 text-green-600 dark:text-green-400" />
-                      <span className="absolute -top-2 -right-2 w-6 h-6 bg-green-600 text-white rounded-full text-sm font-bold flex items-center justify-center">
-                        {i + 1}
-                      </span>
-                    </div>
-
-                    <h3 className="font-semibold text-neutral-900 dark:text-white mb-2">{step.title}</h3>
-                    <p className="text-sm text-neutral-600 dark:text-neutral-400">{step.description}</p>
-                  </div>
+                  {step.href ? <Link href={step.href} className="block">{content}</Link> : content}
                 </div>
               );
             })}
@@ -232,7 +268,7 @@ export default function ForBusinessPage() {
         </div>
       </section>
 
-      {/* Features List */}
+      {/* Dashboard + CTA */}
       <section className="py-20 bg-white dark:bg-neutral-950">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
@@ -242,18 +278,11 @@ export default function ForBusinessPage() {
               </Badge>
 
               <h2 className="text-3xl font-bold text-neutral-900 dark:text-white mb-6">
-                Everything You Need to Succeed
+                Everything You Need
               </h2>
 
               <ul className="space-y-4">
-                {[
-                  'Real-time loan tracking and status updates',
-                  'Automated payment processing and reminders',
-                  'Borrower risk assessment and analytics',
-                  'Custom reports and data export',
-                  'Multi-user access with role permissions',
-                  'Public profile page to attract borrowers',
-                ].map((item, i) => (
+                {dashboardFeatures.map((item, i) => (
                   <li key={i} className="flex items-center gap-3">
                     <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
                     <span className="text-neutral-700 dark:text-neutral-300">{item}</span>
@@ -261,11 +290,16 @@ export default function ForBusinessPage() {
                 ))}
               </ul>
 
-              <div className="mt-8">
-                <Link href="/business/register">
+              <div className="mt-8 flex flex-wrap gap-4">
+                <Link href="/auth/signup">
                   <Button className="bg-green-600 hover:bg-green-700 text-white">
                     Get Started
                     <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Link>
+                <Link href="/business/setup">
+                  <Button variant="outline">
+                    Already have an account? Set up business
                   </Button>
                 </Link>
               </div>
@@ -274,28 +308,19 @@ export default function ForBusinessPage() {
             <div className="bg-gradient-to-br from-green-100 to-emerald-100 dark:from-green-900/15 dark:to-emerald-900/15 rounded-3xl p-8 border border-green-200 dark:border-green-900/30">
               <div className="bg-white dark:bg-neutral-950 rounded-2xl p-6 border border-neutral-200 dark:border-neutral-800 shadow-lg dark:shadow-none">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-semibold text-neutral-900 dark:text-white">Loan Overview</h3>
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Your dashboard</h3>
                   <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                    Live
+                    After approval
                   </Badge>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4 mb-6">
-                  <div className="p-4 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">Active Loans</p>
-                    <p className="text-2xl font-bold text-neutral-900 dark:text-white">47</p>
-                  </div>
-                  <div className="p-4 bg-neutral-50 dark:bg-neutral-900 rounded-xl border border-neutral-200 dark:border-neutral-800">
-                    <p className="text-sm text-neutral-500 dark:text-neutral-400">Total Lent</p>
-                    <p className="text-2xl font-bold text-neutral-900 dark:text-white">$125K</p>
-                  </div>
-                </div>
-
+                <p className="text-neutral-600 dark:text-neutral-400 text-sm mb-6">
+                  Once verified, your business dashboard shows active loans, total lent, repayment status, and match requests. You can fund loans, track payments, and manage your portfolio in one place.
+                </p>
                 <div className="h-2 bg-neutral-100 dark:bg-neutral-900 rounded-full overflow-hidden border border-neutral-200 dark:border-neutral-800">
-                  <div className="h-full w-3/4 bg-green-500 rounded-full" />
+                  <div className="h-full w-2/3 bg-green-500 rounded-full" />
                 </div>
                 <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2">
-                  75% repayment rate this month
+                  Example: repayment progress
                 </p>
               </div>
             </div>
@@ -308,14 +333,14 @@ export default function ForBusinessPage() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <Award className="w-16 h-16 mx-auto mb-6 text-green-200" />
           <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to Grow Your Lending Business?
+            Ready to Lend on Feyza?
           </h2>
           <p className="text-xl text-green-100 mb-8">
-            Join hundreds of lenders already using Feyza to reach more borrowers.
+            Join as a verified business lender. Set your terms, get matches, and grow with trust-based lending.
           </p>
 
           <div className="flex flex-wrap justify-center gap-4">
-            <Link href="/business/register">
+            <Link href="/auth/signup">
               <Button size="lg" className="bg-white text-green-700 hover:bg-green-50">
                 Apply Now
                 <ArrowRight className="w-4 h-4 ml-2" />
@@ -328,7 +353,7 @@ export default function ForBusinessPage() {
                 variant="outline"
                 className="border-white text-white hover:bg-white/10 hover:text-white"
               >
-                Schedule a Demo
+                Contact Us
               </Button>
             </Link>
           </div>

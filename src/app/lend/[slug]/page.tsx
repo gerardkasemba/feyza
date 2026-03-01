@@ -3,7 +3,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Head from 'next/head';
 import { Navbar, Footer } from '@/components/layout';
 import { Button } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
@@ -122,7 +121,7 @@ export default function PublicLenderPage() {
 
       const { data: blt } = await supabase.from('business_loan_types')
         .select('loan_type:loan_types(id,name,slug,description)').eq('business_id', biz.id).eq('is_active', true);
-      if (blt) setLoanTypes(blt.map((r: any) => r.loan_type).filter(Boolean));
+      if (blt) setLoanTypes((blt as any[]).map((r) => r.loan_type).filter(Boolean) as unknown as LoanType[]);
       const { data: cd } = await supabase.from('countries').select('code,name').eq('is_active', true);
       if (cd) setCountries(cd);
       const { data: sd } = await supabase.from('states').select('code,name').eq('is_active', true);
@@ -134,8 +133,8 @@ export default function PublicLenderPage() {
 
   const handleRequestLoan = () => {
     sessionStorage.setItem('preferred_lender_slug', slug);
-    if (!user || !user.is_verified) { router.push('/apply/' + slug); return; }
-    router.push('/loans/new?lender=' + slug);
+    // Always go to apply/[slug]: guest form allows creating an account while requesting (no login required).
+    router.push('/apply/' + slug);
   };
 
   const canonicalUrl = typeof window !== 'undefined'
@@ -222,20 +221,7 @@ export default function PublicLenderPage() {
   const TIER_KEYS: TierPolicy['tier_id'][] = ['tier_1', 'tier_2', 'tier_3', 'tier_4'];
 
   return (
-    <>
-      <Head>
-        <title>{businessName} – Verified Lender on Feyza</title>
-        <meta name="description" content={shareDesc} />
-        <meta property="og:title" content={`${businessName} is lending on Feyza`} />
-        <meta property="og:description" content={shareDesc} />
-        <meta property="og:image" content={`/api/og/lender/${slug}`} />
-        <meta property="og:url" content={canonicalUrl} />
-        <meta name="twitter:card" content="summary_large_image" />
-        <link rel="canonical" href={canonicalUrl} />
-        <meta name="robots" content="index, follow, max-image-preview:large" />
-      </Head>
-
-      <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
         <Navbar user={user} />
 
         {/* ════════════════════ HERO ════════════════════ */}
@@ -565,14 +551,6 @@ export default function PublicLenderPage() {
               {/* RIGHT SIDEBAR */}
               <div className="lg:col-span-5 space-y-4 lg:sticky lg:top-6 self-start">
 
-                {/* Desktop apply CTA */}
-                <div className="hidden lg:block rounded-2xl border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
-                  <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold" onClick={handleRequestLoan}>
-                    Apply Now <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                  <p className="text-xs text-center text-neutral-400 mt-2.5">No credit check · No hidden fees</p>
-                </div>
-
                 {/* Contact */}
                 {((lender as any).contact_email || (lender as any).contact_phone || (lender as any).website_url) && (
                   <div className="rounded-2xl border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
@@ -639,6 +617,14 @@ export default function PublicLenderPage() {
                   </div>
                 </div>
 
+                {/* Desktop apply CTA */}
+                <div className="hidden lg:block rounded-2xl border border-neutral-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-5">
+                  <Button size="lg" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold" onClick={handleRequestLoan}>
+                    Apply Now <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                  <p className="text-xs text-center text-neutral-400 mt-2.5">No credit check · No hidden fees</p>
+                </div>
+
               </div>
             </div>
           </div>
@@ -646,6 +632,5 @@ export default function PublicLenderPage() {
 
         <Footer />
       </div>
-    </>
   );
 }

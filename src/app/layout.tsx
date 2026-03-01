@@ -9,9 +9,12 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://feyza.app';
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#059669' }, // emerald-600
-    { media: '(prefers-color-scheme: dark)', color: '#10b981' },  // emerald-500
+    { media: '(prefers-color-scheme: light)', color: '#059669' },
+    { media: '(prefers-color-scheme: dark)', color: '#10b981' },
   ],
 };
 
@@ -256,7 +259,7 @@ export default function RootLayout({
         {/* Security headers (inspired by Next.js best practices) */}
         <meta httpEquiv="x-ua-compatible" content="ie=edge" />
       </head>
-      <body className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 transition-colors" suppressHydrationWarning>
+      <body className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100" suppressHydrationWarning>
         <ToastProvider>
           {children}
         </ToastProvider>

@@ -52,8 +52,8 @@ export function PayPalPayment({
     try {
       await onPaymentComplete(transactionId || undefined);
       setShowConfirm(false);
-    } catch (err: any) {
-      setError(err.message || 'Failed to record payment');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to record payment');
     } finally {
       setProcessing(false);
     }

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('admin-countries');
 
 export interface Country {
   code: string;
@@ -52,10 +55,10 @@ export async function GET() {
       countries: enabledCountries,
       allCountries: countries,
     });
-  } catch (error: any) {
-    console.error('Error getting supported countries:', error);
+  } catch (error: unknown) {
+    log.error('Error getting supported countries:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get countries' },
+      { error: (error as Error).message || 'Failed to get countries' },
       { status: 500 }
     );
   }
@@ -146,7 +149,7 @@ export async function POST(request: NextRequest) {
     }
     
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: (error as Error).message }, { status: 400 });
     }
     
     return NextResponse.json({ 
@@ -154,10 +157,10 @@ export async function POST(request: NextRequest) {
       countries,
       message: 'Countries updated successfully',
     });
-  } catch (error: any) {
-    console.error('Error updating supported countries:', error);
+  } catch (error: unknown) {
+    log.error('Error updating supported countries:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update countries' },
+      { error: (error as Error).message || 'Failed to update countries' },
       { status: 500 }
     );
   }

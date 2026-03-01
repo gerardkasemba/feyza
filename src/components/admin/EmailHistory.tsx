@@ -5,7 +5,7 @@ import { Card, Badge } from '@/components/ui';
 import { Clock, Mail, Users, Eye, CheckCircle, XCircle, Loader } from 'lucide-react';
 
 interface EmailHistoryProps {
-  emails: any[];
+  emails: Record<string, unknown>[];
 }
 
 export function EmailHistory({ emails }: EmailHistoryProps) {
@@ -112,31 +112,31 @@ export function EmailHistory({ emails }: EmailHistoryProps) {
             <div className="max-h-[600px] overflow-y-auto space-y-3">
               {emails.map((email) => (
                 <div
-                  key={email.id}
+                  key={String(email.id ?? "")}
                   onClick={() => setSelectedEmail(email)}
                   className="p-4 bg-neutral-50 dark:bg-neutral-900 rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors border border-neutral-200 dark:border-neutral-700"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-neutral-900 dark:text-white truncate mb-1">
-                        {email.subject}
+                        {String(email.subject ?? "")}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        {getTypeBadge(email.email_type)}
+                        {getTypeBadge(String((email as any).email_type ?? ""))}
                         <span className="text-xs text-neutral-500">
                           <Users className="w-3 h-3 inline mr-1" />
-                          {email.recipient_count} recipient{email.recipient_count !== 1 ? 's' : ''}
+                          {String(email.recipient_count ?? "")} recipient{email.recipient_count !== 1 ? 's' : ''}
                         </span>
                       </div>
                     </div>
                     <div className="ml-2">
-                      {getStatusBadge(email.status)}
+                      {getStatusBadge(String((email as any).status ?? ""))}
                     </div>
                   </div>
                   
                   <div className="flex items-center justify-between mt-2">
                     <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                      {new Date(email.created_at).toLocaleString()}
+                      {new Date(email.created_at as string).toLocaleString()}
                     </div>
                     <button className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1">
                       <Eye className="w-3 h-3" />

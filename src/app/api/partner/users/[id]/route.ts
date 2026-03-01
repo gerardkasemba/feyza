@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret, toPartnerUser } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-users-id');
 
 export async function GET(
   req: NextRequest,
@@ -107,8 +110,8 @@ export async function GET(
     };
 
     return NextResponse.json({ user, trust_score: formattedTrustScore });
-  } catch (err: any) {
-    console.error(`[Partner /users/${id}]`, err);
+  } catch (err: unknown) {
+    log.error(`[Partner /users/${id}]`, err);
     return NextResponse.json({ error: 'Failed to fetch user' }, { status: 500 });
   }
 }

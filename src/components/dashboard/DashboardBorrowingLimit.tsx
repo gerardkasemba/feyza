@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('DashboardBorrowingLimit');
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -33,7 +35,7 @@ export function DashboardBorrowingLimit() {
           setEligibility(data);
         }
       } catch (err) {
-        console.error('Failed to fetch eligibility:', err);
+        log.error('Failed to fetch eligibility:', err);
       } finally {
         setLoading(false);
       }

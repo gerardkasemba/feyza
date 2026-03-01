@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('loans-id-funds');
 
 const PAYMENT_METHOD_NAMES: Record<string, string> = {
   paypal: 'PayPal',
   cashapp: 'Cash App',
   venmo: 'Venmo',
+  zelle: 'Zelle',
+  manual: 'Manual',
 };
 
 // POST: Lender confirms they sent payment to borrower
@@ -71,7 +76,7 @@ export async function POST(
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('Error updating loan:', updateError);
+      log.error('Error updating loan:', updateError);
       return NextResponse.json({ error: 'Failed to update loan' }, { status: 500 });
     }
 
@@ -80,7 +85,7 @@ export async function POST(
     const lenderEmail = loan.lender?.email || loan.business_lender?.contact_email;
     const borrowerEmail = loan.borrower?.email;
     const borrowerName = loan.borrower?.full_name || 'Borrower';
-    const paymentMethodName = PAYMENT_METHOD_NAMES[method] || method || 'PayPal';
+    const paymentMethodName = PAYMENT_METHOD_NAMES[method] || (method ? String(method) : 'manual');
 
     const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -383,7 +388,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Error confirming payment:', error);
+    log.error('Error confirming payment:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -421,7 +426,7 @@ export async function GET(
     });
 
   } catch (error) {
-    console.error('Error getting funds status:', error);
+    log.error('Error getting funds status:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('settings_page');
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -86,7 +88,7 @@ function SettingsContent() {
           setAvailableCountries(countriesData.countries || []);
         }
       } catch (err) {
-        console.error('Failed to fetch countries:', err);
+        log.error('Failed to fetch countries:', err);
       }
 
       try {
@@ -111,7 +113,7 @@ function SettingsContent() {
           setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone);
         }
       } catch (error) {
-        console.log('Error fetching profile');
+        log.debug('Error fetching profile');
       }
 
       setLoading(false);
@@ -133,7 +135,7 @@ function SettingsContent() {
         const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
         setIsDwollaEnabled(dwollaEnabled);
       } catch (err) {
-        console.error('Failed to check payment providers:', err);
+        log.error('Failed to check payment providers:', err);
       }
       setLoadingPaymentProviders(false);
     };
@@ -182,7 +184,7 @@ function SettingsContent() {
           }
         }
       } catch (err) {
-        console.error('Failed to fetch states:', err);
+        log.error('Failed to fetch states:', err);
       }
       setLoadingStates(false);
     };
@@ -220,8 +222,8 @@ function SettingsContent() {
       setProfile({ ...profile, full_name: fullName, phone, country, state });
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to update profile' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to update profile' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
@@ -250,8 +252,8 @@ function SettingsContent() {
       
       setMessage({ type: 'success', text: 'Notification settings updated!' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to update settings' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to update settings' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
@@ -306,8 +308,8 @@ function SettingsContent() {
         setMessage({ type: 'error', text: data.error || 'Failed to set username' });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to set username' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to set username' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } finally {
       setSaving(false);
@@ -344,14 +346,14 @@ function SettingsContent() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to change password' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to change password' });
     } finally {
       setChangingPassword(false);
     }
   };
 
-  const handleBankConnected = (data: any) => {
+  const handleBankConnected = (data: { bank_name?: string; account_mask?: string; account_type?: string; [key: string]: unknown }) => {
     setProfile({
       ...profile,
       bank_connected: true,
@@ -395,7 +397,7 @@ function SettingsContent() {
         bank_account_mask: null,
       });
       setMessage({ type: 'success', text: 'Bank account disconnected' });
-    } catch (error: any) {
+    } catch (error: unknown) {
       setMessage({ type: 'error', text: 'Failed to disconnect bank account' });
     } finally {
       setDisconnectingBank(false);

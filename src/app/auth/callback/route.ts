@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+const log = logger('auth-callback');
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 
@@ -35,10 +37,10 @@ export async function GET(request: Request) {
               updated_at: new Date().toISOString(),
             });
           
-          console.log(`[Auth Callback] Created user record for ${data.user.id}`);
+          log.info(`[Auth Callback] Created user record for ${data.user.id}`);
         }
       } catch (err) {
-        console.error('[Auth Callback] Error creating user record:', err);
+        log.error('[Auth Callback] Error creating user record:', err);
         // Don't fail the callback if user record creation fails
       }
 

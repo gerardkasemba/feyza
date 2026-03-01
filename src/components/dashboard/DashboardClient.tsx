@@ -3,6 +3,9 @@
 import { useEffect, useCallback, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('DashboardClient');
 import { TutorialProvider, TutorialAutoStart } from '@/components/tutorial';
 import { HelpCircle } from 'lucide-react';
 
@@ -46,7 +49,7 @@ export function DashboardClient({ userId, children, tutorialId = 'dashboard' }: 
           filter: `borrower_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Dashboard] Loan change (borrower):', payload.eventType);
+          log.debug('Loan change (borrower)', { event: payload.eventType });
           refreshData();
         }
       )
@@ -64,7 +67,7 @@ export function DashboardClient({ userId, children, tutorialId = 'dashboard' }: 
           filter: `lender_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Dashboard] Loan change (lender):', payload.eventType);
+          log.debug('Loan change (lender)', { event: payload.eventType });
           refreshData();
         }
       )
@@ -82,7 +85,7 @@ export function DashboardClient({ userId, children, tutorialId = 'dashboard' }: 
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Dashboard] New notification');
+          log.debug('New notification received');
         }
       )
       .subscribe();

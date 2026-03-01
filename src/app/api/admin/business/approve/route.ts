@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendEmail, getBusinessApprovedEmail, getBusinessRejectedEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+import { syncBusinessToLenderPrefs } from '@/lib/business/profile-service';
+
+const log = logger('admin-business-approve');
 
 // Create admin client with service role key
 function getAdminClient() {
@@ -25,7 +29,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { business_id, action, notes, admin_user_id } = body;
 
-    console.log('Admin approval request:', { business_id, action, notes, admin_user_id });
+    log.info('Admin approval request:', { business_id, action, notes, admin_user_id });
 
     if (!business_id) {
       return NextResponse.json({ error: 'business_id is required' }, { status: 400 });
@@ -44,10 +48,10 @@ export async function POST(request: NextRequest) {
       .eq('id', business_id)
       .single();
 
-    console.log('Fetched business:', business, 'Error:', fetchError);
+    log.info('Fetched business', { error: fetchError, data: business });
 
     if (fetchError) {
-      console.error('Fetch error:', fetchError);
+      log.error('Fetch error:', fetchError);
       return NextResponse.json({ 
         error: 'Business not found', 
         details: fetchError.message 
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
         is_verified: isApproved,
       };
       
-      console.log('Attempting full update with:', fullUpdateData);
+      log.info('Attempting full update with:', fullUpdateData);
       
       const { data: updatedBusiness, error: updateError } = await supabase
         .from('business_profiles')
@@ -87,10 +91,10 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (updateError) {
-        console.error('Full update error:', updateError);
+        log.error('Full update error:', updateError);
         
         // If full update fails, try minimal update
-        console.log('Trying minimal update with just is_verified');
+        log.info('Trying minimal update with just is_verified');
         const { data: minimalUpdate, error: minimalError } = await supabase
           .from('business_profiles')
           .update({ is_verified: isApproved })
@@ -99,7 +103,7 @@ export async function POST(request: NextRequest) {
           .single();
           
         if (minimalError) {
-          console.error('Minimal update error:', minimalError);
+          log.error('Minimal update error:', minimalError);
           return NextResponse.json({ 
             error: 'Failed to update business profile',
             details: minimalError.message,
@@ -107,32 +111,21 @@ export async function POST(request: NextRequest) {
           }, { status: 500 });
         }
         
-        console.log('Minimal update successful:', minimalUpdate);
+        log.info('Minimal update successful:', minimalUpdate);
       } else {
-        console.log('Full update successful:', updatedBusiness);
+        log.info('Full update successful:', updatedBusiness);
       }
-    } catch (err: any) {
-      console.error('Update exception:', err);
+    } catch (err: unknown) {
+      log.error('Update exception:', err);
       return NextResponse.json({ 
         error: 'Exception during update',
-        details: err.message 
+        details: (err as Error).message 
       }, { status: 500 });
     }
 
-    // If approved, activate lender preferences
-    if (isApproved) {
-      const { error: prefsError } = await supabase
-        .from('lender_preferences')
-        .update({ is_active: true })
-        .eq('business_id', business_id);
-      
-      if (prefsError) {
-        console.error('Lender prefs update error:', prefsError);
-        // Don't fail the whole operation for this
-      } else {
-        console.log('Lender preferences activated');
-      }
-    }
+    // Sync lender prefs — on approval, is_active becomes true because verification_status='approved'
+    // (replaces tr_sync_business_lender_prefs trigger)
+    await syncBusinessToLenderPrefs(supabase as any, business_id);
 
     // Send email notification
     const ownerEmail = business.owner?.email;
@@ -208,7 +201,7 @@ export async function POST(request: NextRequest) {
               </html>
             `,
           });
-          console.log('Approval email sent to:', ownerEmail);
+          log.info('Approval email sent to:', ownerEmail);
         } else {
           await sendEmail({
             to: ownerEmail,
@@ -294,10 +287,10 @@ export async function POST(request: NextRequest) {
               </html>
             `,
           });
-          console.log('Rejection email sent to:', ownerEmail);
+          log.info('Rejection email sent to:', ownerEmail);
         }
       } catch (emailError) {
-        console.error('Email send error:', emailError);
+        log.error('Email send error:', emailError);
         // Don't fail the whole operation for email
       }
 
@@ -311,9 +304,9 @@ export async function POST(request: NextRequest) {
             ? `Your business "${business.business_name}" has been approved. You can now start lending!`
             : `Your business application for "${business.business_name}" requires attention.${notes ? ` Reason: ${notes}` : ''}`,
         });
-        console.log('Notification created');
+        log.info('Notification created');
       } catch (notifError) {
-        console.error('Notification error:', notifError);
+        log.error('Notification error:', notifError);
       }
     }
 
@@ -325,11 +318,11 @@ export async function POST(request: NextRequest) {
         ? 'Business approved successfully' 
         : 'Business application rejected',
     });
-  } catch (error: any) {
-    console.error('Error in admin business approval:', error);
+  } catch (error: unknown) {
+    log.error('Error in admin business approval:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 });
   }
 }
@@ -361,10 +354,10 @@ export async function GET(request: NextRequest) {
     const { data: businesses, error } = await query;
 
     if (error) {
-      console.error('Fetch businesses error:', error);
+      log.error('Fetch businesses error:', error);
       return NextResponse.json({ 
         error: 'Failed to fetch businesses',
-        details: error.message 
+        details: (error as Error).message 
       }, { status: 500 });
     }
 
@@ -372,11 +365,11 @@ export async function GET(request: NextRequest) {
       businesses: businesses || [],
       count: businesses?.length || 0,
     });
-  } catch (error: any) {
-    console.error('Error fetching businesses:', error);
+  } catch (error: unknown) {
+    log.error('Error fetching businesses:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 });
   }
 }

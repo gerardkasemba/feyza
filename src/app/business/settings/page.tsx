@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('settings_page');
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -205,7 +207,7 @@ function BusinessSettingsContent() {
       .single();
 
     if (businessError || !businessData) {
-      console.error('Error fetching business:', businessError);
+      log.error('Error fetching business:', businessError);
       router.push('/business/onboarding');
       return;
     }
@@ -267,7 +269,7 @@ function BusinessSettingsContent() {
         const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
         setIsDwollaEnabled(dwollaEnabled);
       } catch (err) {
-        console.error('Failed to check payment providers:', err);
+        log.error('Failed to check payment providers:', err);
       } finally {
         setLoadingPaymentProviders(false);
       }
@@ -315,9 +317,9 @@ function BusinessSettingsContent() {
       
       if (error) throw error;
       setMessage({ type: 'success', text: 'Payment methods saved successfully!' });
-    } catch (err: any) {
-      console.error('Error saving payment methods:', err);
-      setMessage({ type: 'error', text: err.message || 'Failed to save payment methods' });
+    } catch (err: unknown) {
+      log.error('Error saving payment methods:', err);
+      setMessage({ type: 'error', text: (err as Error).message || 'Failed to save payment methods' });
     } finally {
       setSavingPaymentMethods(false);
     }
@@ -347,7 +349,7 @@ function BusinessSettingsContent() {
     const fileName = `${user.id}-${Date.now()}.${fileExt}`;
     const filePath = `logos/${fileName}`;
     
-    console.log('Uploading logo to:', filePath);
+    log.debug('Uploading logo to:', filePath);
     
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from('business-assets')
@@ -356,19 +358,19 @@ function BusinessSettingsContent() {
     setUploadingLogo(false);
     
     if (uploadError) {
-      console.error('Logo upload error:', uploadError);
-      console.error('Error details:', JSON.stringify(uploadError, null, 2));
+      log.error('Logo upload error:', uploadError);
+      log.error('Error details:', JSON.stringify(uploadError, null, 2));
       setMessage({ type: 'error', text: 'Logo upload failed: ' + uploadError.message });
       return business?.logo_url || null;
     }
     
-    console.log('Upload successful:', uploadData);
+    log.debug('Upload successful:', uploadData);
     
     const { data: urlData } = supabase.storage
       .from('business-assets')
       .getPublicUrl(filePath);
     
-    console.log('Logo URL:', urlData.publicUrl);
+    log.debug('Logo URL:', urlData.publicUrl);
     return urlData.publicUrl;
   };
 
@@ -408,8 +410,8 @@ function BusinessSettingsContent() {
       setBusiness({ ...business, logo_url: logoUrl });
       setLogoFile(null);
       setMessage({ type: 'success', text: 'Profile updated successfully!' });
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to update profile' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to update profile' });
     } finally {
       setSaving(false);
     }
@@ -452,9 +454,9 @@ function BusinessSettingsContent() {
 
       setMessage({ type: 'success', text: 'Lending settings saved successfully!' });
       await fetchData(); // Reload to get updated values
-    } catch (error: any) {
-      console.error('Error saving lending settings:', error);
-      setMessage({ type: 'error', text: error.message || 'Failed to save settings' });
+    } catch (error: unknown) {
+      log.error('Error saving lending settings:', error);
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to save settings' });
     } finally {
       setSaving(false);
     }
@@ -552,8 +554,8 @@ function BusinessSettingsContent() {
         .eq('id', user.id);
 
       router.push('/dashboard?deleted=business');
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to delete account' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to delete account' });
     } finally {
       setDeletingAccount(false);
     }
@@ -567,8 +569,8 @@ function BusinessSettingsContent() {
   };
 
   // Bank connection handlers
-  const handleBankConnected = (data: any) => {
-    // Update local user state
+  const handleBankConnected = async (data: { bank_name?: string; account_mask?: string; account_type?: string; [key: string]: unknown }) => {
+    // Update local user state immediately for optimistic UI
     setUser({
       ...user,
       bank_connected: true,
@@ -576,6 +578,31 @@ function BusinessSettingsContent() {
       bank_account_mask: data.account_mask,
       bank_account_type: data.account_type,
     });
+
+    // Also persist bank_connected to business_profiles so it survives page reloads
+    if (business?.id) {
+      try {
+        const supabase = createClient();
+        await supabase
+          .from('business_profiles')
+          .update({
+            bank_connected: true,
+            bank_name: data.bank_name || null,
+            bank_account_mask: data.account_mask || null,
+          })
+          .eq('id', business.id);
+        setBusiness({
+          ...business,
+          bank_connected: true,
+          bank_name: data.bank_name,
+          bank_account_mask: data.account_mask,
+        });
+      } catch (err) {
+        // Non-critical: user state already updated, log the error
+        log.error('Failed to update business_profiles bank_connected:', err);
+      }
+    }
+
     setMessage({ type: 'success', text: 'Bank account connected successfully!' });
   };
 
@@ -608,6 +635,16 @@ function BusinessSettingsContent() {
           bank_name: null,
           bank_account_mask: null,
         });
+
+        // Also clear bank_connected from business_profiles
+        if (business?.id) {
+          await supabase
+            .from('business_profiles')
+            .update({ bank_connected: false, bank_name: null, bank_account_mask: null })
+            .eq('id', business.id);
+          setBusiness({ ...business, bank_connected: false, bank_name: null, bank_account_mask: null });
+        }
+
         setMessage({ type: 'success', text: 'Bank account disconnected' });
       } else {
         setMessage({ type: 'error', text: 'Failed to disconnect bank account' });
@@ -880,11 +917,11 @@ function BusinessSettingsContent() {
                           </div>
                         </div>
 
-                        {user?.bank_connected ? (
+                        {(user?.bank_connected || business?.bank_connected) ? (
                           <ConnectedBank
-                            bankName={user.bank_name}
-                            accountMask={user.bank_account_mask}
-                            accountType={user.bank_account_type}
+                            bankName={user?.bank_name || business?.bank_name}
+                            accountMask={user?.bank_account_mask || business?.bank_account_mask}
+                            accountType={user?.bank_account_type}
                             onDisconnect={handleDisconnectBank}
                           />
                         ) : (

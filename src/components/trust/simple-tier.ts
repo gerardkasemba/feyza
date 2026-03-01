@@ -1,3 +1,5 @@
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('simple-tier');
 import { createServiceRoleClientDirect } from '@/lib/supabase/server';
 import type { PostgrestError } from '@supabase/supabase-js';
 
@@ -29,7 +31,7 @@ export async function calculateSimpleTrustTier(
     .eq('status', 'active');
 
   if (countError) {
-    console.error('[SimpleTier] Failed to count vouches:', countError.message);
+    log.error('[SimpleTier] Failed to count vouches:', countError.message);
   }
 
   const vouchCount = count ?? 0;
@@ -81,7 +83,7 @@ export async function calculateSimpleTrustTier(
       .eq('id', userId);
 
   if (persistError) {
-    console.error(
+    log.error(
       '[SimpleTier] Failed to persist tier:',
       persistError.message
     );
@@ -115,7 +117,7 @@ export async function getStoredTier(
     .single();
 
   if (error) {
-    console.error('[SimpleTier] Failed to read stored tier:', error.message);
+    log.error('[SimpleTier] Failed to read stored tier:', (error as Error).message);
     return null;
   }
 

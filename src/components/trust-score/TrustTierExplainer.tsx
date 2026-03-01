@@ -3,15 +3,16 @@
 import React, { useState } from 'react';
 import { Shield, Users, TrendingUp, ChevronDown, ChevronUp, Zap, Award, Lock } from 'lucide-react';
 
+// Indicative colors: tier_1 = lowest (red), tier_4 = highest (green)
 const TIERS = [
   {
     id: 'tier_1',
     label: 'Tier 1',
     name: 'Low Trust',
     vouches: '0 – 2 vouches',
-    color: 'bg-neutral-100 dark:bg-neutral-800 border-neutral-300 dark:border-neutral-600',
-    badge: 'bg-neutral-200 dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300',
-    dot: 'bg-neutral-400',
+    color: 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800',
+    badge: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
+    dot: 'bg-red-500',
     example: 'Tight limits, higher rate — they\'re proving themselves',
   },
   {
@@ -19,9 +20,9 @@ const TIERS = [
     label: 'Tier 2',
     name: 'Building Trust',
     vouches: '3 – 5 vouches',
-    color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800',
-    badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
-    dot: 'bg-amber-400',
+    color: 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800',
+    badge: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
+    dot: 'bg-orange-500',
     example: 'Moderate limits — community is starting to trust them',
   },
   {
@@ -29,9 +30,9 @@ const TIERS = [
     label: 'Tier 3',
     name: 'Established Trust',
     vouches: '6 – 10 vouches',
-    color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800',
-    badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
-    dot: 'bg-emerald-500',
+    color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
+    badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
+    dot: 'bg-blue-500',
     example: 'Higher limits, better rate — consistently vouched for',
   },
   {
@@ -39,9 +40,9 @@ const TIERS = [
     label: 'Tier 4',
     name: 'High Trust',
     vouches: '11+ vouches',
-    color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800',
-    badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
-    dot: 'bg-blue-500',
+    color: 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800',
+    badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
+    dot: 'bg-emerald-500',
     example: 'Your best terms — their social graph is their credit score',
   },
 ];

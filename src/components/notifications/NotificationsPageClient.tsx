@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useCallback, useRef, ReactNode } from 'react';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('NotificationsPageClient');
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 
@@ -40,7 +43,7 @@ export function NotificationsPageClient({ userId, children }: NotificationsPageC
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Notifications] Change:', payload.eventType);
+          log.debug('Notification change', { event: payload.eventType });
           refreshData();
         }
       )

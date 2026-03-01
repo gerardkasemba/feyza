@@ -1,14 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/cron/auto-pay",
-      "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/payment-reminders",
-      "schedule": "0 9 * * *"
-    },
-    {
       "path": "/api/cron/payment-retry",
       "schedule": "0 6 * * *"
     },
@@ -17,22 +9,22 @@
       "schedule": "0 7 * * *"
     },
     {
-      "path": "/api/cron/match-expiry",
-      "schedule": "0 * * * *"
+      "path": "/api/cron/auto-pay",
+      "schedule": "0 8 * * *"
     },
     {
-      "path": "/api/cron/notify-lenders-pending",
+      "path": "/api/cron/payment-reminders",
       "schedule": "0 9 * * *"
     },
     {
-      "path": "/api/cron/sync-status",
-      "schedule": "*/30 * * * *"
+      "path": "/api/cron/notify-lenders-pending",
+      "schedule": "0 10 * * *"
     },
     {
-      "path": "/api/cron/reminders",
-      "schedule": "0 8 * * *"
+      "path": "/api/cron/match-expiry",
+      "schedule": "0 */4 * * *"
     },
-        {
+    {
       "path": "/api/cron/sync-dwolla",
       "schedule": "*/5 * * * *"
     }

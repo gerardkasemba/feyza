@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('borrower-eligibility');
 
 // Tier amounts for personal lending (friend-to-friend)
 const TIER_AMOUNTS: Record<number, number> = {
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
         // Still has outstanding debt - fully blocked
         // Get total outstanding debt
         const { data: outstandingPayments } = await supabase
-          .from('repayment_schedule')
+          .from('payment_schedule')
           .select('amount, currency, loan_id')
           .eq('status', 'defaulted')
           .in('loan_id', (
@@ -251,7 +254,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Error checking borrower eligibility:', error);
+    log.error('Error checking borrower eligibility:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -392,7 +395,7 @@ export async function POST(request: NextRequest) {
       totalOutstanding,
     });
   } catch (error) {
-    console.error('Error checking amount:', error);
+    log.error('Error checking amount:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

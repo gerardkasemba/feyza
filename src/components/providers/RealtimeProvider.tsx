@@ -3,6 +3,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { clientLogger } from '@/lib/client-logger';
+import type { Loan, PaymentScheduleItem } from '@/types';
+
+const log = clientLogger('RealtimeProvider');
 
 interface Notification {
   id: string;
@@ -26,8 +30,8 @@ interface RealtimeContextType {
   markAllAsRead: () => Promise<void>;
   
   // Events for components to react to
-  onLoanUpdate: (callback: (loan: any) => void) => () => void;
-  onPaymentUpdate: (callback: (payment: any) => void) => () => void;
+  onLoanUpdate: (callback: (loan: Loan) => void) => () => void;
+  onPaymentUpdate: (callback: (payment: PaymentScheduleItem) => void) => () => void;
   onNotification: (callback: (notification: Notification) => void) => () => void;
   
   // Manual refresh
@@ -55,8 +59,8 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
   const [channels, setChannels] = useState<RealtimeChannel[]>([]);
   
   // Event listeners
-  const [loanListeners, setLoanListeners] = useState<Set<(loan: any) => void>>(new Set());
-  const [paymentListeners, setPaymentListeners] = useState<Set<(payment: any) => void>>(new Set());
+  const [loanListeners, setLoanListeners] = useState<Set<(loan: Loan) => void>>(new Set());
+  const [paymentListeners, setPaymentListeners] = useState<Set<(payment: PaymentScheduleItem) => void>>(new Set());
   const [notificationListeners, setNotificationListeners] = useState<Set<(notification: Notification) => void>>(new Set());
   
   const supabase = createClient();
@@ -110,7 +114,7 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
   }, [userId]);
 
   // Register event listeners
-  const onLoanUpdate = useCallback((callback: (loan: any) => void) => {
+  const onLoanUpdate = useCallback((callback: (loan: Loan) => void) => {
     setLoanListeners(prev => new Set(prev).add(callback));
     return () => {
       setLoanListeners(prev => {
@@ -121,7 +125,7 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
     };
   }, []);
 
-  const onPaymentUpdate = useCallback((callback: (payment: any) => void) => {
+  const onPaymentUpdate = useCallback((callback: (payment: PaymentScheduleItem) => void) => {
     setPaymentListeners(prev => new Set(prev).add(callback));
     return () => {
       setPaymentListeners(prev => {
@@ -169,7 +173,7 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
         },
         (payload) => {
           const notification = payload.new as Notification;
-          console.log('[Realtime] New notification:', notification.title);
+          log.debug('New notification', { title: notification.title });
           
           // Add to state
           setNotifications(prev => [notification, ...prev]);
@@ -187,7 +191,7 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
         }
       )
       .subscribe((status) => {
-        console.log('[Realtime] Notifications channel:', status);
+        log.debug('Notifications channel status', { status });
         if (status === 'SUBSCRIBED') {
           setIsConnected(true);
         }
@@ -207,9 +211,9 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
           filter: `borrower_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Realtime] Loan update (borrower):', payload.eventType);
+          log.debug('Loan update (borrower)', { event: payload.eventType });
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            loanListeners.forEach(listener => listener(payload.new));
+            loanListeners.forEach(listener => listener(payload.new as unknown as any));
           }
         }
       )
@@ -229,9 +233,9 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
           filter: `lender_id=eq.${userId}`,
         },
         (payload) => {
-          console.log('[Realtime] Loan update (lender):', payload.eventType);
+          log.debug('Loan update (lender)', { event: payload.eventType });
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            loanListeners.forEach(listener => listener(payload.new));
+            loanListeners.forEach(listener => listener(payload.new as unknown as any));
           }
         }
       )
@@ -250,9 +254,9 @@ export function RealtimeProvider({ children, userId }: RealtimeProviderProps) {
           table: 'payment_schedule',
         },
         (payload) => {
-          console.log('[Realtime] Payment update:', payload.eventType);
+          log.debug('Payment update', { event: payload.eventType });
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            paymentListeners.forEach(listener => listener(payload.new));
+            paymentListeners.forEach(listener => listener(payload.new as unknown as any));
           }
         }
       )

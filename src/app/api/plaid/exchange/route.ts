@@ -7,6 +7,9 @@ import {
   getCustomer,
   listFundingSources 
 } from '@/lib/dwolla';
+import { logger } from '@/lib/logger';
+
+const log = logger('plaid-exchange');
 
 // POST: Exchange Plaid public token and create Dwolla funding source
 export async function POST(request: NextRequest) {
@@ -108,8 +111,32 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id);
 
     if (updateError) {
-      console.error('Error saving bank info:', updateError);
+      log.error('Error saving bank info:', updateError);
       // Don't fail - bank is connected in Dwolla
+    }
+
+    // Also save bank info to business_profiles if user is a business lender
+    if (profile.user_type === 'business') {
+      const { error: bizUpdateError } = await supabase
+        .from('business_profiles')
+        .update({
+          bank_connected: true,
+          bank_name: bankName,
+          bank_account_mask: account.mask,
+          dwolla_funding_source_url: fundingSourceUrl,
+          dwolla_funding_source_id: fundingSourceUrl?.split('/').pop(),
+          dwolla_customer_url: dwollaCustomerUrl,
+          dwolla_customer_id: dwollaCustomerUrl?.split('/').pop(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+
+      if (bizUpdateError) {
+        log.error('Error saving bank info to business_profiles:', bizUpdateError);
+        // Non-critical: users table already updated
+      } else {
+        log.info('Bank info saved to business_profiles for user:', user.id);
+      }
     }
 
     return NextResponse.json({
@@ -119,10 +146,10 @@ export async function POST(request: NextRequest) {
       account_type: account.subtype,
       funding_source_id: fundingSourceUrl?.split('/').pop(),
     });
-  } catch (error: any) {
-    console.error('Error exchanging Plaid token:', error);
+  } catch (error: unknown) {
+    log.error('Error exchanging Plaid token:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to connect bank account' },
+      { error: (error as Error).message || 'Failed to connect bank account' },
       { status: 500 }
     );
   }

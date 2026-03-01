@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+import { sendEmail } from '@/lib/email-core';
+import { getPaymentConfirmationNeededEmail } from '@/lib/email-dashboard';
+
+const log = logger('payments-proof');
 
 // POST: Submit payment proof (for manual payment methods)
 export async function POST(request: NextRequest) {
@@ -122,7 +128,28 @@ export async function POST(request: NextRequest) {
         is_read: false,
       });
 
-      // TODO: Send email notification
+      // Send email notification to receiver
+      const receiver = transaction_type === 'repayment' ? loan.lender : loan.borrower;
+      const sender = transaction_type === 'repayment' ? loan.borrower : loan.lender;
+      const receiverObj = Array.isArray(receiver) ? receiver[0] : receiver;
+      const senderObj = Array.isArray(sender) ? sender[0] : sender;
+
+      if (receiverObj?.email) {
+        try {
+          const { subject, html } = getPaymentConfirmationNeededEmail({
+            borrowerName: receiverObj.full_name || receiverObj.email,
+            amount,
+            currency,
+            lenderName: senderObj?.full_name || senderObj?.email || user.email || 'your counterpart',
+            accessToken: loan.borrower_access_token || '',
+            loanId: loan_id,
+          });
+          await sendEmail({ to: receiverObj.email, subject, html });
+        } catch (emailErr) {
+          // Non-fatal — in-app notification already sent
+          log.warn('Failed to send payment proof email:', emailErr);
+        }
+      }
     }
 
     return NextResponse.json({
@@ -139,10 +166,10 @@ export async function POST(request: NextRequest) {
         ? 'Payment proof submitted. Waiting for recipient to confirm.'
         : 'Transaction created. Please upload proof of payment.',
     });
-  } catch (error: any) {
-    console.error('Error submitting payment proof:', error);
+  } catch (error: unknown) {
+    log.error('Error submitting payment proof:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to submit payment proof' },
+      { error: (error as Error).message || 'Failed to submit payment proof' },
       { status: 500 }
     );
   }
@@ -219,6 +246,18 @@ export async function PATCH(request: NextRequest) {
             disbursement_confirmed_at: new Date().toISOString(),
           })
           .eq('id', transaction.loan_id);
+
+        // Increment loans_active on vouchers for this borrower (same as accept/dwolla/setup-loan)
+        const borrowerId = (transaction.loan as { borrower_id?: string })?.borrower_id;
+        if (borrowerId) {
+          try {
+            const serviceSupabase = await createServiceRoleClient();
+            const { onVoucheeNewLoan } = await import('@/lib/vouching/accountability');
+            await onVoucheeNewLoan(serviceSupabase as any, borrowerId, transaction.loan_id);
+          } catch (err) {
+            log.error('[PaymentProof] onVoucheeNewLoan error (non-fatal):', err);
+          }
+        }
       } else if (transaction.transaction_type === 'repayment') {
         // Update payment schedule if linked
         if (transaction.payment_schedule_id) {
@@ -258,6 +297,44 @@ export async function PATCH(request: NextRequest) {
         is_read: false,
       });
 
+      // ── Trust Score + Vouches + Loan completion pipeline ──────────────
+      // BUG FIX: This was completely missing. When a lender confirmed a
+      // proof-based payment (CashApp/Venmo/Zelle), the trust score, voucher
+      // accountability, user stats, and lender capital release pipeline
+      // never fired.
+      if (transaction.transaction_type === 'repayment' && transaction.sender_id) {
+        try {
+          const serviceSupabase = await createServiceRoleClient();
+          const { onPaymentCompleted } = await import('@/lib/payments/handler');
+
+          // Determine payment timing
+          let dueDate: string | undefined;
+          if (transaction.payment_schedule_id) {
+            const { data: schedItem } = await serviceSupabase
+              .from('payment_schedule')
+              .select('due_date')
+              .eq('id', transaction.payment_schedule_id)
+              .single();
+            dueDate = schedItem?.due_date;
+          }
+
+          const trustResult = await onPaymentCompleted({
+            supabase: serviceSupabase,
+            loanId: transaction.loan_id,
+            borrowerId: transaction.sender_id,
+            paymentId: transaction.payment_schedule_id || transaction_id,
+            scheduleId: transaction.payment_schedule_id || undefined,
+            amount: Number(transaction.amount),
+            dueDate,
+            paymentMethod: 'manual',
+          });
+
+          log.info('[PaymentProof] Trust score update result:', trustResult);
+        } catch (trustErr) {
+          log.error('[PaymentProof] Trust score update failed (non-fatal):', trustErr);
+        }
+      }
+
       return NextResponse.json({
         success: true,
         message: 'Payment confirmed successfully',
@@ -296,7 +373,41 @@ export async function PATCH(request: NextRequest) {
         is_read: false,
       });
 
-      // TODO: Notify admins
+      // Notify admins about the dispute
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail) {
+        const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        try {
+          const { emailWrapper } = await import('@/lib/email-core');
+          const { subject, html } = {
+            subject: `⚠️ Payment Disputed — Transaction ${transaction_id}`,
+            html: emailWrapper({
+              title: '⚠️ Payment Dispute Filed',
+              subtitle: 'Action Required',
+              content: `
+                <p style="color: #374151;">A payment dispute has been filed and requires review.</p>
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 16px 0; border: 1px solid #fecaca;">
+                  <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <tr><td style="padding: 6px 0; color: #6b7280; width: 40%;">Transaction ID</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${transaction_id}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Loan ID</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${transaction.loan_id}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Amount</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${transaction.currency} ${Number(transaction.amount).toLocaleString()}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Disputed By</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${user.email}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Reason</td><td style="padding: 6px 0; font-weight: 600; color: #dc2626;">${dispute_reason}</td></tr>
+                    <tr><td style="padding: 6px 0; color: #6b7280;">Filed At</td><td style="padding: 6px 0; font-weight: 600; color: #111;">${new Date().toLocaleString()}</td></tr>
+                  </table>
+                </div>
+              `,
+              ctaText: 'Review in Admin Panel',
+              ctaUrl: `${APP_URL}/admin/disputes?transaction=${transaction_id}`,
+              footerNote: 'This is an automated alert from the Feyza platform.',
+            }),
+          };
+          await sendEmail({ to: adminEmail, subject, html });
+        } catch (emailErr) {
+          // Non-fatal — dispute is recorded, email delivery is best-effort
+          log.warn('Failed to send admin dispute notification:', emailErr);
+        }
+      }
 
       return NextResponse.json({
         success: true,
@@ -306,10 +417,10 @@ export async function PATCH(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error: any) {
-    console.error('Error processing payment action:', error);
+  } catch (error: unknown) {
+    log.error('Error processing payment action:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to process payment action' },
+      { error: (error as Error).message || 'Failed to process payment action' },
       { status: 500 }
     );
   }

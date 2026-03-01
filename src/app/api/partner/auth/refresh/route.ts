@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret, toPartnerUser } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-auth-refresh');
 
 export async function POST(req: NextRequest) {
   const guard = verifyPartnerSecret(req);
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
 
     if (userErr) {
-      console.error('[Partner /auth/refresh] Failed to load user row:', userErr);
+      log.error('[Partner /auth/refresh] Failed to load user row:', userErr);
       // Still return refreshed tokens even if profile lookup fails
     }
 
@@ -62,8 +65,8 @@ export async function POST(req: NextRequest) {
       expires_in: data.session.expires_in ?? 3600,
       user: userRow ? toPartnerUser(userRow) : null,
     });
-  } catch (err: any) {
-    console.error('[Partner /auth/refresh]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /auth/refresh]', err);
     return NextResponse.json({ error: 'Token refresh failed' }, { status: 500 });
   }
 }

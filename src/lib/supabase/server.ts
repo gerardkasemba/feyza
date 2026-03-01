@@ -1,7 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
-type CookieToSet = { name: string; value: string; options?: any };
+type CookieToSet = { name: string; value: string; options?: Record<string, unknown> };
+
+/** Convenience type for the Supabase server-side client used across API routes */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type SupabaseServiceClient = SupabaseClient<any, 'public', any>;
 
 export async function createServerSupabaseClient() {
   const cookieStore = await cookies()

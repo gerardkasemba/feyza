@@ -7,6 +7,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-users-search');
 
 export async function GET(req: NextRequest) {
   const guard = verifyPartnerSecret(req);
@@ -63,8 +66,8 @@ export async function GET(req: NextRequest) {
     }));
 
     return NextResponse.json({ users });
-  } catch (err: any) {
-    console.error('[Partner /users/search]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /users/search]', err);
     return NextResponse.json({ error: 'Search failed' }, { status: 500 });
   }
 }

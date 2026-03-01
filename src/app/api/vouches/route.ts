@@ -3,6 +3,9 @@ import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supab
 import { VouchService, TrustScoreService, vouchStrengthLabel } from '@/lib/trust-score';
 import { sendEmail } from '@/lib/email';
 import { checkVouchingEligibility } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('vouches');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -55,9 +58,9 @@ export async function GET(request: NextRequest) {
       vouches,
       pendingRequests,
     });
-  } catch (error: any) {
-    console.error('Error fetching vouches:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error fetching vouches:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -79,7 +82,8 @@ export async function POST(request: NextRequest) {
 
     // ── Verification gate: check eligibility before any vouch action ─────
     // Gates: account age ≥ 7 days, full_name set, not vouching_locked
-    if (action === 'vouch' || action === 'accept_request') {
+    // Note: client sends action 'accept' when accepting a vouch request (not 'accept_request')
+    if (action === 'vouch' || action === 'accept' || action === 'accept_request') {
       const eligibility = await checkVouchingEligibility(serviceClient, user.id);
       if (!eligibility.eligible) {
         return NextResponse.json(
@@ -185,8 +189,8 @@ export async function POST(request: NextRequest) {
             targetName: targetName || 'there',
             requesterName: requester?.full_name || 'Someone',
             message: message || '',
-            requestId: result.request.id,
-            inviteToken: result.request.invite_token,
+            requestId: (result.request as any)?.id,
+            inviteToken: (result.request as any)?.invite_token,
           }),
         });
       }
@@ -240,9 +244,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-  } catch (error: any) {
-    console.error('Error processing vouch action:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error processing vouch action:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 

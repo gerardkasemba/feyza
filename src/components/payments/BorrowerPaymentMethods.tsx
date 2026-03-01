@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('BorrowerPaymentMethods');
 
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Badge } from '@/components/ui';
@@ -115,7 +117,7 @@ export default function BorrowerPaymentMethods({
       if (error) throw error;
       setPaymentMethods(methods || []);
     } catch (err) {
-      console.error('Error fetching payment methods:', err);
+      log.error('Error fetching payment methods:', err);
     } finally {
       setLoading(false);
     }

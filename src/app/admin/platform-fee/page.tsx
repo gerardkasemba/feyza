@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -75,7 +77,7 @@ export default function PlatformFeePage() {
         .order('fee_type', { ascending: true });
 
       if (error) {
-        console.error('Error fetching fees:', error);
+        log.error('Error fetching fees:', error);
         setFeeConfigs(defaultFees);
       } else if (configs && configs.length > 0) {
         setFeeConfigs(configs);
@@ -99,7 +101,7 @@ export default function PlatformFeePage() {
       const revenue = (transfers || []).reduce((sum, t) => sum + (t.platform_fee || 0), 0);
       setTotalRevenue(revenue);
     } catch (err) {
-      console.error('Error fetching data:', err);
+      log.error('Error fetching data:', err);
       setFeeConfigs(defaultFees);
     }
 
@@ -171,14 +173,14 @@ export default function PlatformFeePage() {
           });
         } catch (historyErr) {
           // Ignore if history logging fails
-          console.log('Fee history logging skipped:', historyErr);
+          log.debug('Fee history logging skipped:', historyErr);
         }
       }
 
       await fetchData();
       setEditingFee(null);
     } catch (err) {
-      console.error('Error saving fee:', err);
+      log.error('Error saving fee:', err);
       alert('Failed to save fee configuration');
     }
     setSaving(null);
@@ -197,7 +199,7 @@ export default function PlatformFeePage() {
         .eq('id', fee.id);
       await fetchData();
     } catch (err) {
-      console.error('Error toggling fee:', err);
+      log.error('Error toggling fee:', err);
     }
   };
 

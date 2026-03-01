@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('states');
 
 export interface State {
   id: string;
@@ -57,20 +60,20 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     
     if (error) {
-      console.error('Error fetching states:', error);
+      log.error('Error fetching states:', error);
       return NextResponse.json({ 
         states: [],
-        error: error.message,
+        error: (error as Error).message,
       });
     }
     
     // Map the data
-    const states = (data || []).map((s: any) => ({
+    const states = (data || []).map((s) => ({
       id: s.id,
       code: s.code,
       name: s.name,
       country_id: s.country_id,
-      country_code: s.countries?.code,
+      country_code: (s.countries as any)?.[0]?.code ?? (s.countries as any)?.code,
       is_active: s.is_active,
     }));
     
@@ -78,10 +81,10 @@ export async function GET(request: NextRequest) {
       states,
       country: countryCode || countryId,
     });
-  } catch (error: any) {
-    console.error('Error getting states:', error);
+  } catch (error: unknown) {
+    log.error('Error getting states:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get states', states: [] },
+      { error: (error as Error).message || 'Failed to get states', states: [] },
       { status: 500 }
     );
   }

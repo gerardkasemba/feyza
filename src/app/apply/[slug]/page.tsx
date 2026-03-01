@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import GuestLoanRequestForm from '@/components/GuestLoanRequestForm'
+import GuestLoanRequestForm from '@/components/loans/GuestLoanRequestForm'
 import { Navbar, Footer } from '@/components/layout'
 import {
   Building2, Loader2, AlertCircle, CheckCircle,
@@ -254,7 +254,7 @@ export default function ApplyWithSlugPage() {
 
             {/* Form */}
             <div className="lg:col-span-7">
-              <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+              <div className="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800">
                 <div className="px-6 py-5 border-b border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50">
                   <h2 className="font-bold text-neutral-900 dark:text-white">Loan application</h2>
                   <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -263,8 +263,9 @@ export default function ApplyWithSlugPage() {
                 </div>
                 <div className="p-6">
                   <GuestLoanRequestForm
-                    businessSlug={business?.slug || null}
-                    businessLenderId={business?.id || null}
+                    businessSlug={business?.slug ?? null}
+                    businessLenderId={business?.id ?? null}
+                    presetMaxAmount={guestLimit ? Number(guestLimit) : undefined}
                   />
                 </div>
               </div>

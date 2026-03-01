@@ -108,41 +108,18 @@ export default function VouchRequestsPage() {
         .single();
       setUserProfile(profile);
 
-      const [incoming, outgoing, received, given] = await Promise.all([
-        supabase
-          .from('vouch_requests')
-          .select('id, status, message, suggested_relationship, created_at, requester:users!requester_id(id, full_name)')
-          .eq('requested_user_id', authUser.id)
-          .order('created_at', { ascending: false }),
+      // Use API so requester/voucher/vouchee names are loaded (service role avoids RLS hiding them)
+      const res = await fetch('/api/vouches/my-requests');
+      if (!res.ok) {
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
 
-        // still fetched (useful for counters / future screens), but not shown as a tab
-        supabase
-          .from('vouch_requests')
-          .select('id, status, message, suggested_relationship, created_at, requested_email')
-          .eq('requester_id', authUser.id)
-          .order('created_at', { ascending: false }),
-
-        supabase
-          .from('vouches')
-          .select(
-            'id, vouch_type, relationship, vouch_strength, trust_score_boost, status, created_at, voucher:users!voucher_id(id, full_name)'
-          )
-          .eq('vouchee_id', authUser.id)
-          .order('created_at', { ascending: false }),
-
-        supabase
-          .from('vouches')
-          .select(
-            'id, vouch_type, relationship, vouch_strength, trust_score_boost, status, created_at, vouchee:users!vouchee_id(id, full_name)'
-          )
-          .eq('voucher_id', authUser.id)
-          .order('created_at', { ascending: false }),
-      ]);
-
-      setIncomingRequests((incoming.data ?? []) as unknown as VouchRequest[]);
-      setOutgoingRequests((outgoing.data ?? []) as unknown as VouchRequest[]);
-      setVouchesReceived((received.data ?? []) as unknown as Vouch[]);
-      setVouchesGiven((given.data ?? []) as unknown as Vouch[]);
+      setIncomingRequests((data.incomingRequests ?? []) as unknown as VouchRequest[]);
+      setOutgoingRequests((data.outgoingRequests ?? []) as unknown as VouchRequest[]);
+      setVouchesReceived((data.vouchesReceived ?? []) as unknown as Vouch[]);
+      setVouchesGiven((data.vouchesGiven ?? []) as unknown as Vouch[]);
 
       setLoading(false);
     })();
@@ -292,7 +269,7 @@ export default function VouchRequestsPage() {
 
                                     <div className="min-w-0">
                                       <p className="font-medium text-neutral-900 dark:text-white truncate">
-                                        {(req.requester as any)?.full_name ?? 'Unknown'}
+                                        {(req.requester as any)?.full_name ?? 'Someone'}
                                       </p>
                                       <p className="text-xs text-neutral-500 dark:text-neutral-400">
                                         {formatDate(req.created_at)}
@@ -327,7 +304,7 @@ export default function VouchRequestsPage() {
                                   {req.status === 'pending' && (req.requester as any)?.id && (
                                     <VouchButton
                                       targetUserId={(req.requester as any).id}
-                                      targetName={(req.requester as any).full_name}
+                                      targetName={(req.requester as any).full_name || 'this person'}
                                     />
                                   )}
                                 </div>
@@ -365,7 +342,7 @@ export default function VouchRequestsPage() {
                                       </div>
                                       <div className="min-w-0">
                                         <p className="font-medium text-neutral-900 dark:text-white truncate">
-                                          {(v.voucher as any)?.full_name ?? 'Unknown'}
+                                          {(v.voucher as any)?.full_name ?? 'Someone'}
                                         </p>
                                         <p className="text-xs text-neutral-500 dark:text-neutral-400 capitalize">
                                           {v.relationship} · {v.vouch_type}
@@ -531,7 +508,7 @@ export default function VouchRequestsPage() {
                                       </div>
                                       <div className="min-w-0">
                                         <p className="font-medium text-neutral-900 dark:text-white truncate">
-                                          {(v.vouchee as any)?.full_name ?? 'Unknown'}
+                                          {(v.vouchee as any)?.full_name ?? 'Someone'}
                                         </p>
                                         <p className="text-xs text-neutral-500 dark:text-neutral-400 capitalize">
                                           {v.relationship} · {v.vouch_type}
@@ -576,11 +553,11 @@ export default function VouchRequestsPage() {
                 </div>
               </div>
 
-              {/* VouchRequestCard */}
+              {/* VouchRequestCard — top-20 so sticky card sits below navbar (h-16) */}
               <div className="lg:col-span-5 order-2">
-                <div className="lg:sticky lg:top-4">
+                <div className="lg:sticky lg:top-20">
                   <div className="rounded-2xl overflow-hidden">
-                    <VouchRequestCard />
+                    <VouchRequestCard alreadyVouchedUserIds={vouchesGiven.map((v) => v.vouchee?.id ?? (v as { vouchee_id?: string }).vouchee_id).filter((id): id is string => Boolean(id))} />
                   </div>
                 </div>
               </div>

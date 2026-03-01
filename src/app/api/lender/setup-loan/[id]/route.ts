@@ -5,6 +5,10 @@ import { randomBytes } from 'crypto';
 import { addDays, addWeeks, format } from 'date-fns';
 import { validateRepaymentSchedule } from '@/lib/smartSchedule';
 import { createFacilitatedTransfer } from '@/lib/dwolla';
+import { logger } from '@/lib/logger';
+import { onVoucheeNewLoan } from '@/lib/vouching/accountability';
+
+const log = logger('lender-setup-loan-id');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -95,7 +99,7 @@ export async function GET(
     return NextResponse.json({ loan: loanData });
 
   } catch (error) {
-    console.error('Fetch loan for setup error:', error);
+    log.error('Fetch loan for setup error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -110,7 +114,7 @@ export async function POST(
     const { id: loanId } = await params;
     const body = await request.json();
 
-    console.log('Setup loan request body:', body);
+    log.info('Setup loan request body:', body);
 
     const {
       token,
@@ -142,7 +146,7 @@ export async function POST(
       .single();
 
     if (loanError || !loanData) {
-      console.error('Loan fetch error:', loanError);
+      log.error('Loan fetch error:', loanError);
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
@@ -191,7 +195,7 @@ export async function POST(
       borrowerName = loanRequest.borrower_name;
     }
 
-    console.log('Borrower Dwolla info:', {
+    log.info('Borrower Dwolla info:', {
       borrowerDwollaFundingSource,
       borrowerDwollaCustomerUrl,
       source: loan.borrower_dwolla_funding_source_url ? 'loan' 
@@ -211,20 +215,18 @@ export async function POST(
     // Validate repayment schedule (lenders have more flexibility, so just log warnings)
     const validation = validateRepaymentSchedule(loan.amount, repayment_frequency, total_installments);
     if (!validation.valid) {
-      console.warn('Repayment schedule validation warning:', validation.message);
+      log.warn('Repayment schedule validation warning:', validation.message);
     }
 
-    // Calculate interest
+    // Calculate interest — FLAT-RATE formula, consistent with accept route, matching engine,
+    // and DB constraint check_total_interest (requires total_interest = amount * rate/100 when
+    // uses_apr_calculation = false). Do NOT use monthly-APR formula here.
     const principal = loan.amount;
     const rate = (interest_rate || 0) / 100;
     
     let totalInterest = 0;
-    if (interest_type === 'simple') {
-      totalInterest = principal * rate * (total_installments / 12);
-    } else if (rate > 0) {
-      const periodsPerYear = repayment_frequency === 'weekly' ? 52 : repayment_frequency === 'biweekly' ? 26 : 12;
-      const periodicRate = rate / periodsPerYear;
-      totalInterest = principal * Math.pow(1 + periodicRate, total_installments) - principal;
+    if (rate > 0) {
+      totalInterest = principal * rate; // e.g. $1000 at 10% = $100 total interest
     }
 
     const totalAmount = principal + totalInterest;
@@ -239,6 +241,7 @@ export async function POST(
       interest_type: interest_type || 'simple',
       total_interest: Math.round(totalInterest * 100) / 100,
       total_amount: Math.round(totalAmount * 100) / 100,
+      uses_apr_calculation: false, // Required: tells check_total_interest to expect flat-rate formula
       repayment_frequency,
       repayment_amount: Math.round(repaymentAmount * 100) / 100,
       total_installments,
@@ -279,12 +282,21 @@ export async function POST(
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('Loan update error:', updateError);
+      log.error('Loan update error:', updateError);
       return NextResponse.json({ 
         error: 'Failed to update loan terms', 
         details: updateError.message,
         hint: updateError.hint || 'Check that all status values are valid'
       }, { status: 500 });
+    }
+
+    // Track active loan on all vouchers for this borrower (non-blocking)
+    if (loan.borrower_id) {
+      try {
+        await onVoucheeNewLoan(supabase as any, loan.borrower_id, loanId);
+      } catch (err) {
+        log.error('[SetupLoan] onVoucheeNewLoan error (non-fatal):', err);
+      }
     }
 
     // Process disbursement: Lender -> Master Account Balance -> Borrower
@@ -303,7 +315,7 @@ export async function POST(
         .single();
       
       if (existingDisbursement) {
-        console.log(`[Setup Loan] Disbursement transfer already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
+        log.info(`[Setup Loan] Disbursement transfer already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
         disbursementTransferId = existingDisbursement.dwolla_transfer_id;
       } else {
         const { transferUrl, transferIds, feeInfo } = await createFacilitatedTransfer({
@@ -354,11 +366,11 @@ export async function POST(
             })
             .eq('id', loanId);
             
-          console.log('Disbursement initiated (facilitated, no fee):', disbursementTransferId);
+          log.info('Disbursement initiated (facilitated, no fee):', disbursementTransferId);
         }
       }
-    } catch (disbErr: any) {
-      console.error('Disbursement error (continuing anyway):', JSON.stringify(disbErr.body || disbErr, null, 2));
+    } catch (disbErr: unknown) {
+      log.error('Disbursement error (continuing anyway):', JSON.stringify((disbErr as any)?.body || disbErr, null, 2));
       // Don't fail the whole request - loan is set up, disbursement can be retried
     }
 
@@ -428,7 +440,7 @@ export async function POST(
       .insert(schedule);
 
     if (scheduleError) {
-      console.error('Schedule insert error:', scheduleError);
+      log.error('Schedule insert error:', scheduleError);
     }
 
     // Notify borrower that loan is funded
@@ -575,7 +587,7 @@ export async function POST(
           `,
         });
       } catch (emailError) {
-        console.error('Email send error:', emailError);
+        log.error('Email send error:', emailError);
       }
     }
 
@@ -587,7 +599,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Save loan terms error:', error);
+    log.error('Save loan terms error:', error);
     return NextResponse.json({ error: 'Internal server error', details: String(error) }, { status: 500 });
   }
 }

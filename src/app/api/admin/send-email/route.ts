@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { sendEmail } from '@/lib/email'
+import { logger } from '@/lib/logger';
+
+const log = logger('admin-send-email');
 
 type EmailType =
   | 'newsletter'
@@ -175,7 +178,7 @@ export async function POST(request: NextRequest) {
         cc,
         bcc,
         serviceSupabase,
-        adminUser: user,
+        adminUser: user as unknown as Record<string, unknown>,
       })
     }
 
@@ -191,7 +194,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No valid recipients found' }, { status: 400 })
     }
 
-    const activeUsers = users.filter((u: any) => !u.is_suspended)
+    const activeUsers = users.filter((u) => !u.is_suspended)
     if (activeUsers.length === 0) {
       return NextResponse.json({ error: 'No active recipients found' }, { status: 400 })
     }
@@ -205,7 +208,7 @@ export async function POST(request: NextRequest) {
         email_type: emailType,
         recipient_type: recipientType,
         recipients_count: activeUsers.length,
-        recipient_ids: activeUsers.map((u: any) => u.id),
+        recipient_ids: activeUsers.map((u) => u.id),
         sent_by: user.id,
         status: scheduledSend ? 'scheduled' : 'pending',
         metadata: {
@@ -222,7 +225,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (logError) {
-      console.error('Error creating email log:', logError)
+      log.error('Error creating email log:', logError)
     }
 
     // If scheduled, don't send now
@@ -240,7 +243,7 @@ export async function POST(request: NextRequest) {
     const adminName = profile.full_name || 'Admin'
 
     // Send emails
-    const sendPromises = activeUsers.map(async (recipient: any) => {
+    const sendPromises = activeUsers.map(async (recipient) => {
       try {
         await sendSingleEmail({
           recipient,
@@ -257,9 +260,9 @@ export async function POST(request: NextRequest) {
         })
 
         return { success: true, email: recipient.email, userId: recipient.id }
-      } catch (err: any) {
-        console.error(`Failed to send email to ${recipient.email}:`, err)
-        return { success: false, email: recipient.email, userId: recipient.id, error: err?.message || 'Unknown error' }
+      } catch (err: unknown) {
+        log.error(`Failed to send email to ${recipient.email}:`, err)
+        return { success: false, email: recipient.email, userId: recipient.id, error: (err instanceof Error ? (err instanceof Error ? err.message : String(err)) : 'Unknown error') || 'Unknown error' }
       }
     })
 
@@ -285,7 +288,7 @@ export async function POST(request: NextRequest) {
         })
         .eq('id', emailLog.id)
 
-      await serviceSupabase.from('notifications').insert({
+      await (serviceSupabase as any).from('notifications').insert({
         user_id: user.id,
         type: 'email_campaign',
         title: 'Email Campaign Complete',
@@ -301,8 +304,8 @@ export async function POST(request: NextRequest) {
       stats: { total: activeUsers.length, successful, failed },
       logId: emailLog?.id,
     })
-  } catch (error: any) {
-    console.error('Error sending emails:', error)
+  } catch (error: unknown) {
+    log.error('Error sending emails:', error)
 
     // best-effort error logging
     try {
@@ -312,22 +315,22 @@ export async function POST(request: NextRequest) {
         data: { user },
       } = await serverClient.auth.getUser()
 
-      await serviceSupabase.from('admin_email_logs').insert({
+      await (serviceSupabase as any).from('admin_email_logs').insert({
         subject: 'ERROR',
-        body: error?.message || 'Unknown error',
+        body: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error') || 'Unknown error',
         email_type: 'system',
         recipient_type: 'none',
         recipients_count: 0,
         recipient_ids: [],
         sent_by: user?.id || null,
         status: 'failed',
-        metadata: { error: error?.message, stack: error?.stack },
+        metadata: { error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'), stack: (error instanceof Error ? (error instanceof Error ? error.stack : undefined) : undefined) },
       })
     } catch (logError) {
-      console.error('Failed to log error:', logError)
+      log.error('Failed to log error:', logError)
     }
 
-    return NextResponse.json({ error: error?.message || 'Failed to send emails' }, { status: 500 })
+    return NextResponse.json({ error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error') || 'Failed to send emails' }, { status: 500 })
   }
 }
 
@@ -354,8 +357,8 @@ async function handleTestEmail({
   replyTo?: string
   cc?: string[]
   bcc?: string[]
-  serviceSupabase: any
-  adminUser: any
+  serviceSupabase: unknown
+  adminUser: Record<string, unknown>
 }) {
   try {
     const testRecipient = { id: 'test-user', full_name: 'Test User', email: testEmail }
@@ -374,7 +377,7 @@ async function handleTestEmail({
       isTest: true,
     })
 
-    await serviceSupabase.from('admin_email_logs').insert({
+    await (serviceSupabase as any).from('admin_email_logs').insert({
       subject: `[TEST] ${subject}`,
       body,
       email_type: 'test',
@@ -390,9 +393,9 @@ async function handleTestEmail({
     })
 
     return NextResponse.json({ success: true, message: `Test email sent to ${testEmail}`, test: true })
-  } catch (error: any) {
-    console.error('Error sending test email:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to send test email' }, { status: 500 })
+  } catch (error: unknown) {
+    log.error('Error sending test email:', error)
+    return NextResponse.json({ error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error') || 'Failed to send test email' }, { status: 500 })
   }
 }
 
@@ -410,7 +413,7 @@ async function sendSingleEmail({
   adminName,
   isTest = false,
 }: {
-  recipient: any
+  recipient: { full_name?: string; email: string; [key: string]: unknown }
   subject: string
   body: string
   tone: EmailTone
@@ -569,7 +572,7 @@ async function sendSingleEmail({
   })
 
   if (!result.success) {
-    throw new Error(result.error || 'Failed to send email')
+    throw new Error(String(result.error || 'Failed to send email'))
   }
 
   return result
@@ -586,7 +589,7 @@ export async function GET(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const serviceSupabase = await createServiceRoleClient()
-    const { data: profile } = await serviceSupabase.from('users').select('is_admin').eq('id', user.id).single()
+    const { data: profile } = await (serviceSupabase as any).from('users').select('is_admin').eq('id', user.id).single()
 
     if (!profile?.is_admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
@@ -618,9 +621,9 @@ export async function GET(request: NextRequest) {
       logs,
       pagination: { limit, offset, count: logs?.length || 0 },
     })
-  } catch (error: any) {
-    console.error('Error fetching email logs:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to fetch email logs' }, { status: 500 })
+  } catch (error: unknown) {
+    log.error('Error fetching email logs:', error)
+    return NextResponse.json({ error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error') || 'Failed to fetch email logs' }, { status: 500 })
   }
 }
 
@@ -635,7 +638,7 @@ export async function DELETE(request: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const serviceSupabase = await createServiceRoleClient()
-    const { data: profile } = await serviceSupabase.from('users').select('is_admin').eq('id', user.id).single()
+    const { data: profile } = await (serviceSupabase as any).from('users').select('is_admin').eq('id', user.id).single()
 
     if (!profile?.is_admin) return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
 
@@ -656,8 +659,8 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error
 
     return NextResponse.json({ success: true, message: 'Scheduled email cancelled successfully' })
-  } catch (error: any) {
-    console.error('Error cancelling email:', error)
-    return NextResponse.json({ error: error?.message || 'Failed to cancel email' }, { status: 500 })
+  } catch (error: unknown) {
+    log.error('Error cancelling email:', error)
+    return NextResponse.json({ error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error') || 'Failed to cancel email' }, { status: 500 })
   }
 }

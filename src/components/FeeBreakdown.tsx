@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('FeeBreakdown');
 
 import React from 'react';
 import { Info } from 'lucide-react';
@@ -114,7 +116,7 @@ export function usePlatformFee() {
       const data = await res.json();
       setSettings(data.settings);
     } catch (error) {
-      console.error('Failed to fetch platform fee settings:', error);
+      log.error('Failed to fetch platform fee settings:', error);
     } finally {
       setLoading(false);
     }
@@ -132,6 +134,8 @@ export function usePlatformFee() {
         netAmount: amount,
         feeLabel: 'No Fee',
         feeDescription: 'No platform fee',
+        feeType: (settings?.type || 'percentage') as 'fixed' | 'percentage' | 'combined',
+        feeEnabled: false,
       };
     }
 
@@ -167,6 +171,8 @@ export function usePlatformFee() {
       netAmount: Math.round((amount - fee) * 100) / 100,
       feeLabel: settings.fee_label || 'Feyza Service Fee',
       feeDescription: settings.fee_description || 'Platform processing fee',
+      feeType: settings.type as 'fixed' | 'percentage' | 'combined',
+      feeEnabled: true,
     };
   }, [settings]);
 

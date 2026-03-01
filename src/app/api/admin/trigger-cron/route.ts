@@ -1,8 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { logger } from '@/lib/logger';
+
+const log = logger('admin-trigger-cron');
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+// Admin endpoint to trigger cron jobs manually
+// Executes the job logic directly (not via fetch to avoid localhost issues)
+
+/** Generic payment row shape for cron preview queries */
+interface CronPayment {
+  id: string;
+  loan_id: string;
+  due_date: string;
+  amount: number;
+  is_paid: boolean;
+  retry_count?: number;
+  reminder_sent_at?: string | null;
+  loan?: {
+    id: string;
+    status: string;
+    borrower_id?: string;
+    lender_id?: string;
+    borrower_dwolla_funding_source_url?: string;
+    lender_dwolla_funding_source_url?: string;
+    [key: string]: unknown;
+  } | null;
+}
+
+/** Lender preference row shape for pending-notify preview */
+interface LenderPref {
+  user_id?: string | null;
+  business_id?: string | null;
+  min_loan_amount?: number | null;
+  max_loan_amount?: number | null;
+  [key: string]: unknown;
+}
+
+/** Cron job result shape */
+type CronResult = Record<string, unknown> & { processed?: number; retriesAttempted?: number; restrictionsLifted?: number; remindersSent?: number; notificationsSent?: number; matchesExpired?: number; message?: string; };
+
+
 
 // Admin endpoint to trigger cron jobs manually
 // Executes the job logic directly (not via fetch to avoid localhost issues)
@@ -49,13 +90,13 @@ export async function POST(request: NextRequest) {
     try {
       serviceClient = await createServiceRoleClient();
     } catch (err) {
-      console.error('Error creating service role client:', err);
+      log.error('Error creating service role client:', err);
       serviceClient = supabase;
     }
 
-    console.log(`[Trigger-Cron] Running job: ${job}`);
+    log.info(`[Trigger-Cron] Running job: ${job}`);
 
-    let result: any = { message: 'Job executed' };
+    let result: CronResult = { message: 'Job executed' };
     let itemsProcessed = 0;
     let success = true;
 
@@ -92,11 +133,11 @@ export async function POST(request: NextRequest) {
           break;
       }
       
-      console.log(`[Trigger-Cron] Job ${job} completed:`, result);
-    } catch (jobError: any) {
-      console.error(`[Trigger-Cron] Error running job ${job}:`, jobError);
+      log.info(`[Trigger-Cron] Job ${job} completed:`, result);
+    } catch (jobError: unknown) {
+      log.error(`[Trigger-Cron] Error running job ${job}:`, jobError);
       success = false;
-      result = { error: jobError.message };
+      result = { error: jobError instanceof Error ? jobError.message : String(jobError) };
     }
 
     const duration = Date.now() - startTime;
@@ -115,7 +156,7 @@ export async function POST(request: NextRequest) {
         triggered_by: user.id,
       });
     } catch (logError) {
-      console.log('Could not log job run:', logError);
+      log.info('Could not log job run:', logError);
     }
 
     return NextResponse.json({
@@ -125,9 +166,9 @@ export async function POST(request: NextRequest) {
       items_processed: itemsProcessed,
       result,
     });
-  } catch (error: any) {
-    console.error('Error triggering cron job:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error triggering cron job:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }
 
@@ -135,10 +176,10 @@ export async function POST(request: NextRequest) {
 // JOB IMPLEMENTATIONS
 // ============================================
 
-async function runAutoPayJob(supabase: any) {
+async function runAutoPayJob(supabase: SupabaseClient) {
   const today = new Date().toISOString().split('T')[0];
   
-  console.log(`[Auto-Pay] Processing payments for ${today}`);
+  log.info(`[Auto-Pay] Processing payments for ${today}`);
 
   // Find all unpaid payments due today or earlier with loan info
   const { data: duePayments, error } = await supabase
@@ -153,11 +194,11 @@ async function runAutoPayJob(supabase: any) {
     .limit(50);
 
   if (error) {
-    console.error('[Auto-Pay] Error:', error);
-    return { error: error.message };
+    log.error('[Auto-Pay] Error:', error);
+    return { error: (error as Error).message };
   }
 
-  console.log(`[Auto-Pay] Found ${duePayments?.length || 0} due payments`);
+  log.info(`[Auto-Pay] Found ${duePayments?.length || 0} due payments`);
 
   // Filter to only active loans
   const activePayments = (duePayments || []).filter((p: any) => p.loan?.status === 'active');
@@ -183,10 +224,10 @@ async function runAutoPayJob(supabase: any) {
   };
 }
 
-async function runPaymentRetryJob(supabase: any) {
+async function runPaymentRetryJob(supabase: SupabaseClient) {
   const today = new Date().toISOString().split('T')[0];
   
-  console.log(`[Payment-Retry] Checking for overdue payments`);
+  log.info(`[Payment-Retry] Checking for overdue payments`);
 
   // Find payments that are overdue and need retry
   const { data: overduePayments, error } = await supabase
@@ -200,16 +241,16 @@ async function runPaymentRetryJob(supabase: any) {
     .limit(50);
 
   if (error) {
-    console.error('[Payment-Retry] Error:', error);
-    return { error: error.message };
+    log.error('[Payment-Retry] Error:', error);
+    return { error: (error as Error).message };
   }
 
   // Filter to only active loans
   const activeOverdue = (overduePayments || []).filter((p: any) => p.loan?.status === 'active');
   
   // Separate by retry status
-  const needsRetry = activeOverdue.filter((p: any) => (p.retry_count || 0) < 3);
-  const maxedOut = activeOverdue.filter((p: any) => (p.retry_count || 0) >= 3);
+  const needsRetry = (activeOverdue as any[]).filter((p: CronPayment) => (p.retry_count || 0) < 3);
+  const maxedOut = (activeOverdue as any[]).filter((p: CronPayment) => (p.retry_count || 0) >= 3);
 
   // Update retry counts
   let retriesAttempted = 0;
@@ -224,11 +265,11 @@ async function runPaymentRetryJob(supabase: any) {
     
     if (!updateError) {
       retriesAttempted++;
-      console.log(`[Payment-Retry] Incremented retry count for payment ${payment.id}`);
+      log.info(`[Payment-Retry] Incremented retry count for payment ${payment.id}`);
     }
   }
 
-  console.log(`[Payment-Retry] Completed: ${retriesAttempted} retries attempted`);
+  log.info(`[Payment-Retry] Completed: ${retriesAttempted} retries attempted`);
 
   return {
     message: 'Payment retry check completed',
@@ -239,10 +280,10 @@ async function runPaymentRetryJob(supabase: any) {
   };
 }
 
-async function runLiftRestrictionsJob(supabase: any) {
+async function runLiftRestrictionsJob(supabase: SupabaseClient) {
   const now = new Date().toISOString();
   
-  console.log(`[Lift-Restrictions] Checking for users to unblock`);
+  log.info(`[Lift-Restrictions] Checking for users to unblock`);
 
   // Find users whose restriction period has ended
   const { data: usersToUnblock, error } = await supabase
@@ -254,11 +295,11 @@ async function runLiftRestrictionsJob(supabase: any) {
     .limit(50);
 
   if (error) {
-    console.error('[Lift-Restrictions] Error:', error);
-    return { error: error.message };
+    log.error('[Lift-Restrictions] Error:', error);
+    return { error: (error as Error).message };
   }
 
-  console.log(`[Lift-Restrictions] Found ${usersToUnblock?.length || 0} users to unblock`);
+  log.info(`[Lift-Restrictions] Found ${usersToUnblock?.length || 0} users to unblock`);
 
   let restrictionsLifted = 0;
   for (const user of usersToUnblock || []) {
@@ -274,7 +315,7 @@ async function runLiftRestrictionsJob(supabase: any) {
     
     if (!updateError) {
       restrictionsLifted++;
-      console.log(`[Lift-Restrictions] Unblocked user ${user.email}`);
+      log.info(`[Lift-Restrictions] Unblocked user ${user.email}`);
     }
   }
 
@@ -285,12 +326,12 @@ async function runLiftRestrictionsJob(supabase: any) {
   };
 }
 
-async function runPaymentRemindersJob(supabase: any) {
+async function runPaymentRemindersJob(supabase: SupabaseClient) {
   const reminderDate = new Date();
   reminderDate.setDate(reminderDate.getDate() + 3);
   const targetDate = reminderDate.toISOString().split('T')[0];
   
-  console.log(`[Payment-Reminders] Checking for payments due on ${targetDate}`);
+  log.info(`[Payment-Reminders] Checking for payments due on ${targetDate}`);
 
   // Find unpaid payments due in 3 days
   const { data: upcomingPayments, error } = await supabase
@@ -307,16 +348,16 @@ async function runPaymentRemindersJob(supabase: any) {
     .limit(100);
 
   if (error) {
-    console.error('[Payment-Reminders] Error:', error);
-    return { error: error.message };
+    log.error('[Payment-Reminders] Error:', error);
+    return { error: (error as Error).message };
   }
 
   // Filter to users who have reminders enabled
   const remindersToSend = (upcomingPayments || []).filter((p: any) => 
-    p.loan?.borrower?.email_reminders !== false && p.loan?.borrower?.email
+    p.loan?.borrower_id && p.loan?.status === 'active'
   );
 
-  console.log(`[Payment-Reminders] Found ${remindersToSend.length} reminders to send`);
+  log.info(`[Payment-Reminders] Found ${remindersToSend.length} reminders to send`);
 
   // Create notification records for each
   let remindersSent = 0;
@@ -324,11 +365,11 @@ async function runPaymentRemindersJob(supabase: any) {
     const { error: notifError } = await supabase
       .from('notifications')
       .insert({
-        user_id: payment.loan.borrower_id,
+        user_id: payment.loan?.[0]?.borrower_id,
         type: 'payment_reminder',
         title: 'Payment Reminder',
         message: `Your payment of $${payment.amount} is due on ${payment.due_date}`,
-        data: { loan_id: payment.loan.id, amount: payment.amount, due_date: payment.due_date },
+        data: { loan_id: payment.loan?.[0]?.id, amount: payment.amount, due_date: payment.due_date },
         is_read: false,
       });
     
@@ -346,8 +387,8 @@ async function runPaymentRemindersJob(supabase: any) {
   };
 }
 
-async function runNotifyLendersJob(supabase: any) {
-  console.log(`[Notify-Lenders] Checking for pending loans`);
+async function runNotifyLendersJob(supabase: SupabaseClient) {
+  log.info(`[Notify-Lenders] Checking for pending loans`);
 
   // Find pending loans without lenders that are at least 1 hour old
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -366,11 +407,11 @@ async function runNotifyLendersJob(supabase: any) {
     .limit(50);
 
   if (error) {
-    console.error('[Notify-Lenders] Error fetching loans:', error);
-    return { error: error.message };
+    log.error('[Notify-Lenders] Error fetching loans:', error);
+    return { error: (error as Error).message };
   }
 
-  console.log(`[Notify-Lenders] Found ${pendingLoans?.length || 0} pending loans without lenders`);
+  log.info(`[Notify-Lenders] Found ${pendingLoans?.length || 0} pending loans without lenders`);
 
   if (!pendingLoans || pendingLoans.length === 0) {
     return {
@@ -391,7 +432,7 @@ async function runNotifyLendersJob(supabase: any) {
     .gt('available_capital', 0);
 
   if (prefsError) {
-    console.error('[Notify-Lenders] Error fetching preferences:', prefsError);
+    log.error('[Notify-Lenders] Error fetching preferences:', prefsError);
     return { error: prefsError.message };
   }
 
@@ -399,18 +440,18 @@ async function runNotifyLendersJob(supabase: any) {
   
   // For each pending loan, notify matching lenders
   for (const loan of pendingLoans) {
-    const matchingLenders = (lenderPrefs || []).filter((pref: any) => {
+    const matchingLenders = (lenderPrefs || []).filter((pref: LenderPref) => {
       // Check amount range
-      if (loan.amount < pref.min_amount || loan.amount > pref.max_amount) return false;
+      if (loan.amount < (pref.min_amount as number) || loan.amount > (pref.max_amount as number)) return false;
       
       // Check country
-      if (pref.countries && pref.countries.length > 0 && loan.country) {
-        if (!pref.countries.includes(loan.country)) return false;
+      if (pref.countries && (pref.countries as any[]).length > 0 && loan.country) {
+        if (!(pref.countries as string[]).includes(loan.country)) return false;
       }
       
       // Check state
-      if (pref.states && pref.states.length > 0 && loan.state) {
-        if (!pref.states.includes(loan.state)) return false;
+      if (pref.states && (pref.states as any[]).length > 0 && loan.state) {
+        if (!(pref.states as string[]).includes(loan.state)) return false;
       }
       
       return true;
@@ -418,12 +459,12 @@ async function runNotifyLendersJob(supabase: any) {
 
     // Create notifications for matching lenders
     for (const lender of matchingLenders) {
-      if (!lender.business?.owner_id) continue;
+      if (!(lender.business as any)?.[0]?.owner_id) continue;
       
       const { error: notifError } = await supabase
         .from('notifications')
         .insert({
-          user_id: lender.business.owner_id,
+          user_id: (lender.business as any)?.[0]?.owner_id,
           type: 'new_loan_opportunity',
           title: 'New Loan Opportunity',
           message: `A borrower is requesting ${loan.currency} ${loan.amount} for ${loan.purpose}`,
@@ -445,12 +486,12 @@ async function runNotifyLendersJob(supabase: any) {
   };
 }
 
-async function runMatchExpiryJob(supabase: any) {
+async function runMatchExpiryJob(supabase: SupabaseClient) {
   // Find expired matches (older than 48 hours)
   const expiredTime = new Date();
   expiredTime.setHours(expiredTime.getHours() - 48);
   
-  console.log(`[Match-Expiry] Checking for matches before ${expiredTime.toISOString()}`);
+  log.info(`[Match-Expiry] Checking for matches before ${expiredTime.toISOString()}`);
 
   const { data: expiredMatches, error } = await supabase
     .from('loans')
@@ -461,11 +502,11 @@ async function runMatchExpiryJob(supabase: any) {
     .limit(50);
 
   if (error) {
-    console.error('[Match-Expiry] Error:', error);
-    return { error: error.message };
+    log.error('[Match-Expiry] Error:', error);
+    return { error: (error as Error).message };
   }
 
-  console.log(`[Match-Expiry] Found ${expiredMatches?.length || 0} expired matches`);
+  log.info(`[Match-Expiry] Found ${expiredMatches?.length || 0} expired matches`);
 
   let matchesExpired = 0;
   for (const loan of expiredMatches || []) {
@@ -482,7 +523,7 @@ async function runMatchExpiryJob(supabase: any) {
     
     if (!updateError) {
       matchesExpired++;
-      console.log(`[Match-Expiry] Reset match for loan ${loan.id}`);
+      log.info(`[Match-Expiry] Reset match for loan ${loan.id}`);
       
       // Create notification for borrower
       await supabase.from('notifications').insert({

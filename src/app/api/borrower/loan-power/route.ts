@@ -1,6 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { calculateSimpleTrustTier, getStoredTier } from '@/lib/trust/simple-tier';
+import { logger } from '@/lib/logger';
+
+const log = logger('borrower-loan-power');
+
+/** Tier policy row from lender_tier_policies */
+interface TierPolicy {
+  lender_id: string;
+  max_loan_amount: number;
+  interest_rate: number;
+  [key: string]: unknown;
+}
+
+/** Lender preference row for capital availability check */
+interface LenderPrefCapital {
+  user_id: string;
+  capital_pool: number | null;
+  capital_reserved: number | null;
+}
+
 
 /**
  * GET /api/borrower/loan-power
@@ -53,22 +72,12 @@ export async function GET(request: NextRequest) {
     let minInterestRate: number | null = null;
 
     if (tierPolicies && tierPolicies.length > 0) {
-      const lenderIds = tierPolicies.map((p: any) => p.lender_id);
-
-      const { data: activePrefs } = await serviceSupabase
-        .from('lender_preferences')
-        .select('user_id, capital_pool, capital_reserved')
-        .in('user_id', lenderIds)
-        .eq('is_active', true);
-
-      const activeLenderIds = new Set(
-        (activePrefs ?? [])
-          .filter((lp: any) => (lp.capital_pool ?? 0) - (lp.capital_reserved ?? 0) > 0)
-          .map((lp: any) => lp.user_id)
-      );
-
-      for (const policy of tierPolicies) {
-        if (!activeLenderIds.has(policy.lender_id)) continue;
+      // Display uses ALL active tier policies — no capital-pool gate here.
+      // The loan-power card shows what's *possible* for this borrower's tier.
+      // The matching engine (matching/route.ts) enforces live capital availability.
+      // Gating here caused lenders whose capital_pool was 0 (not yet set) to be
+      // invisible to borrowers, making the card show stale backward-compat lenders.
+      for (const policy of tierPolicies as unknown as TierPolicy[]) {
         activeLenderCount++;
         if (policy.max_loan_amount > maxBusinessAmount) {
           maxBusinessAmount = policy.max_loan_amount;
@@ -80,6 +89,13 @@ export async function GET(request: NextRequest) {
     }
 
     // 3. Backward-compat: business lenders with no tier policies (global max_amount)
+    // ONLY run if Block 1 found zero tier policies for this tier.
+    // If tier policies exist, they are the authoritative limits — don't let legacy
+    // lender_preferences.max_amount override them (a business row with user_id=null
+    // would slip through the policy-exclusion check and replace $100 with $500).
+    if (activeLenderCount > 0) {
+      // Tier policies found — skip backward-compat block entirely.
+    } else {
     // For lenders that haven't configured per-tier policies we estimate what a
     // borrower at `currentTier` can actually get:
     //   - tier_1 (lowest trust) → use first_time_borrower_limit, NOT max_amount.
@@ -125,6 +141,7 @@ export async function GET(request: NextRequest) {
         }
       }
     }
+    } // end else (no tier policies found — backward-compat block)
 
     // 4. Next tier preview
     const nextTierMap: Record<string, string | null> = {
@@ -143,7 +160,7 @@ export async function GET(request: NextRequest) {
 
       if (nextPolicies && nextPolicies.length > 0) {
         nextTierLenderCount = nextPolicies.length;
-        nextTierMaxAmount = Math.max(...nextPolicies.map((p: any) => p.max_loan_amount));
+        nextTierMaxAmount = Math.max(...(nextPolicies as unknown as TierPolicy[]).map((p: any) => p.max_loan_amount));
       }
     }
 
@@ -177,8 +194,8 @@ export async function GET(request: NextRequest) {
         : null,
       personalLoansUnlimited: true,
     });
-  } catch (error: any) {
-    console.error('[GET /api/borrower/loan-power]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[GET /api/borrower/loan-power]', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

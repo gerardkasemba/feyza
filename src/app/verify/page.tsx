@@ -405,7 +405,7 @@ export default function VerificationPage() {
         uploadFile(addressDocFile, 'address'),
       ]);
 
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         verification_status: 'pending',
         verification_submitted_at: new Date().toISOString(),
         terms_accepted_at: new Date().toISOString(),
@@ -451,8 +451,8 @@ export default function VerificationPage() {
       if (updateError) throw updateError;
 
       router.push('/verify/pending');
-    } catch (err: any) {
-      setError(err.message || 'Failed to submit. Please try again.');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to submit. Please try again.');
     } finally {
       setSaving(false);
     }

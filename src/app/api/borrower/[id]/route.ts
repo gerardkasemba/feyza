@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('borrower-id');
 
 export async function GET(
   request: NextRequest,
@@ -43,17 +46,22 @@ export async function GET(
 
     const ratingInfo = getRatingInfo(borrower.borrower_rating || 'neutral');
 
-    // Get loan history summary (without sensitive details)
-    const { data: loanHistory } = await supabase
-      .from('loans')
-      .select('status, amount, created_at')
-      .eq('borrower_id', borrowerId)
-      .order('created_at', { ascending: false })
-      .limit(10);
+    // Loan history: use denormalized total + exact counts for active/defaulted, and sum for totalBorrowed
+    const totalCompleted = borrower.total_loans_completed ?? 0;
 
-    const completedLoans = loanHistory?.filter(l => l.status === 'completed').length || 0;
-    const activeLoans = loanHistory?.filter(l => l.status === 'active').length || 0;
-    const defaultedLoans = loanHistory?.filter(l => l.status === 'defaulted').length || 0;
+    const [
+      { count: activeCount },
+      { count: defaultedCount },
+      { data: loanAmounts },
+    ] = await Promise.all([
+      supabase.from('loans').select('id', { count: 'exact', head: true }).eq('borrower_id', borrowerId).eq('status', 'active'),
+      supabase.from('loans').select('id', { count: 'exact', head: true }).eq('borrower_id', borrowerId).eq('status', 'defaulted'),
+      supabase.from('loans').select('amount').eq('borrower_id', borrowerId),
+    ]);
+
+    const activeLoans = activeCount ?? 0;
+    const defaultedLoans = defaultedCount ?? 0;
+    const totalBorrowed = (loanAmounts ?? []).reduce((sum: number, row: { amount?: number }) => sum + Number(row.amount || 0), 0);
 
     // Calculate member duration
     const memberSince = new Date(borrower.created_at);
@@ -63,6 +71,7 @@ export async function GET(
       borrower: {
         id: borrower.id,
         name: borrower.full_name,
+        full_name: borrower.full_name,
         memberSince: borrower.created_at,
         monthsAsMember,
         isVerified: borrower.verification_status === 'verified',
@@ -76,6 +85,7 @@ export async function GET(
       },
       paymentHistory: {
         totalPayments,
+        total: totalPayments,
         onTime: onTimePayments,
         early: earlyPayments,
         late: latePayments,
@@ -83,14 +93,16 @@ export async function GET(
         onTimePercentage: totalPayments > 0 ? Math.round(((onTimePayments + earlyPayments) / totalPayments) * 100) : 0,
       },
       loanHistory: {
-        totalCompleted: borrower.total_loans_completed || 0,
+        totalCompleted,
+        activeLoans,
         currentlyActive: activeLoans,
         defaulted: defaultedLoans,
+        totalBorrowed,
       },
       recommendation: getRecommendation(borrower.borrower_rating || 'neutral', totalPayments),
     });
   } catch (error) {
-    console.error('Error fetching borrower profile:', error);
+    log.error('Error fetching borrower profile:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

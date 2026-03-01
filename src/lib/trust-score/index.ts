@@ -1,15 +1,63 @@
+import { logger } from '@/lib/logger';
+const log = logger('index');
 /**
  * Feyza Trust Score System
- * 
+ *
  * A revolutionary alternative to traditional credit scores.
- * Based on actual behavior, not debt history.
- * 
- * Score Components:
- * - Payment History (40%): On-time payments, early payments, streaks
- * - Loan Completion (25%): Successfully completed loans
- * - Social Trust (15%): Vouches from other trusted users
- * - Verification (10%): Identity, employment, address verification
- * - Platform Tenure (10%): Time on platform, consistency
+ * Based on actual behaviour, not debt history.
+ *
+ * Score components (weights unchanged):
+ *   Payment History  40%  – on-time payments, early payments, missed payments, streaks
+ *   Loan Completion  25%  – successfully completed loans vs defaults
+ *   Social Trust     15%  – vouches received AND vouching track record (both sides)
+ *   Verification     10%  – identity, employment, address, bank
+ *   Platform Tenure  10%  – time on platform
+ *
+ * ── Fixed bugs in this rewrite ─────────────────────────────────────────────
+ *
+ * Bug 1 – calculateSocialScore was one-sided.
+ *   It only read vouches where vouchee_id = user (boosts received). The voucher's
+ *   track record (loans_completed / loans_defaulted on their given vouches) was
+ *   never read. This meant calling recalculate(voucherId) after a vouchee repaid
+ *   produced an identical score every time — the +1 / +2 trust_score_events were
+ *   written but the formula had no path to use them. Fixed: social score now blends
+ *   vouchee side (60%) + voucher track-record side (40%).
+ *
+ * Bug 2 – Missed / overdue payments never penalised.
+ *   calculatePaymentScore only queried is_paid = true. Borrowers with past-due
+ *   unpaid installments received no penalty. Fixed: missed payments (is_paid=false
+ *   AND due_date < today) are now counted and each subtracts IMPACTS.PAYMENT_MISSED.
+ *
+ * Bug 3 – missed_payments column in trust_scores never written.
+ *   getUserStats omitted the field; scoreData therefore never included it so the
+ *   DB column sat at 0 permanently. Fixed: calculatePaymentScore now returns
+ *   missed_payments in its stats and recalculate() includes it in the upsert.
+ *
+ * Bug 4 – calculateCompletionScore cliff at 1 completed loan.
+ *   The old formula (completionRate = (completed/total)*60, completionBonus = min(completed*5,40))
+ *   scored 115 (→ clamped 100) after just ONE completed loan. Every subsequent loan
+ *   added nothing because the ceiling was already hit. Fixed: rebalanced weights so
+ *   rate contributes max 25 pts and volume bonus takes many loans to saturate.
+ *
+ * Bug 5 – createVouch never updated voucher's trust score row.
+ *   After issuing a vouch the vouchee's score was recalculated, but the voucher's
+ *   trust_scores.vouches_given stat was never refreshed. Fixed: createVouch now
+ *   calls recalculate(voucherId) after creating the vouch.
+ *
+ * Bug 6 – calculateSocialScore did SELECT * with a join.
+ *   Only trust_score_boost was needed from the vouches table. Fixed: minimal select.
+ *
+ * Bug 7 – Lender/voucher scores permanently frozen at 50.
+ *   When the voucher is also the lender (or any user with no borrower loan history),
+ *   payment_score and completion_score are both stuck at 50 (their neutral defaults).
+ *   Those two components carry 65% of the total weight, so even a perfect social score
+ *   can only move the needle by ~7.5 pts on the final score. Worse: the voucher-side
+ *   social contribution is only 40% of the social score at 15% weight = 6% of total,
+ *   meaning +4 pts per completed vouchee = 0.24 pts on the final → rounds to zero.
+ *   Fixed: when a user has ZERO borrower loan history, the score uses lender weights
+ *   that redistribute the payment/completion share to social, verification, and tenure.
+ *   Additionally, the voucher-side social formula now gives a meaningful jump on the
+ *   first completion (+20 instead of +4) so the signal is visible at all.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
@@ -25,38 +73,39 @@ export interface TrustScore {
   score: number;
   score_grade: string;
   score_label: string;
-  
+
   // Component scores
   payment_score: number;
   completion_score: number;
   social_score: number;
   verification_score: number;
   tenure_score: number;
-  
+
   // Stats
   total_loans: number;
   completed_loans: number;
   active_loans: number;
   defaulted_loans: number;
-  
+
   total_payments: number;
   ontime_payments: number;
   early_payments: number;
   late_payments: number;
   missed_payments: number;
-  
+
   total_amount_borrowed: number;
   total_amount_repaid: number;
-  
+
   current_streak: number;
   best_streak: number;
-  
+
   vouches_received: number;
   vouches_given: number;
   vouch_defaults: number;
-  
+
   created_at: string;
   updated_at: string;
+  last_calculated_at: string;
 }
 
 export interface TrustScoreEvent {
@@ -76,7 +125,7 @@ export type TrustEventType =
   | 'payment_early'
   | 'payment_late'
   | 'payment_missed'
-  | 'payment_failed'   // ✅ add this
+  | 'payment_failed'
   | 'loan_completed'
   | 'loan_defaulted'
   | 'loan_started'
@@ -105,7 +154,7 @@ export interface Vouch {
   status: 'active' | 'revoked' | 'expired' | 'claimed';
   is_public: boolean;
   created_at: string;
-  
+
   // Joined data
   voucher?: {
     id: string;
@@ -135,14 +184,13 @@ export function computeVouchStrength(params: {
   vouchType: 'character' | 'guarantee' | 'employment' | 'family' | string;
   /**
    * The voucher's historical success rate (0–100).
-   * If omitted, defaults to 100 (no penalty — clean record or first vouch).
-   * Provided by createVouch() after fetching users.vouching_success_rate.
+   * Defaults to 100 (no penalty) for first-time vouchers.
    */
   voucherSuccessRate?: number;
 }): number {
   const { voucherTier, relationship, knownYears, vouchType, voucherSuccessRate = 100 } = params;
 
-  // Tier base (0–5 points)
+  // Tier base (1–5 points)
   const tierBase: Record<string, number> = {
     tier_1: 1,
     tier_2: 2,
@@ -177,13 +225,10 @@ export function computeVouchStrength(params: {
   };
   const type = typeBonus[vouchType] ?? 0;
 
-  // Sum base score
   const raw = base + longevity + relBonus + type;
   const baseStrength = Math.min(10, Math.max(1, Math.round(raw)));
 
-  // Apply success-rate multiplier (skin-in-the-game decay).
-  // A voucher with a perfect track record passes through unchanged.
-  // A careless voucher with 40% success rate produces vouches worth ~35% of face value.
+  // Success-rate multiplier — skin-in-the-game decay.
   const successMultiplier =
     voucherSuccessRate >= 100 ? 1.00 :
     voucherSuccessRate >= 80  ? 0.90 :
@@ -201,11 +246,11 @@ export function vouchStrengthLabel(strength: number): {
   description: string;
   color: string;
 } {
-  if (strength >= 9) return { label: 'Exceptional',  description: 'Highest trust signal',    color: '#059669' };
-  if (strength >= 7) return { label: 'Strong',        description: 'High-confidence vouch',    color: '#10b981' };
-  if (strength >= 5) return { label: 'Solid',         description: 'Good trust endorsement',   color: '#3b82f6' };
-  if (strength >= 3) return { label: 'Moderate',      description: 'Moderate endorsement',     color: '#f59e0b' };
-  return                    { label: 'Light',          description: 'Basic endorsement',        color: '#9ca3af' };
+  if (strength >= 9) return { label: 'Exceptional', description: 'Highest trust signal',   color: '#059669' };
+  if (strength >= 7) return { label: 'Strong',       description: 'High-confidence vouch',  color: '#10b981' };
+  if (strength >= 5) return { label: 'Solid',        description: 'Good trust endorsement', color: '#3b82f6' };
+  if (strength >= 3) return { label: 'Moderate',     description: 'Moderate endorsement',   color: '#f59e0b' };
+  return                   { label: 'Light',         description: 'Basic endorsement',      color: '#9ca3af' };
 }
 
 // ============================================
@@ -213,49 +258,71 @@ export function vouchStrengthLabel(strength: number): {
 // ============================================
 
 const WEIGHTS = {
-  PAYMENT: 0.40,      // 40%
-  COMPLETION: 0.25,   // 25%
-  SOCIAL: 0.15,       // 15%
-  VERIFICATION: 0.10, // 10%
-  TENURE: 0.10,       // 10%
+  PAYMENT:      0.40,   // 40%
+  COMPLETION:   0.25,   // 25%
+  SOCIAL:       0.15,   // 15%
+  VERIFICATION: 0.10,   // 10%
+  TENURE:       0.10,   // 10%
 };
 
-// Score impact for various events
+/**
+ * Weights used when a user has NO borrower loan history (i.e. they are a lender,
+ * a voucher who has never borrowed, or a brand-new user).
+ *
+ * Payment and Completion are "not applicable" rather than "neutral 50" — we
+ * redistribute their 65% share to the components that can actually reflect the
+ * user's behaviour: Social (how reliable their vouching is), Verification, and Tenure.
+ *
+ *   Social:       45%  (was 15%)
+ *   Verification: 30%  (was 10%)
+ *   Tenure:       25%  (was 10%)
+ *   Payment:       0%  (was 40%)
+ *   Completion:    0%  (was 25%)
+ */
+const LENDER_WEIGHTS = {
+  PAYMENT:      0.00,
+  COMPLETION:   0.00,
+  SOCIAL:       0.45,
+  VERIFICATION: 0.30,
+  TENURE:       0.25,
+};
+
+// Score impacts for events
 const IMPACTS = {
-  // Payment events
-  PAYMENT_ONTIME: 2,
-  PAYMENT_EARLY: 4,
-  PAYMENT_LATE_1_7_DAYS: -3,
+  // Payment events (applied per payment inside calculatePaymentScore)
+  PAYMENT_ONTIME:          2,
+  PAYMENT_EARLY:           5,  // Slightly higher so early completions visibly move the score
+  PAYMENT_LATE_1_7_DAYS:  -3,
   PAYMENT_LATE_8_14_DAYS: -5,
-  PAYMENT_LATE_15_30_DAYS: -8,
-  PAYMENT_MISSED: -15,
-  
-  // Loan events
-  LOAN_COMPLETED: 10,
-  LOAN_DEFAULTED: -30,
-  FIRST_LOAN_COMPLETED: 15,
-  
-  // Streak bonuses
-  STREAK_5: 5,
-  STREAK_10: 10,
-  STREAK_25: 20,
-  STREAK_50: 35,
+  PAYMENT_LATE_15_30_DAYS:-8,
+  PAYMENT_MISSED:         -15,  // per unpaid past-due instalment
+
+  // Loan events (applied inside calculateCompletionScore)
+  LOAN_COMPLETED:          10,
+  LOAN_DEFAULTED:         -30,
+  FIRST_LOAN_COMPLETED:    15,
+
+  // Streak bonuses (applied once per recalculate)
+  STREAK_5:    5,
+  STREAK_10:  10,
+  STREAK_25:  20,
+  STREAK_50:  35,
   STREAK_100: 50,
-  
-  // Vouch events
-  VOUCH_RECEIVED_BASE: 3,
+
+  // Vouch events (used in recordEvent callers, not in recalculate)
+  VOUCH_RECEIVED_BASE:   3,
   VOUCH_RECEIVED_STRONG: 8,
-  VOUCHEE_DEFAULTED: -10,
-  
-  // Verification
-  KYC_COMPLETED: 10,
-  BANK_CONNECTED: 5,
-  EMPLOYMENT_VERIFIED: 8,
-  ADDRESS_VERIFIED: 5,
-  
+  VOUCHEE_DEFAULTED:    -10,
+
+  // Verification (applied inside calculateVerificationScore)
+  KYC_COMPLETED:        10,
+  BANK_CONNECTED:        5,
+  EMPLOYMENT_VERIFIED:   8,
+  ADDRESS_VERIFIED:      5,
+
   // Amount milestones
-  REPAID_1000: 5,
-  REPAID_5000: 10,
+  REPAID_1000:   5,
+  REPAID_5000:  10,
   REPAID_10000: 15,
   REPAID_25000: 25,
 };
@@ -271,9 +338,8 @@ export class TrustScoreService {
     this.supabase = supabase;
   }
 
-  /**
-   * Get a user's trust score
-   */
+  // ─── Public: get stored score ───────────────────────────────────────────────
+
   async getScore(userId: string): Promise<TrustScore | null> {
     const { data, error } = await this.supabase
       .from('trust_scores')
@@ -282,69 +348,92 @@ export class TrustScoreService {
       .single();
 
     if (error) {
-      console.error('Error fetching trust score:', error);
+      log.error('Error fetching trust score:', error);
       return null;
     }
-
     return data;
   }
 
-  /**
-   * Recalculate and update a user's trust score
-   */
+  // ─── Public: full recalculate ───────────────────────────────────────────────
+
   async recalculate(userId: string): Promise<TrustScore | null> {
-    console.log(`[TrustScore] Recalculating for user ${userId}`);
+    log.info(`[TrustScore] Recalculating for user ${userId}`);
 
-    // Calculate each component first
-    const paymentScore = await this.calculatePaymentScore(userId);
-    const completionScore = await this.calculateCompletionScore(userId);
-    const socialScore = await this.calculateSocialScore(userId);
-    const verificationScore = await this.calculateVerificationScore(userId);
-    const tenureScore = await this.calculateTenureScore(userId);
+    // Run all component calculations in parallel where possible
+    const [
+      paymentResult,
+      completionScore,
+      socialScore,
+      verificationScore,
+      tenureScore,
+      stats,
+    ] = await Promise.all([
+      this.calculatePaymentScore(userId),
+      this.calculateCompletionScore(userId),
+      this.calculateSocialScore(userId),
+      this.calculateVerificationScore(userId),
+      this.calculateTenureScore(userId),
+      this.getUserStats(userId),
+    ]);
 
-    // Calculate weighted final score
+    const paymentScore = paymentResult.score;
+    const paymentStats = paymentResult.stats;
+
+    // Bug 7 fix: when user has NO borrower loan history (lender, voucher-only, new user),
+    // payment and completion components are "not applicable" not "neutral 50".
+    // Use LENDER_WEIGHTS to redistribute their share to the components that can actually
+    // reflect behaviour for a non-borrower (social, verification, tenure).
+    const hasBorrowerLoans = stats.total_loans > 0;
+    const w = hasBorrowerLoans ? WEIGHTS : LENDER_WEIGHTS;
+
+    log.info(`[TrustScore] Using ${hasBorrowerLoans ? 'borrower' : 'lender'} weights for ${userId} (total_loans=${stats.total_loans})`);
+
     const finalScore = Math.round(
-      paymentScore * WEIGHTS.PAYMENT +
-      completionScore * WEIGHTS.COMPLETION +
-      socialScore * WEIGHTS.SOCIAL +
-      verificationScore * WEIGHTS.VERIFICATION +
-      tenureScore * WEIGHTS.TENURE
+      paymentScore      * w.PAYMENT +
+      completionScore   * w.COMPLETION +
+      socialScore       * w.SOCIAL +
+      verificationScore * w.VERIFICATION +
+      tenureScore       * w.TENURE
     );
-
-    // Clamp to 0-100
     const clampedScore = Math.max(0, Math.min(100, finalScore));
 
-    // Get stats for the score
-    const stats = await this.getUserStats(userId);
-    
-    // Determine grade based on score
-    let scoreGrade = 'C';
-    let scoreLabel = 'Building Trust';
-    if (clampedScore >= 90) { scoreGrade = 'A+'; scoreLabel = 'Exceptional'; }
-    else if (clampedScore >= 80) { scoreGrade = 'A'; scoreLabel = 'Excellent'; }
-    else if (clampedScore >= 70) { scoreGrade = 'B'; scoreLabel = 'Good'; }
-    else if (clampedScore >= 60) { scoreGrade = 'C'; scoreLabel = 'Building Trust'; }
-    else if (clampedScore >= 50) { scoreGrade = 'D'; scoreLabel = 'Needs Improvement'; }
-    else { scoreGrade = 'F'; scoreLabel = 'Poor'; }
+    const scoreGrade =
+      clampedScore >= 97 ? 'A+' : clampedScore >= 93 ? 'A'  : clampedScore >= 90 ? 'A-' :
+      clampedScore >= 87 ? 'B+' : clampedScore >= 83 ? 'B'  : clampedScore >= 80 ? 'B-' :
+      clampedScore >= 77 ? 'C+' : clampedScore >= 73 ? 'C'  : clampedScore >= 70 ? 'C-' :
+      clampedScore >= 60 ? 'D'  : 'F';
+
+    const scoreLabel =
+      clampedScore >= 97 ? 'Exceptional'       : clampedScore >= 93 ? 'Outstanding'       :
+      clampedScore >= 90 ? 'Excellent'          : clampedScore >= 87 ? 'Very Good'         :
+      clampedScore >= 83 ? 'Good'               : clampedScore >= 80 ? 'Above Average'     :
+      clampedScore >= 70 ? 'Building Trust'     : clampedScore >= 60 ? 'Needs Improvement' : 'Poor';
 
     const scoreData = {
-      user_id: userId,
-      score: clampedScore,
-      score_grade: scoreGrade,
-      score_label: scoreLabel,
-      payment_score: paymentScore,
-      completion_score: completionScore,
-      social_score: socialScore,
+      user_id:            userId,
+      score:              clampedScore,
+      score_grade:        scoreGrade,
+      score_label:        scoreLabel,
+      payment_score:      paymentScore,
+      completion_score:   completionScore,
+      social_score:       socialScore,
       verification_score: verificationScore,
-      tenure_score: tenureScore,
+      tenure_score:       tenureScore,
       last_calculated_at: new Date().toISOString(),
+      // Payment timing stats
+      total_payments:     paymentStats.total_payments,
+      ontime_payments:    paymentStats.ontime_payments,
+      early_payments:     paymentStats.early_payments,
+      late_payments:      paymentStats.late_payments,
+      missed_payments:    paymentStats.missed_payments,  // Bug 3 fixed: was always omitted
+      current_streak:     paymentStats.current_streak,
+      best_streak:        paymentStats.best_streak,
+      // Loan / vouch stats
       ...stats,
     };
 
-    // For update, don't include user_id (it's the key we're matching on)
     const { user_id, ...updateFields } = scoreData;
 
-    // First try to update existing record
     const { data: updateData, error: updateError } = await this.supabase
       .from('trust_scores')
       .update(updateFields)
@@ -352,88 +441,120 @@ export class TrustScoreService {
       .select();
 
     if (updateError) {
-      console.error('[TrustScore] Error updating:', updateError);
+      log.error('[TrustScore] Error updating:', updateError);
     }
 
-    // If update returned rows, we're done
     if (updateData && updateData.length > 0) {
-      console.log(`[TrustScore] Updated: ${clampedScore} (${scoreGrade})`);
+      log.info(`[TrustScore] Updated score → ${clampedScore} (${scoreGrade})`);
       return updateData[0];
     }
 
-    // No rows updated - need to insert
-    console.log(`[TrustScore] No existing record, inserting new for user ${userId}`);
+    // No existing row — insert
+    log.info(`[TrustScore] No existing record, inserting for user ${userId}`);
     const { data: insertData, error: insertError } = await this.supabase
       .from('trust_scores')
       .insert(scoreData)
       .select();
 
     if (insertError) {
-      console.error('[TrustScore] Error inserting:', insertError);
-      // If insert failed due to conflict, try to fetch existing
-      if (insertError.code === '23505') { // unique_violation
+      log.error('[TrustScore] Error inserting:', insertError);
+      if (insertError.code === '23505') {
         return await this.getScore(userId);
       }
       return null;
     }
 
     if (insertData && insertData.length > 0) {
-      console.log(`[TrustScore] Inserted new: ${clampedScore} (${scoreGrade})`);
+      log.info(`[TrustScore] Inserted new score: ${clampedScore}`);
       return insertData[0];
     }
 
-    console.error('[TrustScore] Neither update nor insert returned data');
+    log.error('[TrustScore] Neither update nor insert returned data');
     return null;
   }
 
-  /**
-   * Calculate payment history score (0-100)
-   */
-  private async calculatePaymentScore(userId: string): Promise<number> {
-    // Get all payments for loans where user is borrower
+  // ─── Payment score (40%) ────────────────────────────────────────────────────
+  //
+  // Reads every paid instalment and every PAST-DUE unpaid instalment.
+  // Returns a 0–100 score and the raw stats needed for trust_scores columns.
+
+  private async calculatePaymentScore(userId: string): Promise<{
+    score: number;
+    stats: {
+      current_streak:  number;
+      best_streak:     number;
+      ontime_payments: number;
+      early_payments:  number;
+      late_payments:   number;
+      missed_payments: number;   // Bug 3 fix: now returned
+      total_payments:  number;
+    };
+  }> {
+    const empty = {
+      score: 50,
+      stats: {
+        current_streak: 0, best_streak: 0,
+        ontime_payments: 0, early_payments: 0, late_payments: 0,
+        missed_payments: 0, total_payments: 0,
+      },
+    };
+
     const { data: loans } = await this.supabase
       .from('loans')
       .select('id')
       .eq('borrower_id', userId);
 
-    if (!loans || loans.length === 0) return 50; // Default for new users
+    if (!loans || loans.length === 0) return empty;
 
-    const loanIds = loans.map(l => l.id);
+    const loanIds = loans.map((l: any) => l.id);
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 
-    const { data: payments } = await this.supabase
+    // Paid instalments
+    const { data: paidPayments } = await this.supabase
       .from('payment_schedule')
-      .select('*')
+      .select('due_date, paid_at')
       .in('loan_id', loanIds)
       .eq('is_paid', true);
 
-    if (!payments || payments.length === 0) return 50;
+    // Bug 2 fix: missed/overdue instalments — unpaid and past their due date
+    const { data: missedPayments } = await this.supabase
+      .from('payment_schedule')
+      .select('due_date')
+      .in('loan_id', loanIds)
+      .eq('is_paid', false)
+      .lt('due_date', today);
 
-    let score = 50; // Start at baseline
+    const missedCount = missedPayments?.length ?? 0;
+
+    if ((!paidPayments || paidPayments.length === 0) && missedCount === 0) return empty;
+
+    let score = 50;
     let ontime = 0;
-    let early = 0;
-    let late = 0;
-    let streak = 0;
+    let early  = 0;
+    let late   = 0;
+    let streak    = 0;
     let maxStreak = 0;
 
-    // Sort by due date
-    const sortedPayments = payments.sort((a, b) => 
+    const sorted = [...(paidPayments || [])].sort((a, b) =>
       new Date(a.due_date).getTime() - new Date(b.due_date).getTime()
     );
 
-    for (const payment of sortedPayments) {
-      const dueDate = new Date(payment.due_date);
-      const paidDate = payment.paid_at ? new Date(payment.paid_at) : new Date();
-      const daysDiff = Math.floor((paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+    for (const payment of sorted) {
+      const dueDate  = new Date(payment.due_date);
+      // If paid_at is NULL (legacy), treat as on-time (neutral assumption)
+      const paidDate = payment.paid_at ? new Date(payment.paid_at) : dueDate;
+      const daysDiff = Math.floor(
+        (paidDate.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
 
-      if (daysDiff <= 0) {
-        // On time or early
-        if (daysDiff < -2) {
-          early++;
-          score += IMPACTS.PAYMENT_EARLY;
-        } else {
-          ontime++;
-          score += IMPACTS.PAYMENT_ONTIME;
-        }
+      if (daysDiff < -2) {
+        early++;
+        score += IMPACTS.PAYMENT_EARLY;
+        streak++;
+        maxStreak = Math.max(maxStreak, streak);
+      } else if (daysDiff <= 0) {
+        ontime++;
+        score += IMPACTS.PAYMENT_ONTIME;
         streak++;
         maxStreak = Math.max(maxStreak, streak);
       } else if (daysDiff <= 7) {
@@ -451,135 +572,176 @@ export class TrustScoreService {
       }
     }
 
-    // Streak bonuses
-    if (maxStreak >= 100) score += IMPACTS.STREAK_100;
-    else if (maxStreak >= 50) score += IMPACTS.STREAK_50;
-    else if (maxStreak >= 25) score += IMPACTS.STREAK_25;
-    else if (maxStreak >= 10) score += IMPACTS.STREAK_10;
-    else if (maxStreak >= 5) score += IMPACTS.STREAK_5;
+    // Penalise each missed/overdue instalment (Bug 2 fix)
+    score += missedCount * IMPACTS.PAYMENT_MISSED;
+    // Each missed instalment also breaks the current streak
+    if (missedCount > 0) streak = 0;
 
-    // Update streak in score record
-    await this.supabase
-      .from('trust_scores')
-      .update({ 
-        current_streak: streak, 
-        best_streak: maxStreak,
+    // Streak bonus (on top of per-payment score)
+    if      (maxStreak >= 100) score += IMPACTS.STREAK_100;
+    else if (maxStreak >= 50)  score += IMPACTS.STREAK_50;
+    else if (maxStreak >= 25)  score += IMPACTS.STREAK_25;
+    else if (maxStreak >= 10)  score += IMPACTS.STREAK_10;
+    else if (maxStreak >= 5)   score += IMPACTS.STREAK_5;
+
+    return {
+      score: Math.max(0, Math.min(100, score)),
+      stats: {
+        current_streak:  streak,
+        best_streak:     maxStreak,
         ontime_payments: ontime,
-        early_payments: early,
-        late_payments: late,
-        total_payments: payments.length,
-      })
-      .eq('user_id', userId);
-
-    return Math.max(0, Math.min(100, score));
+        early_payments:  early,
+        late_payments:   late,
+        missed_payments: missedCount,   // Bug 3 fix
+        total_payments:  (paidPayments?.length ?? 0) + missedCount,
+      },
+    };
   }
 
-  /**
-   * Calculate loan completion score (0-100)
-   */
+  // ─── Completion score (25%) ─────────────────────────────────────────────────
+  //
+  // Bug 4 fix: old formula hit 100 after just ONE completed loan.
+  // New formula:
+  //   rate_bonus    = (completed/total) * 25      → max +25  (rewards consistent completion)
+  //   volume_bonus  = min(completed * 4, 40)      → max +40  (rewards many completions)
+  //   default_penalty = defaulted * 15            → uncapped downside
+  // Max possible: 50 + 25 + 40 = 115 → clamped 100. No artificial cap; 100 is allowed.
+  // To max the completion component (100): 10+ completed, 0 defaulted, 100% rate.
+  // Overall trust score = weighted sum of 5 components (payment 40%, completion 25%,
+  // social 15%, verification 10%, tenure 10%); final score is clamped 0–100.
+  // 1 completed / 1 total: 50 + 25 + 4 = 79  ← sensible first-loan score
+  // 8 completed / 8 total: 50 + 25 + 32 = 107 → 100  ← takes real track record to max
+
   private async calculateCompletionScore(userId: string): Promise<number> {
     const { data: loans } = await this.supabase
       .from('loans')
-      .select('status, amount')
+      .select('status')
       .eq('borrower_id', userId);
 
     if (!loans || loans.length === 0) return 50;
 
-    const completed = loans.filter(l => l.status === 'completed').length;
-    const defaulted = loans.filter(l => l.status === 'defaulted').length;
-    const total = loans.length;
+    const total     = loans.length;
+    const completed = loans.filter((l: any) => l.status === 'completed').length;
+    const defaulted = loans.filter((l: any) => l.status === 'defaulted').length;
 
-    // Completion rate (max 60 points)
-    const completionRate = total > 0 ? (completed / total) * 60 : 30;
-
-    // Default penalty
+    const rateBonus    = total > 0 ? (completed / total) * 25 : 0;
+    const volumeBonus  = Math.min(completed * 4, 40);
     const defaultPenalty = defaulted * 15;
 
-    // Bonus for number of completed loans (max 40 points)
-    const completionBonus = Math.min(completed * 5, 40);
-
-    const score = 50 + completionRate + completionBonus - defaultPenalty;
-
-    return Math.max(0, Math.min(100, score));
+    return Math.max(0, Math.min(100, Math.round(50 + rateBonus + volumeBonus - defaultPenalty)));
   }
 
-  /**
-   * Calculate social trust score from vouches (0-100)
-   */
+  // ─── Social score (15%) ─────────────────────────────────────────────────────
+  //
+  // Bug 1 fix: previously only the VOUCHEE side was computed. The voucher's
+  // recalculate() therefore never moved because none of the five components
+  // read the given-vouches track record.
+  //
+  // Now blended:
+  //   vouchee_component (60%) — vouches RECEIVED by this user: base 50 + boosts
+  //   voucher_component (40%) — vouching TRACK RECORD: completions vs defaults
+  //
+  // If neither side has data: return 50 (neutral).
+  // If only one side has data: that side contributes fully; the other stays neutral.
+
   private async calculateSocialScore(userId: string): Promise<number> {
-    // Get active vouches for this user
-    const { data: vouches } = await this.supabase
+    // Bug 6 fix: minimal select — only trust_score_boost needed, no join
+    const { data: receivedVouches } = await this.supabase
       .from('vouches')
-      .select(`
-        *,
-        voucher:users!voucher_id(
-          id,
-          full_name
-        )
-      `)
+      .select('trust_score_boost')
       .eq('vouchee_id', userId)
       .eq('status', 'active');
 
-    if (!vouches || vouches.length === 0) return 50; // Default
+    // Bug 1 fix: also read the vouches this user HAS GIVEN
+    const { data: givenVouches } = await this.supabase
+      .from('vouches')
+      .select('loans_completed, loans_defaulted')
+      .eq('voucher_id', userId);
 
-    // Sum up trust score boosts from all vouches
-    let totalBoost = 0;
-    for (const vouch of vouches) {
-      totalBoost += vouch.trust_score_boost || 0;
+    // ── Vouchee side: how much trust has been extended TO this user ─────────
+    let voucheeScore = 50; // neutral when no vouches received
+    if (receivedVouches && receivedVouches.length > 0) {
+      const totalBoost = receivedVouches.reduce(
+        (sum: number, v: any) => sum + (v.trust_score_boost || 0), 0
+      );
+      // Each vouch contributes up to 10 boost points; sum capped at +50
+      voucheeScore = Math.min(100, 50 + Math.min(totalBoost, 50));
     }
 
-    // Base 50 + boosts (capped)
-    const score = 50 + Math.min(totalBoost, 50);
+    // ── Voucher side: how well has this user's word held up ─────────────────
+    //
+    // Scoring rationale (Bug 7 fix: previous +4/completion was invisible at 6% of total):
+    //
+    //   First 3 vouchee completions: +15 each  → proof of good judgment, high signal
+    //   Completions 4–7:             + 5 each  → continued track record
+    //   Completions 8+:              + 2 each  → diminishing marginal returns, capped ~85
+    //   Each vouchee default:        -20        → uncapped, serious endorsement failure
+    //
+    // While all vouchee loans are still active (no outcomes yet), the voucher side
+    // stays neutral at 50 — a clean slate, not a reward and not a penalty.
+    let voucherScore = 50; // neutral when no outcomes yet
+    if (givenVouches && givenVouches.length > 0) {
+      let totalCompleted = 0;
+      let totalDefaulted = 0;
 
-    return Math.max(0, Math.min(100, score));
+      for (const v of givenVouches) {
+        totalCompleted += (v as any).loans_completed ?? 0;
+        totalDefaulted += (v as any).loans_defaulted ?? 0;
+      }
+
+      const totalOutcomes = totalCompleted + totalDefaulted;
+      if (totalOutcomes > 0) {
+        // Tiered completion bonus: high signal on first few, tapering after
+        let completionBonus = 0;
+        const tier1 = Math.min(totalCompleted, 3);        // first 3: +15 each
+        const tier2 = Math.min(Math.max(0, totalCompleted - 3), 4); // next 4: +5 each
+        const tier3 = Math.max(0, totalCompleted - 7);    // beyond 7: +2 each
+        completionBonus = tier1 * 15 + tier2 * 5 + tier3 * 2;
+
+        const defaultPenalty = totalDefaulted * 20;       // -20 each, uncapped
+        voucherScore = Math.max(0, Math.min(100, 50 + completionBonus - defaultPenalty));
+      }
+      // If totalOutcomes === 0 (loans still active): keep voucherScore = 50
+    }
+
+    // ── Blend ────────────────────────────────────────────────────────────────
+    const hasVoucheeData = receivedVouches && receivedVouches.length > 0;
+    const hasVoucherData = givenVouches    && givenVouches.length    > 0;
+
+    if (!hasVoucheeData && !hasVoucherData) return 50;
+
+    const blended = voucheeScore * 0.6 + voucherScore * 0.4;
+    return Math.max(0, Math.min(100, Math.round(blended)));
   }
 
-  /**
-   * Calculate verification score (0-100)
-   */
+  // ─── Verification score (10%) ───────────────────────────────────────────────
+  //
+  // Starts at 50 (neutral). Verifications add bonus points on top so that
+  // new unverified users never drag their overall score below the 50 baseline.
+
   private async calculateVerificationScore(userId: string): Promise<number> {
     const { data: user } = await this.supabase
       .from('users')
-      .select(`
-        verification_status,
-        is_verified,
-        selfie_verified,
-        phone_verified,
-        dwolla_customer_id
-      `)
+      .select('verification_status, is_verified, selfie_verified, phone_verified, dwolla_customer_id')
       .eq('id', userId)
       .single();
 
-    if (!user) return 0;
+    if (!user) return 50;
 
-    let score = 0;
-
-    // KYC verified (40 points)
-    if (user.verification_status === 'verified' || user.is_verified) {
-      score += 40;
-    }
-
-    // Selfie verified (20 points)
-    if (user.selfie_verified) {
-      score += 20;
-    }
-
-    // Phone verified (15 points)
-    if (user.phone_verified) {
-      score += 15;
-    }
-
-    // Bank connected (25 points)
-    if (user.dwolla_customer_id) {
-      score += 25;
-    }
+    let score = 50;
+    if ((user as any).verification_status === 'verified' || (user as any).is_verified) score += 25;
+    if ((user as any).selfie_verified)    score += 10;
+    if ((user as any).phone_verified)     score +=  8;
+    if ((user as any).dwolla_customer_id) score += 12;
 
     return Math.min(100, score);
   }
 
-  /**
-   * Calculate platform tenure score (0-100)
-   */
+  // ─── Tenure score (10%) ─────────────────────────────────────────────────────
+  //
+  // Starts at 50 for brand-new accounts so that tenure never pushes the
+  // combined weighted score below the displayed 50-point default.
+
   private async calculateTenureScore(userId: string): Promise<number> {
     const { data: user } = await this.supabase
       .from('users')
@@ -587,148 +749,158 @@ export class TrustScoreService {
       .eq('id', userId)
       .single();
 
-    if (!user) return 0;
+    if (!user) return 50;
 
-    const createdAt = new Date(user.created_at);
-    const now = new Date();
-    const monthsOnPlatform = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60 * 24 * 30);
+    const monthsOnPlatform =
+      (Date.now() - new Date((user as any).created_at).getTime()) / (1000 * 60 * 60 * 24 * 30);
 
-    // 0-6 months: 0-30 points
-    // 6-12 months: 30-50 points
-    // 12-24 months: 50-75 points
-    // 24+ months: 75-100 points
-    if (monthsOnPlatform < 6) {
-      return Math.round(monthsOnPlatform * 5);
-    } else if (monthsOnPlatform < 12) {
-      return Math.round(30 + (monthsOnPlatform - 6) * 3.33);
-    } else if (monthsOnPlatform < 24) {
-      return Math.round(50 + (monthsOnPlatform - 12) * 2.08);
-    } else {
-      return Math.min(100, Math.round(75 + (monthsOnPlatform - 24) * 1));
-    }
+    if (monthsOnPlatform < 6)  return Math.round(50 + monthsOnPlatform * 2.5);           // 50–65
+    if (monthsOnPlatform < 12) return Math.round(65 + (monthsOnPlatform - 6)  * 2.5);    // 65–80
+    if (monthsOnPlatform < 24) return Math.round(80 + (monthsOnPlatform - 12) * 1.25);   // 80–95
+    return Math.min(100, Math.round(95 + (monthsOnPlatform - 24) * 0.5));                 // 95–100
   }
 
-  /**
-   * Get aggregated stats for a user
-   */
+  // ─── getUserStats ───────────────────────────────────────────────────────────
+  //
+  // Aggregated counters written to trust_scores columns (not used in scoring itself).
+
   private async getUserStats(userId: string) {
-    const { data: loans } = await this.supabase
-      .from('loans')
-      .select('status, amount, amount_paid')
-      .eq('borrower_id', userId);
+    const [
+      { data: loans },
+      { count: vouchesReceived },
+      { count: vouchesGiven },
+      { data: givenVouches },
+    ] = await Promise.all([
+      this.supabase.from('loans').select('status, amount, amount_paid').eq('borrower_id', userId),
+      this.supabase.from('vouches').select('id', { count: 'exact', head: true }).eq('vouchee_id', userId).eq('status', 'active'),
+      this.supabase.from('vouches').select('id', { count: 'exact', head: true }).eq('voucher_id', userId),
+      this.supabase.from('vouches').select('loans_defaulted').eq('voucher_id', userId),
+    ]);
 
-    const stats = {
-      total_loans: loans?.length || 0,
-      completed_loans: loans?.filter(l => l.status === 'completed').length || 0,
-      active_loans: loans?.filter(l => l.status === 'active').length || 0,
-      defaulted_loans: loans?.filter(l => l.status === 'defaulted').length || 0,
-      total_amount_borrowed: loans?.reduce((sum, l) => sum + Number(l.amount), 0) || 0,
-      total_amount_repaid: loans?.reduce((sum, l) => sum + Number(l.amount_paid || 0), 0) || 0,
+    const vouchDefaults = (givenVouches || []).reduce(
+      (sum: number, v: any) => sum + (v.loans_defaulted || 0), 0
+    );
+
+    return {
+      total_loans:           (loans as any[])?.length                                                    || 0,
+      completed_loans:       (loans as any[])?.filter((l: any) => l.status === 'completed').length       || 0,
+      active_loans:          (loans as any[])?.filter((l: any) => l.status === 'active').length          || 0,
+      defaulted_loans:       (loans as any[])?.filter((l: any) => l.status === 'defaulted').length       || 0,
+      total_amount_borrowed: (loans as any[])?.reduce((s: number, l: any) => s + Number(l.amount), 0)    || 0,
+      total_amount_repaid:   (loans as any[])?.reduce((s: number, l: any) => s + Number(l.amount_paid || 0), 0) || 0,
+      vouches_received:      vouchesReceived || 0,
+      vouches_given:         vouchesGiven    || 0,
+      vouch_defaults:        vouchDefaults,
     };
-
-    return stats;
   }
 
-  /**
-   * Record a trust score event
-   */
+  // ─── recordEvent ────────────────────────────────────────────────────────────
+  //
+  // Writes a trust_score_events row then triggers a full recalculate.
+  // Note: recalculate() does NOT read trust_score_events — it derives the score
+  // from raw tables. Events are a permanent audit log / activity feed only.
+
   async recordEvent(userId: string, event: TrustScoreEvent): Promise<void> {
-    console.log(`[TrustScore] Recording event for user ${userId}:`, event.event_type, event.score_impact);
-    
+    log.info(`[TrustScore] Recording event for ${userId}:`, {
+      event_type: event.event_type,
+      score_impact: event.score_impact,
+    });
+
     try {
       const { error: insertError } = await this.supabase.from('trust_score_events').insert({
-        user_id: userId,
-        event_type: event.event_type,
-        score_impact: event.score_impact,
-        title: event.title,
-        description: event.description,
-        loan_id: event.loan_id,
-        payment_id: event.payment_id,
-        other_user_id: event.other_user_id,
-        vouch_id: event.vouch_id,
-        metadata: event.metadata || {},
+        user_id:       userId,
+        event_type:    event.event_type,
+        score_impact:  event.score_impact,
+        title:         event.title,
+        description:   event.description,
+        loan_id:       event.loan_id       || undefined,
+        payment_id:    event.payment_id    || undefined,
+        other_user_id: event.other_user_id || undefined,
+        vouch_id:      event.vouch_id      || undefined,
+        metadata:      event.metadata      || {},
       });
 
       if (insertError) {
-        console.error('[TrustScore] ❌ Failed to insert event:', insertError);
+        log.error('[TrustScore] Failed to insert event:', insertError);
         throw insertError;
       }
 
-      console.log('[TrustScore] ✅ Event recorded successfully');
-
-      // Recalculate score after event
-      console.log('[TrustScore] Triggering recalculation...');
+      log.info('[TrustScore] Event recorded, triggering recalculate...');
       await this.recalculate(userId);
-    } catch (error: any) {
-      console.error('[TrustScore] ❌ Error in recordEvent:', error);
-      console.error('[TrustScore] Error details:', {
-        message: error.message,
-        code: error.code,
-        details: error.details,
-        hint: error.hint,
+    } catch (error: unknown) {
+      log.error('[TrustScore] Error in recordEvent:', {
+        message: (error as Error).message,
+        details: (error as any).details,
+        hint:    (error as any).hint,
       });
       throw error;
     }
   }
 
-  /**
-   * Handle payment made event
-   */
+  // ─── onPaymentMade ──────────────────────────────────────────────────────────
+
   async onPaymentMade(
-    userId: string, 
-    loanId: string, 
-    paymentId: string, 
+    userId: string,
+    loanId: string,
+    paymentId: string | undefined,
     amount: number,
-    daysFromDue: number // negative = early, positive = late
+    daysFromDue: number   // negative = early, positive = late
   ): Promise<void> {
     let event: TrustScoreEvent;
 
     if (daysFromDue < -2) {
       event = {
-        event_type: 'payment_early',
+        event_type:   'payment_early',
         score_impact: IMPACTS.PAYMENT_EARLY,
-        title: 'Early Payment',
-        description: `Payment of $${amount} made ${Math.abs(daysFromDue)} days early`,
-        loan_id: loanId,
-        payment_id: paymentId,
+        title:        'Early Payment',
+        description:  `Payment of $${amount} made ${Math.abs(daysFromDue)} days early`,
+        loan_id:      loanId,
+        payment_id:   paymentId,
       };
     } else if (daysFromDue <= 0) {
       event = {
-        event_type: 'payment_ontime',
+        event_type:   'payment_ontime',
         score_impact: IMPACTS.PAYMENT_ONTIME,
-        title: 'On-Time Payment',
-        description: `Payment of $${amount} made on time`,
-        loan_id: loanId,
-        payment_id: paymentId,
+        title:        'On-Time Payment',
+        description:  `Payment of $${amount} made on time`,
+        loan_id:      loanId,
+        payment_id:   paymentId,
       };
     } else if (daysFromDue <= 7) {
       event = {
-        event_type: 'payment_late',
+        event_type:   'payment_late',
         score_impact: IMPACTS.PAYMENT_LATE_1_7_DAYS,
-        title: 'Late Payment',
-        description: `Payment of $${amount} made ${daysFromDue} days late`,
-        loan_id: loanId,
-        payment_id: paymentId,
+        title:        'Late Payment',
+        description:  `Payment of $${amount} made ${daysFromDue} days late`,
+        loan_id:      loanId,
+        payment_id:   paymentId,
+      };
+    } else if (daysFromDue <= 14) {
+      event = {
+        event_type:   'payment_late',
+        score_impact: IMPACTS.PAYMENT_LATE_8_14_DAYS,
+        title:        'Late Payment',
+        description:  `Payment of $${amount} made ${daysFromDue} days late`,
+        loan_id:      loanId,
+        payment_id:   paymentId,
       };
     } else {
       event = {
-        event_type: 'payment_late',
+        event_type:   'payment_late',
         score_impact: IMPACTS.PAYMENT_LATE_15_30_DAYS,
-        title: 'Very Late Payment',
-        description: `Payment of $${amount} made ${daysFromDue} days late`,
-        loan_id: loanId,
-        payment_id: paymentId,
+        title:        'Very Late Payment',
+        description:  `Payment of $${amount} made ${daysFromDue} days late`,
+        loan_id:      loanId,
+        payment_id:   paymentId,
       };
     }
 
     await this.recordEvent(userId, event);
   }
 
-  /**
-   * Handle loan completed event
-   */
+  // ─── onLoanCompleted ────────────────────────────────────────────────────────
+
   async onLoanCompleted(userId: string, loanId: string, amount: number): Promise<void> {
-    // Check if this is the user's first completed loan
     const { data: completedLoans } = await this.supabase
       .from('loans')
       .select('id')
@@ -738,44 +910,52 @@ export class TrustScoreService {
     const isFirst = completedLoans?.length === 1;
 
     const event: TrustScoreEvent = {
-      event_type: isFirst ? 'first_loan_completed' : 'loan_completed',
+      event_type:   isFirst ? 'first_loan_completed' : 'loan_completed',
       score_impact: isFirst ? IMPACTS.FIRST_LOAN_COMPLETED : IMPACTS.LOAN_COMPLETED,
-      title: isFirst ? 'First Loan Completed! 🎉' : 'Loan Completed',
-      description: `Successfully repaid $${amount} loan`,
-      loan_id: loanId,
+      title:        isFirst ? 'First Loan Completed! 🎉' : 'Loan Completed',
+      description:  `Successfully repaid $${amount} loan`,
+      loan_id:      loanId,
     };
 
     await this.recordEvent(userId, event);
   }
 
-  /**
-   * Handle vouch received event
-   * strength is now a 1–10 score computed by computeVouchStrength()
-   */
+  // ─── onVouchReceived ────────────────────────────────────────────────────────
+  //
+  // Bug 5 fix: after recording the event for the vouchee, also recalculate the
+  // VOUCHER's score so their vouches_given stat in trust_scores stays current.
+
   async onVouchReceived(
-    userId: string, 
-    voucherId: string, 
-    vouchId: string, 
+    voucheeId: string,
+    voucherId: string,
+    vouchId: string,
     strength: number
   ): Promise<void> {
-    // strength 7+ = strong vouch (was tier_3/4 voucher with good relationship)
     const impact = strength >= 7 ? IMPACTS.VOUCH_RECEIVED_STRONG : IMPACTS.VOUCH_RECEIVED_BASE;
 
-    const event: TrustScoreEvent = {
-      event_type: 'vouch_received',
-      score_impact: impact,
-      title: 'New Vouch Received',
-      description: `Someone vouched for your trustworthiness`,
+    // Update vouchee's score (the person who received the vouch)
+    await this.recordEvent(voucheeId, {
+      event_type:    'vouch_received',
+      score_impact:  impact,
+      title:         'New Vouch Received',
+      description:   'Someone vouched for your trustworthiness',
       other_user_id: voucherId,
-      vouch_id: vouchId,
-    };
+      vouch_id:      vouchId,
+    });
 
-    await this.recordEvent(userId, event);
+    // Bug 5 fix: also refresh the VOUCHER's trust_scores row so that
+    // vouches_given and the voucher-side social_score update immediately.
+    try {
+      await this.recalculate(voucherId);
+      log.info(`[TrustScore] Voucher ${voucherId} score refreshed after issuing vouch`);
+    } catch (err) {
+      // Non-blocking — vouchee event was already recorded successfully
+      log.error(`[TrustScore] Failed to refresh voucher score for ${voucherId}:`, err);
+    }
   }
 
-  /**
-   * Get recent trust score events for a user
-   */
+  // ─── getEvents / getHistory ─────────────────────────────────────────────────
+
   async getEvents(userId: string, limit: number = 20): Promise<any[]> {
     const { data } = await this.supabase
       .from('trust_score_events')
@@ -783,21 +963,16 @@ export class TrustScoreService {
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
-
     return data || [];
   }
 
-  /**
-   * Get trust score history for a user
-   */
   async getHistory(userId: string, limit: number = 30): Promise<any[]> {
     const { data } = await this.supabase
-      .from('trust_score_history')
+      .from('trust_score_events')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit);
-
     return data || [];
   }
 }
@@ -815,9 +990,6 @@ export class VouchService {
     this.trustScoreService = new TrustScoreService(supabase);
   }
 
-  /**
-   * Create a vouch for another user
-   */
   async createVouch(
     voucherId: string,
     voucheeId: string,
@@ -832,12 +1004,10 @@ export class VouchService {
       is_public?: boolean;
     }
   ): Promise<{ vouch?: Vouch; error?: string }> {
-    // Can't vouch for yourself
     if (voucherId === voucheeId) {
       return { error: "You can't vouch for yourself" };
     }
 
-    // Check if already vouched
     const { data: existing } = await this.supabase
       .from('vouches')
       .select('id')
@@ -850,82 +1020,95 @@ export class VouchService {
       return { error: 'You have already vouched for this person' };
     }
 
-    // ── Fetch voucher's current trust tier and success rate ─────────────────
+    // Compute vouch_strength in TypeScript (not DB trigger — consistent across deployments)
     let voucherTier: string = 'tier_1';
     let voucherSuccessRate: number = 100;
-    try {
-      const { data: voucherProfile } = await this.supabase
-        .from('users')
-        .select('trust_tier, vouching_success_rate')
-        .eq('id', voucherId)
-        .single();
-      if (voucherProfile?.trust_tier) voucherTier = voucherProfile.trust_tier;
-      if (typeof voucherProfile?.vouching_success_rate === 'number') {
-        voucherSuccessRate = voucherProfile.vouching_success_rate;
-      }
-    } catch {
-      // Non-blocking — fall back to tier_1, 100% success rate
+
+    const { data: voucherProfile } = await this.supabase
+      .from('users')
+      .select('trust_tier, vouching_success_rate')
+      .eq('id', voucherId)
+      .single();
+
+    if (voucherProfile) {
+      voucherTier        = (voucherProfile as any).trust_tier           || 'tier_1';
+      voucherSuccessRate = (voucherProfile as any).vouching_success_rate ?? 100;
     }
 
-    // Compute strength (1–10): tier + relationship signals + track record multiplier
     const vouchStrength = computeVouchStrength({
       voucherTier,
-      relationship: data.relationship,
-      knownYears: data.known_years,
-      vouchType: data.vouch_type,
+      relationship:       data.relationship,
+      knownYears:         data.known_years,
+      vouchType:          data.vouch_type,
       voucherSuccessRate,
     });
 
-    // Map strength to trust score boost (stronger vouches contribute more)
-    // 1-3 → 3pts, 4-6 → 5pts, 7-8 → 8pts, 9-10 → 12pts
-    const trustScoreBoost =
-      vouchStrength >= 9 ? 12 :
-      vouchStrength >= 7 ? 8  :
-      vouchStrength >= 4 ? 5  : 3;
+    // trust_score_boost: 1-to-1 with vouchStrength (1–10 → up to 10 pts on social score)
+    const trustScoreBoost = vouchStrength;
 
-    // Create the vouch
     const { data: vouch, error } = await this.supabase
       .from('vouches')
-      .insert({
-        voucher_id: voucherId,
-        vouchee_id: voucheeId,
-        vouch_type: data.vouch_type,
-        relationship: data.relationship,
-        relationship_details: data.relationship_details,
-        known_years: data.known_years,
-        message: data.message,
-        guarantee_percentage: data.guarantee_percentage || 0,
-        guarantee_max_amount: data.guarantee_max_amount || 0,
-        is_public: data.is_public !== false,
-        vouch_strength: vouchStrength,
-        trust_score_boost: trustScoreBoost,
-      })
+      .upsert(
+        {
+          voucher_id:           voucherId,
+          vouchee_id:           voucheeId,
+          vouch_type:           data.vouch_type,
+          relationship:         data.relationship,
+          relationship_details: data.relationship_details,
+          known_years:          data.known_years,
+          message:              data.message,
+          guarantee_percentage: data.guarantee_percentage || 0,
+          guarantee_max_amount: data.guarantee_max_amount || 0,
+          is_public:            data.is_public !== false,
+          vouch_strength:       vouchStrength,
+          trust_score_boost:    trustScoreBoost,
+          status:               'active',
+          revoked_at:           null,
+          revoked_reason:       null,
+          updated_at:           new Date().toISOString(),
+        },
+        { onConflict: 'voucher_id,vouchee_id', ignoreDuplicates: false }
+      )
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating vouch:', error);
-      return { error: error.message };
+      log.error('Error creating vouch:', error);
+      return { error: (error as Error).message };
     }
 
-    // Record event and recalculate vouchee's trust_scores row
+    // Update user counters (non-blocking if this fails — vouch already created)
+    try {
+      const { data: voucheeProfile } = await this.supabase
+        .from('users').select('vouch_count, active_vouches_count').eq('id', voucheeId).single();
+      await this.supabase.from('users').update({
+        vouch_count:          ((voucheeProfile as any)?.vouch_count          ?? 0) + 1,
+        active_vouches_count: ((voucheeProfile as any)?.active_vouches_count ?? 0) + 1,
+      }).eq('id', voucheeId);
+
+      const { data: vProfile } = await this.supabase
+        .from('users').select('vouches_given_total').eq('id', voucherId).single();
+      await this.supabase.from('users').update({
+        vouches_given_total: ((vProfile as any)?.vouches_given_total ?? 0) + 1,
+      }).eq('id', voucherId);
+    } catch {
+      // Non-blocking
+    }
+
+    // onVouchReceived now handles BOTH vouchee and voucher score updates (Bug 5 fix)
     await this.trustScoreService.onVouchReceived(
       voucheeId,
       voucherId,
-      vouch.id,
-      vouch.vouch_strength        // now a real 1-10 value
+      (vouch as any).id,
+      (vouch as any).vouch_strength
     );
 
-    // Also recalculate users.trust_tier immediately so the matching engine
-    // sees the correct tier without waiting for the stale-cache refresh.
+    // Recalculate trust_tier so the matching engine sees the new tier immediately
     await calculateSimpleTrustTier(voucheeId);
 
-    return { vouch };
+    return { vouch: vouch as unknown as Vouch };
   }
 
-  /**
-   * Get vouches for a user
-   */
   async getVouchesFor(userId: string): Promise<Vouch[]> {
     const { data } = await this.supabase
       .from('vouches')
@@ -941,22 +1124,18 @@ export class VouchService {
       .eq('status', 'active')
       .order('vouch_strength', { ascending: false });
 
-    // Get voucher trust scores
     if (data) {
       for (const vouch of data) {
-        if (vouch.voucher?.id) {
-          const score = await this.trustScoreService.getScore(vouch.voucher.id);
-          (vouch.voucher as any).trust_score = score;
+        if ((vouch as any).voucher?.id) {
+          const score = await this.trustScoreService.getScore((vouch as any).voucher.id);
+          (vouch as any).voucher.trust_score = score;
         }
       }
     }
 
-    return data || [];
+    return (data || []) as unknown as Vouch[];
   }
 
-  /**
-   * Get vouches given by a user
-   */
   async getVouchesBy(userId: string): Promise<Vouch[]> {
     const { data } = await this.supabase
       .from('vouches')
@@ -971,12 +1150,9 @@ export class VouchService {
       .eq('voucher_id', userId)
       .order('created_at', { ascending: false });
 
-    return data || [];
+    return (data || []) as unknown as Vouch[];
   }
 
-  /**
-   * Revoke a vouch
-   */
   async revokeVouch(
     voucherId: string,
     vouchId: string,
@@ -985,38 +1161,51 @@ export class VouchService {
     const { error } = await this.supabase
       .from('vouches')
       .update({
-        status: 'revoked',
-        revoked_at: new Date().toISOString(),
+        status:         'revoked',
+        revoked_at:     new Date().toISOString(),
         revoked_reason: reason,
       })
       .eq('id', vouchId)
       .eq('voucher_id', voucherId);
 
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
 
-    // Recalculate the vouchee's trust_tier now that a vouch has been revoked.
-    // We need to find the vouchee from the vouch record.
     const { data: revokedVouch } = await this.supabase
       .from('vouches').select('vouchee_id').eq('id', vouchId).single();
-    if (revokedVouch?.vouchee_id) {
-      await calculateSimpleTrustTier(revokedVouch.vouchee_id);
+
+    if ((revokedVouch as any)?.vouchee_id) {
+      const voucheeId = (revokedVouch as any).vouchee_id;
+      try {
+        const { data: voucheeProfile } = await this.supabase
+          .from('users').select('vouch_count, active_vouches_count').eq('id', voucheeId).single();
+        await this.supabase.from('users').update({
+          vouch_count:          Math.max(0, ((voucheeProfile as any)?.vouch_count          ?? 1) - 1),
+          active_vouches_count: Math.max(0, ((voucheeProfile as any)?.active_vouches_count ?? 1) - 1),
+        }).eq('id', voucheeId);
+      } catch {
+        // Non-blocking
+      }
+      await calculateSimpleTrustTier(voucheeId);
+      // Also refresh the voucher's score since a vouch being revoked changes their vouches_given count
+      try {
+        await this.trustScoreService.recalculate(voucherId);
+      } catch {
+        // Non-blocking
+      }
     }
 
     return { success: true };
   }
 
-  /**
-   * Request a vouch from someone
-   */
   async requestVouch(
     requesterId: string,
     targetUserId?: string,
     targetEmail?: string,
     message?: string,
     suggestedRelationship?: string
-  ): Promise<{ request?: any; error?: string }> {
+  ): Promise<{ request?: Record<string, unknown>; error?: string }> {
     if (!targetUserId && !targetEmail) {
       return { error: 'Must provide either user ID or email' };
     }
@@ -1026,26 +1215,23 @@ export class VouchService {
     const { data, error } = await this.supabase
       .from('vouch_requests')
       .insert({
-        requester_id: requesterId,
-        requested_user_id: targetUserId,
-        requested_email: targetEmail,
+        requester_id:         requesterId,
+        requested_user_id:    targetUserId,
+        requested_email:      targetEmail,
         message,
         suggested_relationship: suggestedRelationship,
-        invite_token: inviteToken,
+        invite_token:         inviteToken,
       })
       .select()
       .single();
 
     if (error) {
-      return { error: error.message };
+      return { error: (error as Error).message };
     }
 
-    return { request: data };
+    return { request: data as Record<string, unknown> };
   }
 
-  /**
-   * Accept a vouch request
-   */
   async acceptVouchRequest(
     requestId: string,
     userId: string,
@@ -1057,68 +1243,71 @@ export class VouchService {
       message?: string;
     }
   ): Promise<{ vouch?: Vouch; error?: string }> {
-    // Get the request
     const { data: request } = await this.supabase
       .from('vouch_requests')
       .select('*')
       .eq('id', requestId)
       .single();
 
-    if (!request) {
-      return { error: 'Request not found' };
+    if (!request) return { error: 'Request not found' };
+    if ((request as any).status !== 'pending') return { error: 'Request is no longer pending' };
+
+    // Only the intended recipient can accept: requested_user_id = userId or invite-by-email (null)
+    const requestedUserId = (request as any).requested_user_id;
+    if (requestedUserId != null && requestedUserId !== userId) {
+      return { error: 'You are not the intended recipient of this vouch request.' };
     }
 
-    if (request.status !== 'pending') {
-      return { error: 'Request is no longer pending' };
-    }
+    const result = await this.createVouch(userId, (request as any).requester_id, vouchData);
+    if (result.error) return { error: result.error };
 
-    // Create the vouch
-    const result = await this.createVouch(userId, request.requester_id, vouchData);
-
-    if (result.error) {
-      return { error: result.error };
-    }
-
-    // Update request status
     await this.supabase
       .from('vouch_requests')
       .update({
-        status: 'accepted',
+        status:       'accepted',
         responded_at: new Date().toISOString(),
-        vouch_id: result.vouch?.id,
+        vouch_id:     result.vouch?.id,
       })
       .eq('id', requestId);
 
     return { vouch: result.vouch };
   }
 
-  /**
-   * Decline a vouch request
-   */
   async declineVouchRequest(
     requestId: string,
     userId: string,
     reason?: string
   ): Promise<{ success: boolean; error?: string }> {
+    const { data: req } = await this.supabase
+      .from('vouch_requests')
+      .select('requested_user_id, status')
+      .eq('id', requestId)
+      .single();
+
+    if (!req) return { success: false, error: 'Request not found' };
+    if ((req as any).status !== 'pending') return { success: false, error: 'Request is no longer pending' };
+
+    // Only the intended recipient can decline: requested_user_id = userId or invite-by-email (null)
+    const requestedUserId = (req as any).requested_user_id;
+    if (requestedUserId != null && requestedUserId !== userId) {
+      return { success: false, error: 'You are not the intended recipient of this vouch request.' };
+    }
+
     const { error } = await this.supabase
       .from('vouch_requests')
       .update({
-        status: 'declined',
-        responded_at: new Date().toISOString(),
+        status:           'declined',
+        responded_at:     new Date().toISOString(),
         response_message: reason,
       })
-      .eq('id', requestId)
-      .eq('requested_user_id', userId);
+      .eq('id', requestId);
 
-    if (error) {
-      return { success: false, error: error.message };
-    }
-
+    if (error) return { success: false, error: (error as Error).message };
     return { success: true };
   }
 
   private generateToken(): string {
-    return Array.from({ length: 32 }, () => 
+    return Array.from({ length: 32 }, () =>
       'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
         .charAt(Math.floor(Math.random() * 62))
     ).join('');

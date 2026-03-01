@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('usePaymentSetup');
 
 import { useState, useEffect, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -115,9 +117,9 @@ export function usePaymentSetup(
       );
       
       setUserMethods(validMethods);
-    } catch (err: any) {
-      console.error('[usePaymentSetup] Error:', err);
-      setError(err.message);
+    } catch (err: unknown) {
+      log.error('[usePaymentSetup] Error:', err);
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -142,7 +144,7 @@ export function usePaymentSetup(
           table: 'payment_providers',
         },
         () => {
-          console.log('[usePaymentSetup] Provider changed, refreshing...');
+          log.debug('[usePaymentSetup] Provider changed, refreshing...');
           fetchData();
         }
       );
@@ -158,7 +160,7 @@ export function usePaymentSetup(
           filter: `user_id=eq.${userId}`,
         },
         () => {
-          console.log('[usePaymentSetup] User method changed, refreshing...');
+          log.debug('[usePaymentSetup] User method changed, refreshing...');
           fetchData();
         }
       );

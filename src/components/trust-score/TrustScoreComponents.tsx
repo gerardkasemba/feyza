@@ -1,6 +1,9 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('TrustScoreComponents');
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Shield,
   Users,
@@ -16,9 +19,11 @@ import {
   X,
   ChevronRight,
   TrendingUp,
+  HelpCircle,
 } from 'lucide-react';
 
-import { Card, Button, Badge, Progress } from '@/components/ui';
+import { Card, Button, Badge, Progress, Modal } from '@/components/ui';
+import { PathTo100Explainer } from './PathTo100Explainer';
 
 // ============================================
 // TYPES
@@ -55,6 +60,20 @@ interface Vouch {
   };
 }
 
+/** Vouches you gave (people you vouched for) */
+interface VouchGiven {
+  id: string;
+  relationship: string;
+  trust_score_boost: number;
+  created_at: string;
+  status?: string;
+  vouchee?: {
+    id: string;
+    full_name: string;
+    username?: string;
+  };
+}
+
 interface TrustScoreEvent {
   id: string;
   event_type: string;
@@ -65,15 +84,46 @@ interface TrustScoreEvent {
 }
 
 // ============================================
-// UI HELPERS
+// UI HELPERS — indicative colors for all trust score options
 // ============================================
 
+/** Grade → gradient (badge background) */
 function gradeGradient(grade: string) {
   if (grade.startsWith('A')) return 'from-emerald-500 to-green-600';
   if (grade.startsWith('B')) return 'from-blue-500 to-indigo-600';
   if (grade.startsWith('C')) return 'from-amber-500 to-orange-600';
   if (grade.startsWith('D')) return 'from-orange-500 to-red-500';
-  return 'from-red-500 to-red-700';
+  return 'from-red-500 to-red-700'; // F
+}
+
+/** Score 0–100 → stroke/ring color (Tailwind) */
+function scoreToRingStroke(score: number): string {
+  const s = Math.max(0, Math.min(100, score));
+  if (s >= 90) return 'stroke-emerald-500 dark:stroke-emerald-400';
+  if (s >= 80) return 'stroke-blue-500 dark:stroke-blue-400';
+  if (s >= 70) return 'stroke-amber-500 dark:stroke-amber-400';
+  if (s >= 60) return 'stroke-orange-500 dark:stroke-orange-400';
+  return 'stroke-red-500 dark:stroke-red-400';
+}
+
+/** Score 0–100 → text color for score label / grade */
+function scoreToTextColor(score: number): string {
+  const s = Math.max(0, Math.min(100, score));
+  if (s >= 90) return 'text-emerald-600 dark:text-emerald-400';
+  if (s >= 80) return 'text-blue-600 dark:text-blue-400';
+  if (s >= 70) return 'text-amber-600 dark:text-amber-400';
+  if (s >= 60) return 'text-orange-600 dark:text-orange-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
+/** Score 0–100 → progress bar color (Tailwind class for the bar) */
+function scoreToProgressColor(score: number): string {
+  const s = Math.max(0, Math.min(100, score));
+  if (s >= 90) return 'bg-emerald-500';
+  if (s >= 80) return 'bg-blue-500';
+  if (s >= 70) return 'bg-amber-500';
+  if (s >= 60) return 'bg-orange-500';
+  return 'bg-red-500';
 }
 
 function clamp(n: number, min = 0, max = 100) {
@@ -114,6 +164,8 @@ export function TrustScoreRing({ score, grade, label }: TrustScoreRingProps) {
   const safeScore = clamp(score);
   const circumference = 2 * Math.PI * 22;
   const offset = circumference * (1 - safeScore / 100);
+  const ringStroke = scoreToRingStroke(safeScore);
+  const gradeColor = scoreToTextColor(safeScore);
 
   return (
     <div className="relative w-20 h-20">
@@ -135,14 +187,14 @@ export function TrustScoreRing({ score, grade, label }: TrustScoreRingProps) {
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          className="stroke-neutral-900 dark:stroke-white"
+          className={ringStroke}
         />
       </svg>
 
       <div className="absolute inset-0 grid place-items-center">
         <div className="text-center leading-none">
-          <div className="text-xl font-bold text-neutral-900 dark:text-white">{safeScore}</div>
-          <div className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">{grade}</div>
+          <div className={`text-xl font-bold ${gradeColor}`}>{safeScore}</div>
+          <div className={`text-[11px] font-semibold ${gradeColor}`}>{grade}</div>
         </div>
       </div>
 
@@ -221,11 +273,13 @@ export function TrustScoreCard({
   const [loading, setLoading] = useState(true);
   const [scoreData, setScoreData] = useState<TrustScoreData | null>(null);
   const [vouches, setVouches] = useState<Vouch[]>([]);
+  const [myVouchees, setMyVouchees] = useState<VouchGiven[]>([]);
   const [events, setEvents] = useState<TrustScoreEvent[]>([]);
   const [tab, setTab] = useState<SheetTab>('overview');
 
   const [myVouchForThisUser, setMyVouchForThisUser] = useState<string | null>(null);
   const [revokingVouch, setRevokingVouch] = useState(false);
+  const [showScoreModal, setShowScoreModal] = useState(false);
 
   const [paymentStats, setPaymentStats] = useState<{
     totalPayments: number;
@@ -243,13 +297,15 @@ export function TrustScoreCard({
     const run = async () => {
       setLoading(true);
       try {
-        const params = userId ? `?userId=${userId}` : '';
+        // For own profile: pass ?refresh=1 to trigger recalculation if stale
+        const params = userId ? `?userId=${userId}` : '?refresh=1';
         const res = await fetch(`/api/trust-score${params}`);
         const data = await res.json();
 
         if (data?.score) {
           setScoreData(data.score);
           setVouches(data.topVouches || []);
+          setMyVouchees(data.myVouchees || []);
           setEvents(data.recentEvents || []);
           setPaymentStats(data.paymentStats || null);
         } else {
@@ -270,7 +326,7 @@ export function TrustScoreCard({
           }
         }
       } catch (e) {
-        console.error('Error fetching trust score:', e);
+        log.error('Error fetching trust score:', e);
         setScoreData(null);
       } finally {
         setLoading(false);
@@ -318,10 +374,11 @@ export function TrustScoreCard({
         if (data?.score) {
           setScoreData(data.score);
           setVouches(data.topVouches || []);
+          setMyVouchees(data.myVouchees || []);
         }
       }
     } catch (error) {
-      console.error('Error revoking vouch:', error);
+      log.error('Error revoking vouch:', error);
     } finally {
       setRevokingVouch(false);
     }
@@ -363,9 +420,17 @@ export function TrustScoreCard({
           <TrustScoreRing score={scoreData.score} grade={scoreData.score_grade} label="Trust" />
           <div className="pt-1">
             <div className="flex items-center gap-2">
-              <h3 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white">
+              <h3 className={`text-base sm:text-lg font-bold ${scoreToTextColor(scoreData.score)}`}>
                 {scoreData.score_label}
               </h3>
+              <button
+                type="button"
+                onClick={() => setShowScoreModal(true)}
+                className="p-0.5 rounded-full text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                aria-label="Learn about Trust Score"
+              >
+                <HelpCircle className="w-4 h-4" />
+              </button>
               {isOwnProfile ? (
                 <Badge variant="outline" className="text-[11px] px-2 py-0.5">
                   You
@@ -547,7 +612,7 @@ export function TrustScoreCard({
           </div>
         ) : null}
 
-        {tab === 'breakdown' && showDetails ? (
+        {tab === 'breakdown' ? (
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Target className="w-4 h-4" />
@@ -557,72 +622,124 @@ export function TrustScoreCard({
             </div>
 
             <div className="space-y-3">
-              {components.map((c) => (
-                <div
-                  key={c.label}
-                  className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <c.icon className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
-                      <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                        {c.label}{' '}
-                        <span className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500">
-                          ({c.weight})
-                        </span>
+              {components.map((c) => {
+                const compScore = clamp(c.score);
+                const barColor = scoreToProgressColor(compScore);
+                const textColor = scoreToTextColor(compScore);
+                return (
+                  <div
+                    key={c.label}
+                    className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <c.icon className={`w-4 h-4 ${textColor}`} />
+                        <div className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                          {c.label}{' '}
+                          <span className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500">
+                            ({c.weight})
+                          </span>
+                        </div>
                       </div>
+                      <div className={`text-sm font-bold ${textColor}`}>{c.score}</div>
                     </div>
-                    <div className="text-sm font-bold text-neutral-900 dark:text-white">{c.score}</div>
-                  </div>
 
-                  <div className="mt-2">
-                    <Progress value={clamp(c.score)} className="h-2" />
+                    <div className="mt-2">
+                      <Progress value={compScore} className="h-2" indicatorClassName={barColor} />
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
+
+           
           </div>
         ) : null}
 
         {tab === 'vouches' && showVouches ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Award className="w-4 h-4 text-purple-500" />
-              <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">Top vouches</div>
-            </div>
-
-            {vouches.length === 0 ? (
-              <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-5 text-center text-sm text-neutral-600 dark:text-neutral-400">
-                No vouches yet.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {vouches.slice(0, 6).map((v) => (
-                  <div
-                    key={v.id}
-                    className="flex items-center justify-between rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-900/30 grid place-items-center text-purple-700 dark:text-purple-200 font-bold">
-                        {initials(v.voucher?.full_name)}
-                      </div>
-                      <div>
-                        <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-                          {v.voucher?.full_name || 'Anonymous'}
-                        </div>
-                        <div className="text-[12px] text-neutral-500 dark:text-neutral-400 capitalize">
-                          {v.relationship}
-                        </div>
-                      </div>
-                    </div>
-
-                    <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200">
-                      +{v.trust_score_boost}
-                    </Badge>
+          <div className="space-y-4">
+            {/* People you've vouched for (only on own profile) */}
+            {myVouchees.length > 0 ? (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Users className="w-4 h-4 text-purple-500" />
+                  <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                    People you&apos;ve vouched for ({myVouchees.length})
                   </div>
-                ))}
+                </div>
+                <div className="space-y-2">
+                  {myVouchees.map((v: VouchGiven) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-100 dark:bg-emerald-900/30 grid place-items-center text-emerald-700 dark:text-emerald-200 font-bold">
+                          {initials(v.vouchee?.full_name || v.vouchee?.username)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-neutral-900 dark:text-white">
+                            {v.vouchee?.full_name || v.vouchee?.username || 'Someone'}
+                          </div>
+                          <div className="text-[12px] text-neutral-500 dark:text-neutral-400 capitalize">
+                            {v.relationship}
+                            {v.status && v.status !== 'active' ? ` · ${v.status}` : ''}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200">
+                        +{v.trust_score_boost}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
               </div>
-            )}
+            ) : null}
+
+            {/* People who vouched for you */}
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <Award className="w-4 h-4 text-purple-500" />
+                <div className="text-sm font-semibold text-neutral-800 dark:text-neutral-200">
+                  People who vouched for you
+                </div>
+              </div>
+              {vouches.length === 0 && myVouchees.length === 0 ? (
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-5 text-center text-sm text-neutral-600 dark:text-neutral-400">
+                  No vouches yet.
+                </div>
+              ) : vouches.length === 0 ? (
+                <div className="rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-5 text-center text-sm text-neutral-600 dark:text-neutral-400">
+                  No one has vouched for you yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {vouches.slice(0, 6).map((v: any) => (
+                    <div
+                      key={v.id}
+                      className="flex items-center justify-between rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-3"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-900/30 grid place-items-center text-purple-700 dark:text-purple-200 font-bold">
+                          {initials(v.voucher?.full_name)}
+                        </div>
+                        <div>
+                          <div className="text-sm font-semibold text-neutral-900 dark:text-white">
+                            {v.voucher?.full_name || 'Someone'}
+                          </div>
+                          <div className="text-[12px] text-neutral-500 dark:text-neutral-400 capitalize">
+                            {v.relationship}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge className="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-200">
+                        +{v.trust_score_boost}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : null}
 
@@ -678,6 +795,15 @@ export function TrustScoreCard({
           </div>
         ) : null}
       </div>
+
+      <Modal isOpen={showScoreModal} onClose={() => setShowScoreModal(false)} title="About Trust Score" size="xl">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            Your trust score (0–100) is a weighted blend of payment history, loan completions, vouches, verification, and tenure. Lenders use it to assess reliability.
+          </p>
+          <PathTo100Explainer variant="full" />
+        </div>
+      </Modal>
     </Card>
   );
 }
@@ -703,7 +829,7 @@ export function MiniTrustScore({ userId, className = '' }: MiniTrustScoreProps) 
           setScore({ score: data.score.score, grade: data.score.score_grade });
         }
       } catch (error) {
-        console.error('Error fetching mini trust score:', error);
+        log.error('Error fetching mini trust score:', error);
       }
     };
 
@@ -732,6 +858,7 @@ interface VouchButtonProps {
 }
 
 export function VouchButton({ targetUserId, targetName, onVouchComplete, className = '' }: VouchButtonProps) {
+  const displayName = (targetName?.trim()) || 'this person';
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
@@ -784,11 +911,14 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
       } else if (data?.vouching_blocked) {
         // Eligibility gate fired at server — update UI state
         setEligibilityError({ message: data.error, code: data.code || 'vouching_locked' });
+      } else if (data?.error?.toLowerCase().includes('already vouched')) {
+        // Duplicate vouch — show in modal
+        setEligibilityError({ message: data.error, code: 'already_vouched' });
       } else {
         alert(data?.error || 'Failed to create vouch');
       }
     } catch (error) {
-      console.error('Error creating vouch:', error);
+      log.error('Error creating vouch:', error);
       alert('Failed to create vouch');
     } finally {
       setLoading(false);
@@ -805,12 +935,12 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
         className={className}
       >
         <UserPlus className="w-4 h-4 mr-2" />
-        {eligibilityLoading ? 'Checking…' : `Vouch for ${targetName.split(' ')[0]}`}
+        {eligibilityLoading ? 'Checking…' : `Vouch for ${displayName.split(' ')[0]}`}
       </Button>
 
-      {showModal ? (
-        <div className="fixed inset-0 z-50">
-          {/* Backdrop */}
+      {showModal && typeof document !== 'undefined' ? createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          {/* Backdrop — portal to body + z-[9999] so modal always above navbar */}
           <button
             type="button"
             aria-label="Close"
@@ -818,14 +948,14 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
           />
 
-          {/* Bottom sheet */}
-          <div className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 p-4 sm:p-5">
+          {/* Centered modal — not full screen */}
+          <div className="relative w-full max-w-md rounded-2xl bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 shadow-xl p-4 sm:p-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-purple-500" />
+                <Award className="w-5 h-5 text-green-500" />
                 <div>
                   <div className="text-base font-bold text-neutral-900 dark:text-white">
-                    Vouch for {targetName}
+                    Vouch for {displayName}
                   </div>
                   <div className="text-[12px] text-neutral-500 dark:text-neutral-400">
                     Only vouch for people you truly trust.
@@ -850,17 +980,22 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
                 <div className="flex items-start gap-3">
                   <span className="text-xl shrink-0">
                     {eligibilityError.code === 'account_too_new' ? '⏳' :
-                     eligibilityError.code === 'profile_incomplete' ? '👤' : '🔒'}
+                     eligibilityError.code === 'profile_incomplete' ? '👤' :
+                     eligibilityError.code === 'already_vouched' ? '✓' : '🔒'}
                   </span>
                   <div>
                     <p className="font-bold text-red-700 dark:text-red-300 text-sm mb-1">
                       {eligibilityError.code === 'account_too_new' ? 'Account too new to vouch' :
                        eligibilityError.code === 'profile_incomplete' ? 'Complete your profile first' :
+                       eligibilityError.code === 'already_vouched' ? 'Already vouched' :
                        'Vouching suspended'}
                     </p>
                     <p className="text-red-600 dark:text-red-400 text-xs leading-relaxed">{eligibilityError.message}</p>
+                    {eligibilityError.code === 'account_too_new' && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1">Your account must be at least 7 days old to vouch.</p>
+                    )}
                     {eligibilityError.code === 'profile_incomplete' && (
-                      <a href="/profile" className="inline-block mt-2 text-xs font-semibold text-red-700 dark:text-red-300 underline">Go to profile →</a>
+                      <a href="/settings" className="inline-block mt-2 text-xs font-semibold text-red-700 dark:text-red-300 underline">Go to settings →</a>
                     )}
                     {eligibilityError.code === 'vouching_locked' && (
                       <a href="/vouch/requests" className="inline-block mt-2 text-xs font-semibold text-red-700 dark:text-red-300 underline">View my vouching record →</a>
@@ -926,16 +1061,15 @@ export function VouchButton({ targetUserId, targetName, onVouchComplete, classNa
                 <Button
                   onClick={handleVouch}
                   disabled={loading || !!eligibilityError}
-                  className="rounded-2xl bg-purple-600 hover:bg-purple-700"
+                  className="rounded-2xl bg-green-600 hover:bg-green-700 text-white"
                 >
                   {loading ? 'Creating…' : 'Create vouch'}
                 </Button>
               </div>
             </div>
-
-            <div className="pb-2" />
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </>
   );

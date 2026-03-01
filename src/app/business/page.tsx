@@ -58,7 +58,7 @@ export default async function BusinessPage() {
 
   const profile = profileResult.data;
   const businessProfile = businessProfileResult.data;
-  const isDwollaEnabled = (paymentProvidersResult.data || []).some((p: any) => p.slug === 'dwolla');
+  const isDwollaEnabled = (paymentProvidersResult.data || []).some((p) => p.slug === 'dwolla');
 
   // If no business profile, redirect to setup
   if (!businessProfile) {
@@ -90,11 +90,11 @@ export default async function BusinessPage() {
   ]);
 
   const businessLoans = loansResult.data || [];
-  let pendingMatches: any[] = [];
+  let pendingMatches: unknown[] = [];
   
   // If we have matches, fetch the loan details separately and filter out already-matched loans
   if (matchesResult.data && matchesResult.data.length > 0) {
-    const loanIds = matchesResult.data.map((m: any) => m.loan_id);
+    const loanIds = matchesResult.data.map((m) => m.loan_id);
     const { data: loansData } = await supabase
       .from('loans')
       .select('id, amount, currency, purpose, lender_id, business_lender_id, borrower:users!borrower_id(full_name)')
@@ -103,7 +103,7 @@ export default async function BusinessPage() {
     // Merge loan data into matches, filtering out loans that already have a lender
     pendingMatches = matchesResult.data
       .map((match: any) => {
-        const loan = loansData?.find((l: any) => l.id === match.loan_id);
+        const loan = loansData?.find((l) => l.id === match.loan_id);
         // Filter out if loan already has a lender assigned
         if (!loan || loan.lender_id || loan.business_lender_id) {
           return null;
@@ -201,8 +201,8 @@ export default async function BusinessPage() {
                   <div className="flex-1">
                     <h3 className="font-semibold text-yellow-800 dark:text-yellow-200 mb-1">Set Up Auto-Matching</h3>
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
-                      Configure your lending preferences to automatically receive matching loan requests from borrowers. 
-                      Set your loan amount range, interest rate, and countries you serve.
+                      Auto-Match sends you loan requests that fit your amount, rate, and Trust Tier rules. 
+                      Set your preferences and tier policies to start receiving matches.
                     </p>
                     <Link href="/lender/preferences">
                       <Button size="sm" className="bg-yellow-500 hover:bg-yellow-600 text-white">
@@ -257,7 +257,7 @@ export default async function BusinessPage() {
                     </div>
 
                     <p className="text-sm text-neutral-500 dark:text-neutral-400 truncate">
-                      {businessProfile.business_type}
+                      Manage your lending capital, matches, and loan requests.
                     </p>
                   </div>
                 </div>
@@ -355,7 +355,7 @@ export default async function BusinessPage() {
                       )}
                     </div>
 
-                    <p className="text-neutral-500 dark:text-neutral-400">{businessProfile.business_type}</p>
+                    <p className="text-neutral-500 dark:text-neutral-400">Manage your lending capital, matches, and loan requests.</p>
                   </div>
                 </div>
 
@@ -457,6 +457,7 @@ export default async function BusinessPage() {
                         <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
                           Pool: {formatCurrency(capitalPool)} · Reserved: {formatCurrency(capitalReserved)}
                         </div>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Reserved = amount committed to active loans.</p>
 
                         {capitalAvailable < 0 && (
                           <Link href="/lender/preferences" className="block mt-3">
@@ -583,6 +584,7 @@ export default async function BusinessPage() {
                     <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                       Pool: {formatCurrency(capitalPool)} · Reserved: {formatCurrency(capitalReserved)}
                     </div>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">Reserved = amount committed to active loans.</p>
 
                     {capitalAvailable < 0 && (
                       <Link href="/lender/preferences">
@@ -636,7 +638,7 @@ export default async function BusinessPage() {
                         New Loan Matches
                       </h2>
                       <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                        {pendingMatches.length} borrower{pendingMatches.length > 1 ? 's' : ''} matched with your preferences
+                        Borrowers auto-matched to your criteria (review & accept).
                       </p>
                     </div>
                   </div>
@@ -667,7 +669,7 @@ export default async function BusinessPage() {
                           {formatCurrency(match.loan?.amount || 0, match.loan?.currency || 'USD')}
                         </p>
                         <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-                          From: {match.loan?.borrower?.full_name || 'Anonymous'}
+                          From: {match.loan?.borrower?.full_name || (match.loan as { borrower_name?: string })?.borrower_name || 'Borrower'}
                         </p>
                         {match.loan?.purpose && (
                           <p className="text-xs text-neutral-500 dark:text-neutral-400 truncate">
@@ -687,9 +689,10 @@ export default async function BusinessPage() {
             {/* Pending Requests */}
             {pendingRequests.length > 0 && (
               <div className="mb-8">
-                <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white mb-4">
+                <h2 className="text-lg font-display font-semibold text-neutral-900 dark:text-white mb-1">
                   Pending Loan Requests
                 </h2>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">Direct requests to your business.</p>
                 <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {pendingRequests.map((loan) => (
                     <PendingLoanCard key={loan.id} loan={loan} />

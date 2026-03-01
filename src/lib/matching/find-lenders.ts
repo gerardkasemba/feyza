@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+const log = logger('find-lenders');
 import { createServiceRoleClientDirect } from '@/lib/supabase/server';
 import { calculateSimpleTrustTier, type SimpleTrustTier } from '@/lib/trust/simple-tier';
 
@@ -42,12 +44,17 @@ export async function findEligibleLenders(
     .order('interest_rate', { ascending: true });
 
   if (error) {
-    console.error('[FindLenders] Query error:', error.message);
+    log.error('[FindLenders] Query error:', (error as Error).message);
   }
 
-  const eligible: EligibleLender[] = (policies ?? []).map((p: any) => ({
+  type LenderPolicyRow = {
+    interest_rate: number;
+    max_loan_amount: number;
+    lender: { id: string; full_name: string } | null;
+  };
+  const eligible: EligibleLender[] = (policies ?? [] as LenderPolicyRow[]).map((p: LenderPolicyRow) => ({
     lenderId: p.lender?.id ?? '',
-    lenderName: p.lender?.full_name ?? 'Unknown Lender',
+    lenderName: p.lender?.full_name ?? 'Lender',
     interestRate: p.interest_rate,
     maxLoanAmount: p.max_loan_amount,
   }));

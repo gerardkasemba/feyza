@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentConfirmationEmail, getEarlyPaymentLenderEmail } from '@/lib/email';
 import { format } from 'date-fns';
+import { logger } from '@/lib/logger';
+import { createServiceRoleClient } from '@/lib/supabase/server';
+
+const log = logger('payments-create');
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,7 +24,7 @@ export async function POST(request: NextRequest) {
     // Get the loan
     const { data: loan, error: loanError } = await supabase
       .from('loans')
-      .select('*, lender:users!lender_id(*), guest_lender:guest_lenders!guest_lender_id(*)')
+      .select('*, lender:users!lender_id(*), business_lender:business_profiles!business_lender_id(*)')
       .eq('id', loanId)
       .single();
 
@@ -127,24 +132,38 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', loanId);
 
-    // If loan is completed, update borrower's tier progress
-    if (newStatus === 'completed') {
-      // Increment total_loans_completed (tier upgrade logic removed — trust tier is vouch-based)
-      const { data: borrowerStats } = await supabase.from('users')
-        .select('total_loans_completed').eq('id', user.id).single();
-      if (borrowerStats) {
-        await supabase.from('users')
-          .update({ total_loans_completed: (borrowerStats.total_loans_completed || 0) + 1 })
-          .eq('id', user.id);
-      }
+    // ── Trust Score + Vouches + Loan completion pipeline ──────────────────
+    // Use service role so handler can write to users/trust_scores without RLS
+    try {
+      const serviceSupabase = await createServiceRoleClient();
+      const { onPaymentCompleted } = await import('@/lib/payments/handler');
+      const trustResult = await onPaymentCompleted({
+        supabase: serviceSupabase,
+        loanId,
+        borrowerId: user.id,
+        paymentId: payment.id,
+        scheduleId: scheduleId || undefined,
+        amount: Number(amount),
+        dueDate: scheduleId ? (await (async () => {
+          const { data: s } = await serviceSupabase
+            .from('payment_schedule').select('due_date').eq('id', scheduleId).single();
+          return s?.due_date;
+        })()) : undefined,
+        paymentMethod: paymentTiming === 'early' ? 'early' : 'manual',
+        // payments/create already updated user payment stats above — skip double-count
+        skipUserStats: true,
+      });
+      log.info('[PaymentCreate] Trust result:', trustResult);
+    } catch (trustErr) {
+      log.error('[PaymentCreate] Trust score update failed (non-fatal):', trustErr);
     }
 
     // Update borrower rating
     await updateBorrowerRating(supabase, user.id);
 
     // Create notification for lender
-    let lenderEmail = loan.lender?.email || loan.guest_lender?.paypal_email || loan.invite_email || loan.lender_email;
-    let lenderName = loan.lender?.full_name || loan.guest_lender?.full_name || loan.lender_name || 'Lender';
+    let lenderEmail = loan.lender?.email || loan.invite_email || loan.lender_email;
+    let lenderName = loan.lender?.full_name || loan.lender_name || 'Lender';
     let lenderUserId = loan.lender_id;
 
     // If no lender email found and there's a business lender, fetch from business_profiles
@@ -224,22 +243,22 @@ export async function POST(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Error creating payment:', error);
+    log.error('Error creating payment:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-async function getCurrentValue(supabase: any, userId: string, field: string): Promise<number> {
+async function getCurrentValue(supabase: SupabaseServiceClient, userId: string, field: string): Promise<number> {
   const { data } = await supabase
     .from('users')
     .select(field)
     .eq('id', userId)
     .single();
   
-  return data?.[field] || 0;
+  return Number(data?.[(field as any)] || 0);
 }
 
-async function updateBorrowerRating(supabase: any, userId: string) {
+async function updateBorrowerRating(supabase: SupabaseServiceClient, userId: string) {
   const { data: user } = await supabase
     .from('users')
     .select('total_payments_made, payments_on_time, payments_early, payments_late, payments_missed')

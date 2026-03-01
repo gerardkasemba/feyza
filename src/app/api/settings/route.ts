@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('settings');
 
 // Default settings
 const DEFAULT_SETTINGS: Record<string, any> = {
@@ -36,7 +39,7 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   restriction_period_days: 90,
 };
 
-function parseSettingValue(value: any): any {
+function parseSettingValue(value: unknown): unknown {
   if (typeof value === 'string') {
     // Remove surrounding quotes if present
     if (value.startsWith('"') && value.endsWith('"')) {
@@ -66,7 +69,7 @@ export async function GET(request: NextRequest) {
         .select('key, value');
 
       if (error) {
-        console.log('platform_settings table may not exist:', error.message);
+        log.info('platform_settings table may not exist:', (error as Error).message);
         // Return defaults if table doesn't exist
         if (keys) {
           const filtered: Record<string, any> = {};
@@ -99,11 +102,11 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ settings });
     } catch (err) {
-      console.log('Error fetching settings:', err);
+      log.info('Error fetching settings:', err);
       return NextResponse.json({ settings: DEFAULT_SETTINGS });
     }
   } catch (error) {
-    console.error('Error in settings API:', error);
+    log.error('Error in settings API:', error);
     return NextResponse.json({ settings: DEFAULT_SETTINGS });
   }
 }
@@ -149,13 +152,13 @@ export async function POST(request: NextRequest) {
         .upsert(update, { onConflict: 'key' });
       
       if (error) {
-        console.error(`Error updating setting ${update.key}:`, error);
+        log.error(`Error updating setting ${update.key}:`, error);
       }
     }
 
     return NextResponse.json({ success: true });
-  } catch (error: any) {
-    console.error('Error updating settings:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error updating settings:', error);
+    return NextResponse.json({ error: (error as Error).message }, { status: 500 });
   }
 }

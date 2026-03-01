@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { formatCurrency } from '@/lib/utils';
+import type { User, Loan } from '@/types';
 import {
   Users,
   FileText,
@@ -38,8 +39,8 @@ interface Stats {
   cancelledLoans: number;
   totalLoanAmount: number;
   totalRepaid: number;
-  recentUsers: any[];
-  recentLoans: any[];
+  recentUsers: User[];
+  recentLoans: Loan[];
   overduePayments: number;
   blockedBorrowers: number;
   pendingVerifications: number;
@@ -171,7 +172,7 @@ export default function AdminDashboard() {
 
   // Real-time subscriptions
   useEffect(() => {
-    const channels: any[] = [];
+    const channels: ReturnType<typeof supabase.channel>[] = [];
 
     // Loans channel
     const loansChannel = supabase
@@ -511,7 +512,7 @@ export default function AdminDashboard() {
           <QuickActionButton
             label="Send Reminders"
             icon={Clock}
-            href="/api/cron/reminders"
+            href="/api/cron/payment-reminders"
             color="amber"
           />
         </div>
@@ -531,7 +532,7 @@ export default function AdminDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {stats?.recentUsers.map((user) => (
+            {stats?.recentUsers.map((user: any) => (
               <div
                 key={user.id}
                 className="flex items-center gap-3 p-3 bg-neutral-50 dark:bg-neutral-700/50 rounded-lg"
@@ -584,7 +585,7 @@ export default function AdminDashboard() {
                     {loan.borrower?.full_name || 'Unknown'}
                   </p>
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    From: {loan.lender?.full_name || loan.business_lender?.business_name || 'Personal'}
+                    From: {(loan.lender as any)?.full_name || loan.business_lender?.business_name || 'Personal'}
                   </p>
                 </div>
                 <div className="text-right">

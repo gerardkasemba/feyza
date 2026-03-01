@@ -21,7 +21,7 @@ export const PLAID_COUNTRY_CODES: CountryCode[] = [CountryCode.Us];
 
 // Create a link token for Plaid Link
 export async function createLinkToken(userId: string, isUpdate = false, accessToken?: string) {
-  const request: any = {
+  const request: Record<string, unknown> = {
     user: { client_user_id: userId },
     client_name: 'Feyza',
     products: PLAID_PRODUCTS,
@@ -34,7 +34,7 @@ export async function createLinkToken(userId: string, isUpdate = false, accessTo
     request.access_token = accessToken;
   }
 
-  const response = await plaidClient.linkTokenCreate(request);
+  const response = await plaidClient.linkTokenCreate(request as any);
   return response.data;
 }
 

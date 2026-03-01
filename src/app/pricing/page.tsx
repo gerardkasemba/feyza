@@ -114,7 +114,7 @@ export default function PricingPage() {
           <Badge className="mb-4 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
             Simple Pricing
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-bold text-neutral-900 dark:text-white mb-6">
+          <h1 className="text-7xl md:text-5xl font-bold text-neutral-900 dark:text-white mb-6">
             Transparent, Fair Pricing
           </h1>
           <p className="text-xl text-neutral-600 dark:text-neutral-400 max-w-2xl mx-auto">
@@ -133,7 +133,7 @@ export default function PricingPage() {
               return (
                 <div
                   key={plan.name}
-                  className={`relative bg-white dark:bg-neutral-800 rounded-3xl p-8 border-2 ${
+                  className={`relative bg-white dark:bg-neutral-800 rounded-7xl p-8 border-2 ${
                     isPopular
                       ? 'border-green-500 shadow-xl'
                       : 'border-neutral-200 dark:border-neutral-700'
@@ -163,7 +163,7 @@ export default function PricingPage() {
                   <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-4">{plan.subtitle}</p>
 
                   <div className="mb-2">
-                    <span className="text-4xl font-bold text-neutral-900 dark:text-white">{plan.price}</span>
+                    <span className="text-7xl font-bold text-neutral-900 dark:text-white">{plan.price}</span>
                     <span className="text-neutral-500 dark:text-neutral-400 ml-2">{plan.period}</span>
                   </div>
 
@@ -212,7 +212,7 @@ export default function PricingPage() {
 
       {/* FAQ */}
       <section className="py-20 bg-neutral-50 dark:bg-neutral-900">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <h2 className="text-3xl font-bold text-center text-neutral-900 dark:text-white mb-12">
             Frequently Asked Questions
           </h2>
@@ -232,8 +232,8 @@ export default function PricingPage() {
 
       {/* CTA */}
       <section className="py-20">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl font-bold text-neutral-900 dark:text-white mb-4">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-7xl font-bold text-neutral-900 dark:text-white mb-4">
             Ready to get started?
           </h2>
           <p className="text-lg text-neutral-600 dark:text-neutral-400 mb-8">

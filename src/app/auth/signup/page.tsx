@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('signup_page');
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import Link from 'next/link';
@@ -89,11 +91,11 @@ function SignUpContent() {
       const response = await fetch(`/api/auth/user?email=${encodeURIComponent(emailToCheck)}`);
       const data = await response.json();
       
-      console.log('[Signup] Email check result:', data);
+      log.debug('[Signup] Email check result:', data);
       setEmailExists(data.exists === true);
       setEmailValid(data.exists === false);
     } catch (err) {
-      console.error('Error checking email:', err);
+      log.error('Error checking email:', err);
       // On error, allow signup to proceed - Supabase will catch duplicates
       setEmailValid(true);
       setEmailExists(false);
@@ -131,7 +133,7 @@ function SignUpContent() {
       });
 
       if (error) {
-        setResendError(error.message);
+        setResendError((error as Error).message);
       } else {
         setResendSuccess(true);
         setResendCooldown(60); // 60 second cooldown
@@ -197,7 +199,7 @@ function SignUpContent() {
       });
 
       if (signUpError) {
-        console.error('[Signup] Error:', signUpError);
+        log.error('[Signup] Error:', signUpError);
         
         // Check for various "already exists" error messages
         const errorMsg = signUpError.message.toLowerCase();
@@ -226,7 +228,7 @@ function SignUpContent() {
         
         // If identities is empty or null, user already existed
         if (!identities || identities.length === 0) {
-          console.log('[Signup] User already exists (empty identities)');
+          log.debug('[Signup] User already exists (empty identities)');
           setError('This email is already registered. Please sign in or check your email for a confirmation link.');
           setEmailExists(true);
           setEmailValid(false);
@@ -234,7 +236,7 @@ function SignUpContent() {
         }
         
         // New user - email confirmation required
-        console.log('[Signup] Success - email confirmation required');
+        log.debug('[Signup] Success - email confirmation required');
         setSignupSuccess(true);
         return;
       }
@@ -251,7 +253,7 @@ function SignUpContent() {
             }),
           });
         } catch (err) {
-          console.error('Error creating user record:', err);
+          log.error('Error creating user record:', err);
         }
 
         // Redirect based on user type
@@ -265,7 +267,7 @@ function SignUpContent() {
         router.refresh();
       }
     } catch (err) {
-      console.error('[Signup] Unexpected error:', err);
+      log.error('[Signup] Unexpected error:', err);
       setError('An unexpected error occurred. Please try again.');
     } finally {
       setIsLoading(false);

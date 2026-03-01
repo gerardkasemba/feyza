@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { Navbar, Footer } from '@/components/layout';
-import GuestLoanRequestForm from '@/components/GuestLoanRequestForm';
 import {
   ArrowRight,
   Shield,
@@ -23,6 +22,7 @@ import {
   X,
   ChevronRight,
 } from 'lucide-react';
+import GuestLoanRequestForm from '@/components/loans/GuestLoanRequestForm';
 
 // ─── Tier system  vouch-based (the real data) ──────────────────────────────
 const TRUST_TIERS = [
@@ -77,95 +77,106 @@ export default function HomePage() {
   return (
     <div className="min-h-screen flex flex-col bg-white dark:bg-neutral-950">
       <Navbar user={null} />
-
       {/* ══════════════════════════════════════════════════════════
           HERO  The Declaration
       ══════════════════════════════════════════════════════════ */}
-      <section className="relative overflow-hidden bg-primary-500">
+      <section className="relative bg-primary-500 dark:bg-primary-950 overflow-hidden"> {/* Added overflow-hidden */}
         {/* Dot grid - opacity increased to 0.07 */}
         <div
           className="absolute inset-0 opacity-[0.07]"
           style={{ backgroundImage: 'radial-gradient(circle, #ffffff 1px, transparent 1px)', backgroundSize: '28px 28px' }}
         />
-        {/* Purposeful depth blobs */}
-        <div className="absolute top-0 right-0 w-[600px] h-[500px] bg-primary-400/40 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-[500px] h-[400px] bg-primary-700/30 rounded-full blur-[100px] pointer-events-none" />
+        {/* Purposeful depth blobs - Made responsive */}
+        <div className="absolute top-0 right-0 w-[300px] md:w-[600px] h-[300px] md:h-[500px] bg-primary-400/40 dark:bg-emerald-500/40 rounded-full blur-[80px] md:blur-[100px] pointer-events-none" />
+        <div className="absolute bottom-0 left-0 w-[250px] md:w-[500px] h-[250px] md:h-[400px] bg-primary-700/30 dark:bg-emerald-700/30 rounded-full blur-[80px] md:blur-[100px] pointer-events-none" />
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-20 relative">
-          <div className="grid lg:grid-cols-12 gap-10 lg:gap-16 items-start">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-12 md:pt-16 pb-16 md:pb-20 relative"> {/* Adjusted padding for mobile */}
+          <div className="grid lg:grid-cols-12 gap-8 lg:gap-16 items-start">
 
             {/* Left  Manifesto */}
             <div className="lg:col-span-6 flex flex-col">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/15 border border-white/25 rounded-full mb-7 self-start">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-white/15 border border-white/25 rounded-full mb-6 md:mb-7 self-start">
                 <Sparkles className="w-3.5 h-3.5 text-white" />
                 <span className="text-xs font-bold text-white tracking-wide uppercase">No Credit Check</span>
               </div>
 
-              <h1 className="font-display font-black text-white leading-[1.05] tracking-tight mb-6"
-                style={{ fontSize: 'clamp(2.8rem, 6vw, 5rem)' }}>
+              <h1 className="font-display font-black text-white leading-[1.1] md:leading-[1.05] tracking-tight mb-5 md:mb-6"
+                style={{ fontSize: 'clamp(2.2rem, 8vw, 5rem)' }}> {/* Adjusted clamp for mobile */}
                 Your credit score
                 <br />
-                <span className="text-primary-200/70 line-through decoration-red-300 decoration-[3px]">defines you.</span>
+                <span className="text-primary-200/70 dark:text-emerald-200/70 line-through decoration-red-300 decoration-[2px] md:decoration-[3px]">defines you.</span> {/* Adjusted decoration thickness for mobile */}
                 <br />
                 <span className="text-white">We disagree.</span>
               </h1>
 
-              <p className="text-lg text-primary-100 leading-relaxed mb-8 max-w-lg">
-                Banks judge you by a three-digit number calculated by an algorithm that's never met you. We built something different — a system where{' '}
+              <p className="text-base md:text-lg text-primary-100 dark:text-emerald-50 leading-relaxed mb-6 md:mb-8 max-w-lg">
+                Banks judge you by a three-digit number calculated by an algorithm that's never met you. We built something different   a system where{' '}
                 <strong className="text-white">your community vouches for you</strong>, and your actions prove the rest.
               </p>
 
               {/* Two-column value props - Frosted glass cards */}
-              <div className="grid grid-cols-2 gap-3 mb-8 max-w-lg">
+              <div className="grid grid-cols-2 gap-2 md:gap-3 mb-6 md:mb-8 max-w-lg">
                 {[
                   { icon: Ban, label: 'No credit check', sub: 'Ever.' },
                   { icon: Users, label: 'Community vouching', sub: 'Real people back you' },
                   { icon: TrendingUp, label: 'Tier system', sub: 'Grow your access' },
                   { icon: Zap, label: 'Fast decisions', sub: 'Under 24 hours' },
                 ].map(({ icon: Icon, label, sub }) => (
-                  <div key={label} className="flex items-start gap-3 p-3.5 rounded-xl bg-white/10 border border-white/20 backdrop-blur-sm">
-                    <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <Icon className="w-3.5 h-3.5 text-white" />
+                  <div key={label} className="flex items-start gap-2 md:gap-3 p-2.5 md:p-3.5 rounded-xl bg-white/10 border border-white/20 backdrop-blur-sm">
+                    <div className="w-6 h-6 md:w-7 md:h-7 rounded-lg bg-white/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <Icon className="w-3 h-3 md:w-3.5 md:h-3.5 text-white" />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-white leading-tight">{label}</p>
-                      <p className="text-[11px] text-primary-100/80">{sub}</p>
+                      <p className="text-xs md:text-sm font-semibold text-white leading-tight">{label}</p>
+                      <p className="text-[10px] md:text-[11px] text-primary-100/80 dark:text-emerald-50/80">{sub}</p>
                     </div>
                   </div>
                 ))}
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/auth/signup">
-                  <Button size="lg" className="w-full sm:w-auto bg-white text-primary-600 hover:bg-white/90 font-bold">
-                    Get Started It's Free
+                <Link href="/auth/signup" className="w-full sm:w-auto">
+                  <Button 
+                    size="lg" 
+                    className="w-full bg-white text-primary-600 hover:bg-white/90 dark:bg-emerald-500 dark:text-white dark:hover:bg-emerald-400 font-bold shadow-md dark:shadow-emerald-500/20"
+                  >
+                    Get Started   It's Free
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
-                <Link href="/how-vouching-works">
-                  <Button size="lg" variant="outline" className="w-full sm:w-auto border-white/40 text-white hover:bg-white/10">
+                <Link href="/how-vouching-works" className="w-full sm:w-auto">
+                  <Button 
+                    size="lg" 
+                    variant="outline" 
+                    className="w-full border-white/40 text-white hover:bg-white/10 dark:border-emerald-500/50 dark:text-emerald-500 dark:hover:bg-emerald-500/10 dark:hover:border-emerald-400"
+                  >
                     How Vouching Works
                   </Button>
                 </Link>
               </div>
             </div>
 
-            {/* Right  Guest Form - Crisp white card */}
+            {/* Right  Guest Form - Crisp card */}
             <div className="lg:col-span-6 lg:sticky lg:top-24">
-              <div className="rounded-2xl border border-white/20 bg-white overflow-hidden shadow-2xl shadow-primary-900/20">
-                <div className="px-6 pt-5 pb-4 border-b border-neutral-100">
+              <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-xl border border-neutral-200 dark:border-neutral-800">
+                <div className="px-6 pt-5 pb-4 border-b border-neutral-100 dark:border-neutral-800">
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-primary-50 flex items-center justify-center">
-                      <Zap className="w-4.5 h-4.5 text-primary-500" />
+                    <div className="w-9 h-9 rounded-xl bg-primary-50 dark:bg-emerald-900/30 flex items-center justify-center">
+                      <Zap className="w-4.5 h-4.5 text-primary-500 dark:text-emerald-500" />
                     </div>
                     <div>
-                      <p className="font-semibold text-neutral-900 text-sm">Request a Loan</p>
-                      <p className="text-xs text-neutral-400">No account needed · No credit check</p>
+                      <p className="font-semibold text-neutral-900 dark:text-white text-sm">Request a Loan</p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">No account needed · No credit check</p>
                     </div>
                   </div>
                 </div>
                 <div className="p-6">
                   <GuestLoanRequestForm />
+                </div>
+                <div className="px-6 rounded-bl-xl rounded-br-xl py-4 bg-neutral-50 dark:bg-neutral-800/50 border-t border-neutral-100 dark:border-neutral-800">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 text-center">
+                    🔒 Your information is encrypted — we never check your credit
+                  </p>
                 </div>
               </div>
             </div>
@@ -226,15 +237,17 @@ export default function HomePage() {
           </div>
 
           {/* The verdict */}
-          <div className="p-8 rounded-2xl bg-neutral-900 dark:bg-neutral-950 border border-neutral-800 max-w-4xl">
-            <div className="flex items-start gap-5">
-              <div className="w-12 h-12 rounded-2xl bg-neutral-800 flex items-center justify-center flex-shrink-0">
-                <span className="text-xl">⚖️</span>
+          <div className="p-4 sm:p-6 md:p-8 rounded-xl sm:rounded-2xl bg-neutral-900 dark:bg-neutral-950 border border-neutral-800 max-w-4xl mx-4 sm:mx-6 md:mx-auto">
+            <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-5">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-neutral-800 flex items-center justify-center flex-shrink-0">
+                <span className="text-base sm:text-lg md:text-xl">⚖️</span>
               </div>
-              <div>
-                <h3 className="text-lg font-bold text-white mb-2">The score doesn't know you.</h3>
-                <p className="text-neutral-400 leading-relaxed">
-                  A credit score measures your relationship with debt. It says nothing about your character, your work ethic, your community, or your commitment to the people you owe. It treats every missed payment the same  whether it happened during a medical crisis or a moment of irresponsibility.{' '}
+              <div className="flex-1">
+                <h3 className="text-base sm:text-lg font-bold text-white mb-1.5 sm:mb-2">
+                  The score doesn't know you.
+                </h3>
+                <p className="text-sm sm:text-base text-neutral-400 leading-relaxed">
+                  A credit score measures your relationship with debt. It says nothing about your character, your work ethic, your community, or your commitment to the people you owe. It treats every missed payment the same   whether it happened during a medical crisis or a moment of irresponsibility.{' '}
                   <strong className="text-white">There has to be a better signal.</strong>
                 </p>
               </div>
@@ -587,7 +600,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/borrower/request">
+              <Link href="/loans/new">
                 <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
                   Invite a Lender <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>
@@ -665,7 +678,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-10">
             <Link href="/auth/signup">
               <Button size="lg" className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold text-base px-8">
-                Get Started  It's Free
+                Get Started — It's Free
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Button>
             </Link>

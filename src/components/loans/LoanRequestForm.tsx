@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('LoanRequestForm');
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useForm } from 'react-hook-form';
@@ -12,6 +14,7 @@ import {
   formatPayFrequency,
 } from '@/lib/smartSchedule';
 import { DisbursementMethodForm } from './DisbursementMethodForm';
+import { LoanTypeSelector } from './form-steps/LoanTypeSelector';
 import {
   Building2,
   Users,
@@ -169,7 +172,7 @@ function Stepper({
 }) {
   const progressPercent = (step / totalSteps) * 100;
   return (
-    <div className="sticky top-0 z-10 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-sm pt-3 pb-4 -mx-1 px-1">
+    <div className="sticky top-0 z-10 backdrop-blur-sm pt-3 pb-4 -mx-1 px-1">
       <div className="flex items-center justify-between mb-2.5">
         <div className="flex items-center gap-1.5">
           {Array.from({ length: totalSteps }).map((_, i) => (
@@ -516,15 +519,7 @@ export function LoanRequestForm({
   const totalAmount = amount + totalInterest;
   const repaymentAmount = totalInstallments > 0 ? totalAmount / totalInstallments : 0;
 
-  // For debugging - remove in production
-  console.log('Loan calculation:', {
-    amount,
-    interestRate,
-    totalInterest,
-    totalAmount,
-    repaymentAmount,
-    totalInstallments
-  });
+
 
   const repaymentPresets = useMemo(() => getRepaymentPresets(amount), [amount]);
   const selectedPreset = selectedPresetIndex !== null ? repaymentPresets[selectedPresetIndex] : null;
@@ -635,7 +630,7 @@ export function LoanRequestForm({
           if (!eligibility.canBorrow) setBusinessEligibility({ canBorrow: false, reason: eligibility.reason });
         }
       } catch (error) {
-        console.error('Failed to check eligibility:', error);
+        log.error('Failed to check eligibility:', error);
       }
     };
 
@@ -648,7 +643,7 @@ export function LoanRequestForm({
           setIsDwollaEnabled(dwollaEnabled);
         }
       } catch (error) {
-        console.error('Failed to check payment providers:', error);
+        log.error('Failed to check payment providers:', error);
       } finally {
         setLoadingPaymentProviders(false);
       }
@@ -677,7 +672,7 @@ export function LoanRequestForm({
           }
         }
       } catch (error) {
-        console.error('Failed to fetch financial profile:', error);
+        log.error('Failed to fetch financial profile:', error);
       } finally {
         setLoadingFinancialProfile(false);
       }
@@ -696,7 +691,7 @@ export function LoanRequestForm({
           setLoanTypes(data.loanTypes || []);
         }
       } catch (error) {
-        console.error('Failed to fetch loan types:', error);
+        log.error('Failed to fetch loan types:', error);
       } finally {
         setLoadingLoanTypes(false);
       }
@@ -733,7 +728,7 @@ export function LoanRequestForm({
         const response = await fetch(`/api/borrower/trust?business_id=${selectedBusiness.id}`);
         if (response.ok) setBusinessTrust(await response.json());
       } catch (error) {
-        console.error('Failed to fetch business trust:', error);
+        log.error('Failed to fetch business trust:', error);
       } finally {
         setLoadingTrust(false);
       }
@@ -882,9 +877,9 @@ export function LoanRequestForm({
       data.agreementSigned = true;
 
       await onSubmit(data);
-    } catch (error: any) {
-      console.error('Submit error:', error);
-      setSubmitError(error.message || 'Failed to submit loan request. Please try again.');
+    } catch (error: unknown) {
+      log.error('Submit error:', error);
+      setSubmitError((error as Error).message || 'Failed to submit loan request. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -1088,67 +1083,60 @@ export function LoanRequestForm({
                 <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">We'll find the best lender automatically</p>
               </div>
 
-              <Card className="rounded-2xl border border-primary-200 dark:border-primary-800 bg-gradient-to-br from-primary-50 dark:from-primary-900/10 to-yellow-50 dark:to-yellow-900/10">
-                <div className="text-center py-6">
-                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary-100 dark:from-primary-900/30 to-yellow-100 dark:to-yellow-900/30 rounded-full flex items-center justify-center">
-                    <Zap className="w-8 h-8 text-primary-600 dark:text-primary-400" />
+              <Card className="border border-neutral-200 dark:border-neutral-800">
+                <div className="p-6">
+                  {/* Header */}
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center">
+                      <Zap className="w-5 h-5 text-neutral-700 dark:text-neutral-300" />
+                    </div>
+                    <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                      How It Works
+                    </h3>
                   </div>
-                  <p className="font-semibold text-neutral-900 dark:text-white">How it works</p>
 
-                  <div className="text-left max-w-md mx-auto space-y-3 mt-4">
-                    {[
-                      'You submit your request with your terms.',
-                      'We match you with lenders that fit.',
-                      'A lender funds it (instantly or within ~24h).',
-                    ].map((t, i) => (
-                      <div key={i} className="flex items-start gap-3">
-                        <div className="w-6 h-6 rounded-full bg-primary-200 dark:bg-primary-800 flex items-center justify-center flex-shrink-0 text-sm font-bold text-primary-800 dark:text-primary-200">
-                          {i + 1}
-                        </div>
-                        <p className="text-sm text-neutral-600 dark:text-neutral-400">{t}</p>
-                      </div>
-                    ))}
+                  {/* Steps */}
+                  <div className="space-y-4">
+                    <div className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-xs text-neutral-600 dark:text-neutral-400 flex-shrink-0 mt-0.5">
+                        1
+                      </span>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        You submit your loan request
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-xs text-neutral-600 dark:text-neutral-400 flex-shrink-0 mt-0.5">
+                        2
+                      </span>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        We match you with available lenders
+                      </p>
+                    </div>
+                    
+                    <div className="flex items-start gap-3">
+                      <span className="w-5 h-5 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-xs text-neutral-600 dark:text-neutral-400 flex-shrink-0 mt-0.5">
+                        3
+                      </span>
+                      <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                        Best match funds your loan
+                      </p>
+                    </div>
                   </div>
                 </div>
               </Card>
 
               {loanTypes.length > 0 ? (
-                <div className="pt-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-neutral-900 dark:text-white">Loan type (optional)</p>
-                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                        Helps matching. You can skip this.
-                      </p>
-                    </div>
-                    {loadingLoanTypes ? <Loader2 className="w-4 h-4 animate-spin text-neutral-400" /> : null}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {loanTypes.map((loanType) => (
-                      <button
-                        key={loanType.id}
-                        type="button"
-                        onClick={() => {
-                          const next = selectedLoanTypeId === loanType.id ? null : loanType.id;
-                          setSelectedLoanTypeId(next);
-                          setValue('loanTypeId', next || undefined);
-                        }}
-                        className={[
-                          'p-3 rounded-xl border-2 text-left transition-all',
-                          selectedLoanTypeId === loanType.id
-                            ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/30'
-                            : 'border-neutral-200 dark:border-neutral-700 hover:border-neutral-300 dark:hover:border-neutral-600',
-                        ].join(' ')}
-                      >
-                        <p className="font-medium text-sm text-neutral-900 dark:text-white">{loanType.name}</p>
-                        {loanType.description ? (
-                          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">{loanType.description}</p>
-                        ) : null}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <LoanTypeSelector
+                  loanTypes={loanTypes}
+                  selectedLoanTypeId={selectedLoanTypeId}
+                  loading={loadingLoanTypes}
+                  onSelect={(id) => {
+                    setSelectedLoanTypeId(id);
+                    setValue('loanTypeId', id || undefined);
+                  }}
+                />
               ) : null}
             </>
           ) : (

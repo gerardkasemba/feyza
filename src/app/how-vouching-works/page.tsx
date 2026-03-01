@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { Navbar, Footer } from '@/components/layout';
+import { PathTo100Explainer } from '@/components/trust-score';
 import {
   ArrowRight,
   Shield,
@@ -249,6 +250,11 @@ export default function HowVouchingWorksPage() {
                 </p>
               </div>
             </div>
+          </div>
+
+          {/* Path to 100 — educate on how to reach full trust score */}
+          <div className="mt-12 max-w-2xl">
+            <PathTo100Explainer variant="full" />
           </div>
         </div>
       </section>

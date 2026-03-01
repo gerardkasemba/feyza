@@ -15,6 +15,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyPartnerSecret } from '../../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-trust-report');
 
 const ALLOWED_EVENT_TYPES = new Set([
   'capital_circle_contribution_on_time',
@@ -97,7 +100,7 @@ export async function POST(req: NextRequest) {
     });
 
     if (eventError) {
-      console.error('[Partner /trust/report] Event insert error:', eventError);
+      log.error('[Partner /trust/report] Event insert error:', eventError);
       return NextResponse.json({ error: 'Failed to record event' }, { status: 500 });
     }
 
@@ -123,8 +126,8 @@ export async function POST(req: NextRequest) {
       score_impact,
       user_id,
     });
-  } catch (err: any) {
-    console.error('[Partner /trust/report]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /trust/report]', err);
     return NextResponse.json({ error: 'Failed to report event' }, { status: 500 });
   }
 }

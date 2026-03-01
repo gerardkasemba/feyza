@@ -39,7 +39,7 @@ export function RealtimePageWrapper({
   useEffect(() => {
     if (!userId) return;
 
-    const channels: any[] = [];
+    const channels: ReturnType<typeof supabase.channel>[] = [];
 
     if (subscriptions.loans) {
       const borrowerChannel = supabase
@@ -69,7 +69,7 @@ export function RealtimePageWrapper({
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-          () => console.log('[Realtime] New notification')
+          () => { /* notification received - handled by RealtimeProvider */ }
         )
         .subscribe();
       channels.push(notificationChannel);

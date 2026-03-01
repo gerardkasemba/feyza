@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('financial-profile');
 
 // GET - Fetch user's financial profile
 export async function GET() {
@@ -19,10 +22,10 @@ export async function GET() {
     
     if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
       // Check if table doesn't exist
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      if (error.code === '42P01' || (error as Error).message?.includes('does not exist')) {
         return NextResponse.json(null); // Table not created yet
       }
-      console.error('Error fetching financial profile:', error);
+      log.error('Error fetching financial profile:', error);
       return NextResponse.json({ error: 'Failed to fetch profile' }, { status: 500 });
     }
     
@@ -37,7 +40,7 @@ export async function GET() {
     
     return NextResponse.json(null);
   } catch (error) {
-    console.error('Error in GET /api/financial-profile:', error);
+    log.error('Error in GET /api/financial-profile:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -113,14 +116,14 @@ export async function POST(request: NextRequest) {
     }
     
     if (error) {
-      console.error('Error saving financial profile:', error);
+      log.error('Error saving financial profile:', error);
       // Check for table not existing
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      if (error.code === '42P01' || (error as Error).message?.includes('does not exist')) {
         return NextResponse.json({ 
           error: 'Income profiles feature not yet enabled. Please run database migrations.' 
         }, { status: 503 });
       }
-      return NextResponse.json({ error: error.message || 'Failed to save profile' }, { status: 500 });
+      return NextResponse.json({ error: (error as Error).message || 'Failed to save profile' }, { status: 500 });
     }
     
     // Calculate disposable income
@@ -130,9 +133,9 @@ export async function POST(request: NextRequest) {
       ...data,
       disposable_income: disposableIncome,
     });
-  } catch (error: any) {
-    console.error('Error in POST /api/financial-profile:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('Error in POST /api/financial-profile:', error);
+    return NextResponse.json({ error: (error as Error).message || 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -152,13 +155,13 @@ export async function DELETE() {
       .eq('user_id', user.id);
     
     if (error) {
-      console.error('Error deleting financial profile:', error);
+      log.error('Error deleting financial profile:', error);
       return NextResponse.json({ error: 'Failed to delete profile' }, { status: 500 });
     }
     
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in DELETE /api/financial-profile:', error);
+    log.error('Error in DELETE /api/financial-profile:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentReminderEmail } from '@/lib/email';
 import { addDays, format, startOfDay, endOfDay } from 'date-fns';
+import { logger } from '@/lib/logger';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
+
+const log = logger('reminders');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -167,8 +171,8 @@ export async function GET(request: NextRequest) {
             guestRemindersSent++;
           }
         }
-      } catch (err: any) {
-        errors.push(`Error processing schedule ${payment.id}: ${err.message}`);
+      } catch (err: unknown) {
+        errors.push(`Error processing schedule ${payment.id}: ${(err as Error).message}`);
       }
     }
 
@@ -184,7 +188,7 @@ export async function GET(request: NextRequest) {
       errors: errors.length > 0 ? errors : undefined,
     });
   } catch (error) {
-    console.error('Cron job error:', error);
+    log.error('Cron job error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -318,16 +322,16 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Manual reminder error:', error);
+    log.error('Manual reminder error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 // Process automatic PayPal payment
 async function processAutoPayment(
-  supabase: any, 
-  payment: any, 
-  loan: any,
+  supabase: SupabaseServiceClient, 
+  payment: Record<string, unknown>, 
+  loan: Record<string, unknown>,
   cronSecret?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -349,8 +353,8 @@ async function processAutoPayment(
 
     const errorData = await response.json();
     return { success: false, error: errorData.error || 'Unknown error' };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: (error as Error).message };
   }
 }
 

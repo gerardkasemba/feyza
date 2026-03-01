@@ -227,7 +227,7 @@ export default async function DashboardPage() {
                 <h1 className="text-2xl font-display font-bold text-neutral-900 dark:text-white">
                   Welcome back, {userProfile.full_name?.split(' ')[0]} 👋
                 </h1>
-                <p className="text-neutral-500 dark:text-neutral-400 mt-1">Here&apos;s your loan overview</p>
+                <p className="text-neutral-600 dark:text-neutral-300 mt-1">See your loans, trust score, and next steps.</p>
               </div>
               {accountRestricted ? (
                 <Button disabled className="opacity-50 cursor-not-allowed">
@@ -244,6 +244,8 @@ export default async function DashboardPage() {
               )}
             </div>
 
+            {/* Main content - heading for a11y order: h1 -> h2 -> h3 */}
+            <h2 className="sr-only">Dashboard overview</h2>
             {/* Re-verification Required Banner - HIGH PRIORITY */}
             {needsReverification && (
               <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-xl animate-pulse-subtle">
@@ -594,7 +596,10 @@ export default async function DashboardPage() {
             </div>
           </div>
 
-          {/* Borrowing Limit, Trust Level & Income Profile Row */}
+          {/* Trust intro + Borrowing Limit, Trust Level & Income Profile Row */}
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+            Your Trust Tier and Score help lenders decide your limits and rates. Improve them by repaying on time and getting vouches.
+          </p>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
             <SimpleTrustTierCard />
             <div data-tutorial="trust-score">
@@ -603,7 +608,7 @@ export default async function DashboardPage() {
             <IncomeProfileCard />
           </div>
 
-          {/* Business Trust Card (for business lender relationships) */}
+          {/* Business Trust Card (for business lender relationships) + Vouch */}
           <div className="grid md:grid-cols-2 gap-4 mb-8">
             <div data-tutorial="business-trust">
               <BorrowerTrustCard userId={userProfile.id} />
@@ -660,8 +665,8 @@ export default async function DashboardPage() {
               ) : (
                 <EmptyState
                   title="No active loans"
-                  description="You don't have any active loans as a borrower"
-                  actionLabel="Request a Loan"
+                  description="You don't have any loans yet. Request a loan to get started."
+                  actionLabel="Request Loan"
                   actionHref="/loans/new"
                 />
               )}

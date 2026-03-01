@@ -92,8 +92,8 @@ export default function PaymentProvidersPage() {
 
       if (error) throw error;
       setProviders(data || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }
@@ -112,8 +112,8 @@ export default function PaymentProvidersPage() {
       setProviders(prev => prev.map(p => 
         p.id === provider.id ? { ...p, is_enabled: !p.is_enabled } : p
       ));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setSaving(null);
     }
@@ -132,8 +132,8 @@ export default function PaymentProvidersPage() {
       setProviders(prev => prev.map(p => 
         p.id === providerId ? { ...p, ...updates } : p
       ));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setSaving(null);
     }
@@ -152,8 +152,8 @@ export default function PaymentProvidersPage() {
       setProviders(prev => prev.map(p => 
         p.id === providerId ? { ...p, api_credentials: credentials } : p
       ));
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setSaving(null);
     }

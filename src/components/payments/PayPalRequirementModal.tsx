@@ -37,8 +37,8 @@ export function PayPalRequirementModal({
     try {
       await onConnect(paypalEmail);
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect PayPal');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to connect PayPal');
     } finally {
       setIsConnecting(false);
     }

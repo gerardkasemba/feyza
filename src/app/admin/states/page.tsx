@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -91,14 +93,14 @@ export default function AdminStatesPage() {
       // Map the data to include country info at top level
       const mappedStates = (statesData || []).map((s: any) => ({
         ...s,
-        country_code: s.countries?.code,
-        country_name: s.countries?.name,
+        country_code: (s.countries as any)?.code,
+        country_name: (s.countries as any)?.name,
       }));
       
       setStates(mappedStates);
-    } catch (err: any) {
-      console.error('Error fetching data:', err);
-      setError(err.message || 'Failed to fetch data');
+    } catch (err: unknown) {
+      log.error('Error fetching data:', err);
+      setError((err as Error).message || 'Failed to fetch data');
     }
     setLoading(false);
   };
@@ -129,8 +131,8 @@ export default function AdminStatesPage() {
       setIsAddingNew(false);
       await fetchData();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to add state');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to add state');
     }
     setSaving(false);
   };
@@ -158,8 +160,8 @@ export default function AdminStatesPage() {
       setEditingState(null);
       await fetchData();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to update state');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to update state');
     }
     setSaving(false);
   };
@@ -178,8 +180,8 @@ export default function AdminStatesPage() {
       setSuccess('State deleted successfully');
       await fetchData();
       setTimeout(() => setSuccess(null), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete state');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to delete state');
     }
   };
 
@@ -192,8 +194,8 @@ export default function AdminStatesPage() {
 
       if (error) throw error;
       await fetchData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to update state');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to update state');
     }
   };
 

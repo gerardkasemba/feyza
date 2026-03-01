@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+import { onPaymentCompleted } from '@/lib/payments/handler';
+
+const log = logger('loans-reconcile');
 
 /**
  * POST /api/loans/reconcile
@@ -68,11 +72,11 @@ export async function POST(request: NextRequest) {
     }
 
     const totalScheduled = scheduleItems?.length ?? 0;
-    const paidItems = scheduleItems?.filter((s: any) => s.is_paid) ?? [];
+    const paidItems = scheduleItems?.filter((s) => s.is_paid) ?? [];
     const allPaymentsPaid = totalScheduled > 0 && paidItems.length === totalScheduled;
 
     // Authoritative amount paid = sum of all paid schedule items
-    const truePaid = paidItems.reduce((sum: number, s: any) => sum + (Number(s.amount) || 0), 0);
+    const truePaid = paidItems.reduce((sum: number, s) => sum + (Number(s.amount) || 0), 0);
     const loanTotal = (Number(loan.total_amount) > 0) ? Number(loan.total_amount) : Number(loan.amount);
     const trueRemaining = Math.max(0, loanTotal - truePaid);
     const isCompleted = allPaymentsPaid || trueRemaining <= 0.50;
@@ -111,11 +115,37 @@ export async function POST(request: NextRequest) {
       .eq('id', loan_id);
 
     if (updateError) {
-      console.error('[Reconcile] Update failed:', updateError);
+      log.error('[Reconcile] Update failed:', updateError);
       return NextResponse.json({ error: 'Reconciliation update failed' }, { status: 500 });
     }
 
-    console.log(`[Reconcile] Loan ${loan_id} fixed: paid ${dbPaid} -> ${isCompleted ? loanTotal : truePaid}, remaining ${dbRemaining} -> ${isCompleted ? 0 : trueRemaining}, status ${dbStatus} -> ${isCompleted ? 'completed' : dbStatus}`);
+    log.info(`[Reconcile] Loan ${loan_id} fixed: paid ${dbPaid} -> ${isCompleted ? loanTotal : truePaid}, remaining ${dbRemaining} -> ${isCompleted ? 0 : trueRemaining}, status ${dbStatus} -> ${isCompleted ? 'completed' : dbStatus}`);
+
+    // If reconcile just completed the loan, run the trust/voucher pipeline (awaited for consistency).
+    // onPaymentCompleted has its own dedup guard (checks trust_score_events) so it's
+    // safe to call even if the payment was already partially processed.
+    let pipelineResult: { trustScoreUpdated?: boolean; loanCompleted?: boolean; error?: string } | null = null;
+    if (isCompleted && dbStatus !== 'completed' && loan.borrower_id) {
+      try {
+        const result = await onPaymentCompleted({
+          supabase: serviceSupabase as any,
+          loanId: loan_id,
+          borrowerId: loan.borrower_id,
+          paymentMethod: 'manual',
+          amount: loanTotal,
+          skipUserStats: true, // reconcile doesn't re-process individual payment stats
+        });
+        pipelineResult = {
+          trustScoreUpdated: result.trustScoreUpdated,
+          loanCompleted: result.loanCompleted,
+          error: result.error,
+        };
+        if (result.error) log.error('[Reconcile] Trust/voucher pipeline reported:', result.error);
+      } catch (err) {
+        log.error('[Reconcile] Trust/voucher pipeline error:', err);
+        pipelineResult = { error: (err as Error).message };
+      }
+    }
 
     return NextResponse.json({
       reconciled: true,
@@ -132,9 +162,10 @@ export async function POST(request: NextRequest) {
       },
       paid_installments: paidItems.length,
       total_installments: totalScheduled,
+      ...(pipelineResult && { pipeline: pipelineResult }),
     });
-  } catch (error: any) {
-    console.error('[Reconcile] Error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+  } catch (error: unknown) {
+    log.error('[Reconcile] Error:', error);
+    return NextResponse.json({ error: (error as Error).message || 'Internal server error' }, { status: 500 });
   }
 }

@@ -10,6 +10,9 @@ import { createClient }              from '@supabase/supabase-js';
 import { verifyPartnerSecret }       from '../_auth';
 import { VouchService }              from '@/lib/trust-score';
 import { checkVouchingEligibility }  from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-vouch-requests');
 
 function serviceClient() {
   return createClient(
@@ -132,8 +135,8 @@ export async function POST(req: NextRequest) {
       { error: `Unknown action. Use: send, accept, decline` },
       { status: 400 },
     );
-  } catch (err: any) {
-    console.error('[Partner /vouch-requests]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /vouch-requests]', err);
     return NextResponse.json({ error: 'Request failed' }, { status: 500 });
   }
 }

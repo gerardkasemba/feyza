@@ -9,6 +9,9 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { checkVouchingEligibility } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('vouches-eligibility');
 
 export async function GET() {
   try {
@@ -23,8 +26,8 @@ export async function GET() {
     const eligibility = await checkVouchingEligibility(serviceClient, user.id);
 
     return NextResponse.json(eligibility);
-  } catch (err: any) {
-    console.error('[VouchEligibility] Error:', err);
+  } catch (err: unknown) {
+    log.error('[VouchEligibility] Error:', err);
     // Fail open — let the server-side gate in POST /api/vouches catch it
     return NextResponse.json({ eligible: true, code: 'ok' });
   }

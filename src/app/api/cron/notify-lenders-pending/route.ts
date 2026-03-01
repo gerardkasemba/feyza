@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('cron-notify-lenders-pending');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -23,12 +26,12 @@ type Borrower = {
 };
 
 type Loan = {
-  id: any;
-  amount: any;
-  currency: any;
-  purpose?: any;
-  created_at: any;
-  loan_type_id: any;
+  id: string;
+  amount: number;
+  currency: string;
+  purpose?: string;
+  created_at: string;
+  loan_type_id: string | null;
   borrower: Borrower[] | null; // Changed to array since Supabase returns arrays
 };
 
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       .limit(50);
 
     if (loansError) {
-      console.error('[NotifyLenders] Error fetching pending loans:', loansError);
+      log.error('[NotifyLenders] Error fetching pending loans:', loansError);
       return NextResponse.json({ error: 'Failed to fetch loans' }, { status: 500 });
     }
 
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No pending loans to notify about', notified: 0 });
     }
 
-    console.log(`[NotifyLenders] Found ${pendingLoans.length} pending loans`);
+    log.info(`[NotifyLenders] Found ${pendingLoans.length} pending loans`);
 
     // Find active lenders who might be interested
     const { data: lenders, error: lendersError } = await supabase
@@ -95,7 +98,7 @@ export async function POST(request: NextRequest) {
       .eq('is_active', true);
 
     if (lendersError) {
-      console.error('[NotifyLenders] Error fetching lenders:', lendersError);
+      log.error('[NotifyLenders] Error fetching lenders:', lendersError);
       return NextResponse.json({ error: 'Failed to fetch lenders' }, { status: 500 });
     }
 
@@ -103,7 +106,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'No active lenders to notify', notified: 0 });
     }
 
-    console.log(`[NotifyLenders] Found ${lenders.length} active lenders`);
+    log.info(`[NotifyLenders] Found ${lenders.length} active lenders`);
 
     // For each lender, find matching loans and send a summary email
     let notifiedCount = 0;
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
         .limit(1);
 
       if (recentNotif && recentNotif.length > 0) {
-        console.log(`[NotifyLenders] Skipping ${lenderName} - already notified recently`);
+        log.info(`[NotifyLenders] Skipping ${lenderName} - already notified recently`);
         continue;
       }
 
@@ -256,9 +259,9 @@ export async function POST(request: NextRequest) {
         });
 
         notifiedCount++;
-        console.log(`[NotifyLenders] Sent digest to ${lenderName} (${lenderEmail}) - ${matchingLoans.length} loans`);
+        log.info(`[NotifyLenders] Sent digest to ${lenderName} (${lenderEmail}) - ${matchingLoans.length} loans`);
       } catch (emailError) {
-        console.error(`[NotifyLenders] Failed to send email to ${lenderEmail}:`, emailError);
+        log.error(`[NotifyLenders] Failed to send email to ${lenderEmail}:`, emailError);
       }
     }
 
@@ -270,7 +273,7 @@ export async function POST(request: NextRequest) {
       activeLenders: lenders.length,
     });
   } catch (error) {
-    console.error('[NotifyLenders] Error:', error);
+    log.error('[NotifyLenders] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

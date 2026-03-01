@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentReminderEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('loans-id-remind');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -12,7 +15,7 @@ export async function POST(
     const supabase = await createServiceRoleClient();
     const { id: loanId } = await params;
 
-    console.log('Remind API called for loan:', loanId);
+    log.info('Remind API called for loan:', loanId);
 
     if (!loanId) {
       return NextResponse.json({ error: 'Loan ID is required' }, { status: 400 });
@@ -41,7 +44,7 @@ export async function POST(
       .single();
 
     if (loanError) {
-      console.error('Loan query error:', loanError);
+      log.error('Loan query error:', loanError);
       return NextResponse.json({ error: 'Loan not found', details: loanError.message }, { status: 404 });
     }
 
@@ -277,7 +280,7 @@ export async function POST(
     });
 
   } catch (error) {
-    console.error('Error sending reminder:', error);
+    log.error('Error sending reminder:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

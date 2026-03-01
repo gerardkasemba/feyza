@@ -31,8 +31,8 @@ export function PayPalConnect({ user, onConnect, onDisconnect }: PayPalConnectPr
       await onConnect(paypalEmail);
       setShowModal(false);
       setPaypalEmail('');
-    } catch (err: any) {
-      setError(err.message || 'Failed to connect PayPal');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to connect PayPal');
     } finally {
       setLoading(false);
     }

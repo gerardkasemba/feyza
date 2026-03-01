@@ -3,6 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { usePlaidLink } from 'react-plaid-link';
 import { Button } from '@/components/ui';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('PlaidLink');
 import { Building, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { FaBuilding, FaExclamationTriangle, FaCreditCard } from 'react-icons/fa';
 
@@ -51,9 +54,9 @@ export function PlaidLinkButton({
         } else {
           setLinkToken(data.link_token);
         }
-      } catch (err: any) {
-        setError(err.message || 'Failed to initialize bank connection');
-        onError?.(err.message);
+      } catch (err: unknown) {
+        setError((err as Error).message || 'Failed to initialize bank connection');
+        onError?.((err as Error).message);
       } finally {
         setLoading(false);
       }
@@ -69,8 +72,8 @@ export function PlaidLinkButton({
       setError(null);
       
       try {
-        const accountId = metadata.accounts[0]?.id;
-        const institution = metadata.institution;
+        const accountId = (metadata.accounts as any)?.[0]?.id;
+        const institution = (metadata as any).institution;
         
         const response = await fetch('/api/plaid/exchange', {
           method: 'POST',
@@ -95,9 +98,9 @@ export function PlaidLinkButton({
             funding_source_id: data.funding_source_id,
           });
         }
-      } catch (err: any) {
-        setError(err.message || 'Failed to connect bank account');
-        onError?.(err.message);
+      } catch (err: unknown) {
+        setError((err as Error).message || 'Failed to connect bank account');
+        onError?.((err as Error).message);
       } finally {
         setConnecting(false);
       }
@@ -110,7 +113,7 @@ export function PlaidLinkButton({
     onSuccess: handlePlaidSuccess,
     onExit: (err) => {
       if (err) {
-        console.log('Plaid Link exit error:', err);
+        log.error('Plaid Link exit error', err);
       }
     },
   });

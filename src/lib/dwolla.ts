@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+const log = logger('dwolla');
 // Dwolla client library for ACH transfers
 // dwolla-v2 exports { Client } so we need to access .Client
 //
@@ -15,9 +17,16 @@ import { calculatePlatformFee, type FeeCalculation } from './platformFee';
 // Re-export for convenience
 export type { FeeCalculation };
 
-let dwollaClient: any = null;
+/** Minimal interface for the dwolla-v2 AppClient (package lacks TS types) */
+interface DwollaAppClient {
+  get: (path: string, params?: Record<string, unknown>) => Promise<{ body: Record<string, unknown>; headers: { get: (key: string) => string | null } }>;
+  post: (path: string, body?: unknown, headers?: Record<string, string>) => Promise<{ body: Record<string, unknown>; headers: { get: (key: string) => string | null } }>;
+  delete: (path: string) => Promise<{ body: Record<string, unknown> }>;
+}
 
-async function getDwolla(): Promise<any> {
+let dwollaClient: DwollaAppClient | null = null;
+
+async function getDwolla(): Promise<DwollaAppClient> {
   if (!dwollaClient) {
     try {
       // dwolla-v2 exports { Client: ... } so we need to access .Client
@@ -34,12 +43,12 @@ async function getDwolla(): Promise<any> {
         secret: process.env.DWOLLA_APP_SECRET,
         environment: process.env.DWOLLA_ENV || 'sandbox',
       });
-    } catch (err: any) {
-      console.error('Failed to initialize Dwolla client:', err.message);
-      throw new Error(`Dwolla client initialization failed: ${err.message}`);
+    } catch (err: unknown) {
+      log.error('Failed to initialize Dwolla client:', (err as Error).message);
+      throw new Error(`Dwolla client initialization failed: ${(err as Error).message}`);
     }
   }
-  return dwollaClient;
+  return dwollaClient!;
 }
 
 // Get the Dwolla API root
@@ -69,12 +78,13 @@ export async function createCustomer(data: {
     });
     
     return response.headers.get('location');
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Handle duplicate email - return existing customer URL
-    if (err.body?._embedded?.errors?.[0]?.code === 'Duplicate') {
-      const existingCustomerUrl = err.body._embedded.errors[0]._links?.about?.href;
+    const dwollaErr = err as any;
+    if (dwollaErr.body?._embedded?.errors?.[0]?.code === 'Duplicate') {
+      const existingCustomerUrl = dwollaErr.body._embedded.errors[0]._links?.about?.href;
       if (existingCustomerUrl) {
-        console.log('Dwolla customer already exists, using existing:', existingCustomerUrl);
+        log.info('Dwolla customer already exists, using existing:', existingCustomerUrl);
         return existingCustomerUrl;
       }
     }
@@ -119,7 +129,7 @@ export async function getCustomerById(customerId: string) {
 export async function listFundingSources(customerUrl: string) {
   const dwolla = await getDwolla();
   const response = await dwolla.get(`${customerUrl}/funding-sources`);
-  return response.body._embedded['funding-sources'];
+  return (response.body as any)._embedded['funding-sources'];
 }
 
 // Create funding source using Plaid processor token
@@ -137,12 +147,13 @@ export async function createFundingSourceWithPlaid(
     });
     
     return response.headers.get('location');
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Handle duplicate bank account - return existing funding source URL
-    if (err.body?.code === 'DuplicateResource') {
-      const existingFundingSourceUrl = err.body._links?.about?.href;
+    const dwollaErr = err as any;
+    if (dwollaErr.body?.code === 'DuplicateResource') {
+      const existingFundingSourceUrl = dwollaErr.body._links?.about?.href;
       if (existingFundingSourceUrl) {
-        console.log('Funding source already exists, using existing:', existingFundingSourceUrl);
+        log.info('Funding source already exists, using existing:', existingFundingSourceUrl);
         return existingFundingSourceUrl;
       }
     }
@@ -198,7 +209,7 @@ export async function createTransfer(data: {
 }): Promise<string | null> {
   const dwolla = await getDwolla();
   
-  console.log('Creating Dwolla transfer (no platform fee):', {
+  log.info('Creating Dwolla transfer (no platform fee):', {
     source: data.sourceFundingSourceUrl,
     destination: data.destinationFundingSourceUrl,
     amount: data.amount,
@@ -206,7 +217,7 @@ export async function createTransfer(data: {
   
   try {
     // Transfer body - NO fees array included, full amount goes to destination
-    const transferBody: any = {
+    const transferBody: Record<string, unknown> = {
       _links: {
         source: { href: data.sourceFundingSourceUrl },
         destination: { href: data.destinationFundingSourceUrl },
@@ -223,10 +234,10 @@ export async function createTransfer(data: {
     const response = await dwolla.post('transfers', transferBody);
     
     const transferUrl = response.headers.get('location');
-    console.log('Transfer created successfully:', transferUrl);
+    log.info('Transfer created successfully:', transferUrl);
     return transferUrl;
-  } catch (err: any) {
-    console.error('Dwolla transfer error:', JSON.stringify(err.body || err.message, null, 2));
+  } catch (err: unknown) {
+    log.error('Dwolla transfer error:', JSON.stringify((err as any).body || (err as Error).message, null, 2));
     throw err;
   }
 }
@@ -249,17 +260,17 @@ export async function getTransferById(transferId: string) {
 export async function listTransfers(customerUrl: string) {
   const dwolla = await getDwolla();
   const response = await dwolla.get(`${customerUrl}/transfers`);
-  return response.body._embedded?.transfers || [];
+  return (response.body as any)._embedded?.transfers || [];
 }
 
 // Get Dwolla balance (master account)
 export async function getMasterAccountBalance() {
   const dwolla = await getDwolla();
-  const root = await getRoot();
+  const root = await getRoot() as any;
   const accountUrl = root._links.account.href;
   const response = await dwolla.get(`${accountUrl}/funding-sources`);
-  const sources = response.body._embedded['funding-sources'];
-  const balance = sources.find((s: any) => s.type === 'balance');
+  const sources = (response.body as any)._embedded['funding-sources'];
+  const balance = (sources as Array<{ type: string; _links?: Record<string, { href: string }> }>).find((s) => s.type === 'balance');
   return balance;
 }
 
@@ -268,8 +279,8 @@ export async function getMasterAccountBalanceUrl(): Promise<string | null> {
   try {
     const balance = await getMasterAccountBalance();
     return balance?._links?.self?.href || null;
-  } catch (err: any) {
-    console.error('Error getting master account balance:', err);
+  } catch (err: unknown) {
+    log.error('Error getting master account balance:', err);
     return null;
   }
 }
@@ -305,7 +316,7 @@ export async function createFacilitatedTransfer(data: {
       }
     : await calculatePlatformFee(data.amount);
   
-  console.log('Creating facilitated transfer through Master Account:', {
+  log.info('Creating facilitated transfer through Master Account:', {
     source: data.sourceFundingSourceUrl,
     destination: data.destinationFundingSourceUrl,
     grossAmount: feeInfo.grossAmount,
@@ -321,11 +332,11 @@ export async function createFacilitatedTransfer(data: {
       throw new Error('Could not get Master Account Balance URL');
     }
     
-    console.log('Master Account Balance URL:', masterBalanceUrl);
+    log.info('Master Account Balance URL:', masterBalanceUrl);
     
     // Step 1: Transfer FULL amount FROM source TO Master Account Balance
     // This pulls the gross amount (including fee) from the source
-    console.log('Step 1: Transferring gross amount from source to Master Account Balance...');
+    log.info('Step 1: Transferring gross amount from source to Master Account Balance...');
     const step1Response = await dwolla.post('transfers', {
       _links: {
         source: { href: data.sourceFundingSourceUrl },
@@ -346,11 +357,11 @@ export async function createFacilitatedTransfer(data: {
     const step1TransferUrl = step1Response.headers.get('location');
     const step1TransferId = step1TransferUrl?.split('/').pop();
     if (step1TransferId) transferIds.push(step1TransferId);
-    console.log('Step 1 complete. Transfer URL:', step1TransferUrl);
+    log.info('Step 1 complete. Transfer URL:', step1TransferUrl);
     
     // Step 2: Transfer NET amount FROM Master Account Balance TO destination
     // The fee remains in the Master Account
-    console.log('Step 2: Transferring net amount from Master Account Balance to destination...');
+    log.info('Step 2: Transferring net amount from Master Account Balance to destination...');
     const step2Response = await dwolla.post('transfers', {
       _links: {
         source: { href: masterBalanceUrl },
@@ -371,16 +382,16 @@ export async function createFacilitatedTransfer(data: {
     const step2TransferUrl = step2Response.headers.get('location');
     const step2TransferId = step2TransferUrl?.split('/').pop();
     if (step2TransferId) transferIds.push(step2TransferId);
-    console.log('Step 2 complete. Transfer URL:', step2TransferUrl);
-    console.log(`Platform fee retained: $${feeInfo.platformFee.toFixed(2)}`);
+    log.info('Step 2 complete. Transfer URL:', step2TransferUrl);
+    log.info(`Platform fee retained: $${feeInfo.platformFee.toFixed(2)}`);
     
     return {
       transferUrl: step2TransferUrl,
       transferIds,
       feeInfo,
     };
-  } catch (err: any) {
-    console.error('Facilitated transfer error:', JSON.stringify(err.body || err.message, null, 2));
+  } catch (err: unknown) {
+    log.error('Facilitated transfer error:', JSON.stringify((err as any).body || (err as Error).message, null, 2));
     throw err;
   }
 }
@@ -411,14 +422,14 @@ export async function createWebhookSubscription(webhookUrl: string): Promise<str
     });
     
     return response.headers.get('location');
-  } catch (err: any) {
+  } catch (err: unknown) {
     // Check if subscription already exists
-    if (err.body?.code === 'MaxNumberOfResources') {
-      console.log('Webhook subscription already exists');
+    if ((err as any).body?.code === 'MaxNumberOfResources') {
+      log.info('Webhook subscription already exists');
       const subs = await listWebhookSubscriptions();
-      return subs.find((s: any) => s.url === webhookUrl)?._links?.self?.href || null;
+      return (subs as Array<{ url: string; _links?: { self?: { href: string } } }>).find((s) => s.url === webhookUrl)?._links?.self?.href || null;
     }
-    console.error('Error creating webhook subscription:', err);
+    log.error('Error creating webhook subscription:', err);
     throw err;
   }
 }
@@ -427,7 +438,7 @@ export async function createWebhookSubscription(webhookUrl: string): Promise<str
 export async function listWebhookSubscriptions() {
   const dwolla = await getDwolla();
   const response = await dwolla.get('webhook-subscriptions');
-  return response.body._embedded?.['webhook-subscriptions'] || [];
+  return (response.body as any)._embedded?.['webhook-subscriptions'] || [];
 }
 
 // Delete webhook subscription

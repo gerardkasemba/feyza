@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('user-username');
 
 // GET: Search for user by username or check availability
 export async function GET(request: NextRequest) {
@@ -50,10 +53,10 @@ export async function GET(request: NextRequest) {
       displayName: user.full_name,
       userType: user.user_type,
     });
-  } catch (error: any) {
-    console.error('Error searching username:', error);
+  } catch (error: unknown) {
+    log.error('Error searching username:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to search username' },
+      { error: (error as Error).message || 'Failed to search username' },
       { status: 500 }
     );
   }
@@ -126,10 +129,10 @@ export async function POST(request: NextRequest) {
       username,
       message: 'Username set successfully' 
     });
-  } catch (error: any) {
-    console.error('Error setting username:', error);
+  } catch (error: unknown) {
+    log.error('Error setting username:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to set username' },
+      { error: (error as Error).message || 'Failed to set username' },
       { status: 500 }
     );
   }

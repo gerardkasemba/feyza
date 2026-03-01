@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+const log = logger('accountability');
 /**
  * Voucher Accountability Engine
  *
@@ -74,18 +76,48 @@ export async function checkVouchingEligibility(
     return { eligible: false, reason: 'Profile not found.', code: 'profile_incomplete' };
   }
 
-  // Gate 1: Account age
+  // Gate 1: Account age — with bypass for users who have funded at least one loan.
+  // A lender who has already put real money behind a borrower has demonstrated
+  // meaningful trust-worthy behavior and shouldn't be blocked by the age gate.
   const accountAgeDays = profile.created_at
     ? (Date.now() - new Date(profile.created_at).getTime()) / (1000 * 60 * 60 * 24)
     : 0;
 
   if (accountAgeDays < MIN_ACCOUNT_AGE_DAYS) {
-    const daysLeft = Math.ceil(MIN_ACCOUNT_AGE_DAYS - accountAgeDays);
-    return {
-      eligible: false,
-      code: 'account_too_new',
-      reason: `Your account needs to be at least ${MIN_ACCOUNT_AGE_DAYS} days old before you can vouch for others. ${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining.`,
-    };
+    // Check if they've funded at least one loan as personal lender OR business lender
+    const { count: personalFunded } = await supabase
+      .from('loans')
+      .select('id', { count: 'exact', head: true })
+      .eq('lender_id', userId)
+      .in('status', ['active', 'completed']);
+
+    // Also check via business: find their businesses, then loans funded by those businesses
+    let businessFunded = 0;
+    const { data: userBusinesses } = await supabase
+      .from('business_profiles')
+      .select('id')
+      .eq('user_id', userId);
+    if (userBusinesses && userBusinesses.length > 0) {
+      const bizIds = userBusinesses.map((b: any) => b.id);
+      const { count: bizCount } = await supabase
+        .from('loans')
+        .select('id', { count: 'exact', head: true })
+        .in('business_lender_id', bizIds)
+        .in('status', ['active', 'completed']);
+      businessFunded = bizCount ?? 0;
+    }
+
+    const hasFundedLoan = (personalFunded ?? 0) + businessFunded > 0;
+
+    if (!hasFundedLoan) {
+      const daysLeft = Math.ceil(MIN_ACCOUNT_AGE_DAYS - accountAgeDays);
+      return {
+        eligible: false,
+        code: 'account_too_new',
+        reason: `Your account needs to be at least ${MIN_ACCOUNT_AGE_DAYS} days old before you can vouch for others. ${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining.`,
+      };
+    }
+    // else: funded a loan → age gate bypassed
   }
 
   // Gate 2: Profile completeness
@@ -112,7 +144,85 @@ export async function checkVouchingEligibility(
   return { eligible: true, code: 'ok' };
 }
 
-// ─── LOAN COMPLETION → VOUCHER REWARD ────────────────────────────────────────
+// ─── PAYMENT MADE → VOUCHER BOOST ────────────────────────────────────────────
+
+/**
+ * Called on every payment made by a borrower.
+ * For on-time or early payments, rewards each active voucher with a small
+ * trust boost so their score rises in real-time as the vouchee pays well —
+ * not just on full loan completion.
+ *
+ * This also updates the vouch row's updated_at so the lender can see the
+ * vouches table reflecting recent borrower activity.
+ *
+ * Boost amounts (kept small to avoid inflation):
+ *   early payment   → +1 per voucher
+ *   on-time payment → +0.5 (rounded to nearest whole, so often 0 or triggers
+ *                      every 2nd payment — implemented as +1 every other payment
+ *                      by checking whether the loan's on-time payment count is even)
+ *
+ * Late payments produce no boost (and no penalty here — default handles that).
+ */
+export async function onVoucheePaymentMade(
+  supabase: SupabaseClient,
+  borrowerId: string,
+  loanId: string,
+  daysFromDue: number // negative = early, 0 = on-time, positive = late
+): Promise<void> {
+  // Only reward on-time and early payments
+  if (daysFromDue > 0) return;
+
+  log.info(`[VoucherAccountability] Payment made — borrower: ${borrowerId}, loan: ${loanId}, daysFromDue: ${daysFromDue}`);
+
+  try {
+    const { data: activeVouches } = await supabase
+      .from('vouches')
+      .select('id, voucher_id, loans_active')
+      .eq('vouchee_id', borrowerId)
+      .eq('status', 'active');
+
+    if (!activeVouches || activeVouches.length === 0) return;
+
+    const isEarly = daysFromDue < -2;
+    const scoreBoost = isEarly ? 1 : 1; // +1 for both early and on-time (keeps it simple)
+    const eventTitle = isEarly ? '⚡ Vouchee Paid Early' : '✅ Vouchee Made On-Time Payment';
+    const eventDesc = isEarly
+      ? 'Someone you vouched for made an early payment. Your vouching record continues to strengthen.'
+      : 'Someone you vouched for made an on-time payment. Your trust record benefits from their good habits.';
+
+    const trustService = new TrustScoreService(supabase);
+
+    for (const vouch of activeVouches) {
+      try {
+        // Touch the vouch row so the lender sees recent activity
+        await supabase
+          .from('vouches')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', vouch.id);
+
+        // Record trust score boost for the voucher
+        await trustService.recordEvent(vouch.voucher_id, {
+          event_type: 'vouch_given' as any,
+          score_impact: scoreBoost,
+          title: eventTitle,
+          description: eventDesc,
+          loan_id: loanId,
+          other_user_id: borrowerId,
+          vouch_id: vouch.id,
+        });
+
+        log.info(`[VoucherAccountability] +${scoreBoost} trust event recorded for voucher ${vouch.voucher_id}`);
+      } catch (err: unknown) {
+        // Non-blocking — a payment should never fail because of a voucher update error
+        log.error(`[VoucherAccountability] Error rewarding voucher ${vouch.voucher_id}:`, err);
+      }
+    }
+  } catch (err: unknown) {
+    log.error('[VoucherAccountability] onVoucheePaymentMade error:', err);
+  }
+}
+
+
 
 /**
  * Called when a borrower's loan is fully completed.
@@ -135,7 +245,7 @@ export async function onVoucheeLoanCompleted(
     errors: [],
   };
 
-  console.log(`[VoucherAccountability] Loan completed — borrower: ${borrowerId}, loan: ${loanId}`);
+  log.info(`[VoucherAccountability] Loan completed — borrower: ${borrowerId}, loan: ${loanId}`);
 
   try {
     // Find all active vouches for this borrower
@@ -146,7 +256,7 @@ export async function onVoucheeLoanCompleted(
       .eq('status', 'active');
 
     if (!activeVouches || activeVouches.length === 0) {
-      console.log(`[VoucherAccountability] No active vouchers for borrower ${borrowerId}`);
+      log.info(`[VoucherAccountability] No active vouchers for borrower ${borrowerId}`);
       return result;
     }
 
@@ -157,8 +267,9 @@ export async function onVoucheeLoanCompleted(
         const newCompleted = (vouch.loans_completed ?? 0) + 1;
         const newActive = Math.max(0, (vouch.loans_active ?? 0) - 1);
 
-        // Update vouch row counters
-        await supabase
+        // Update vouch row counters — check error explicitly so a silent RLS or
+        // constraint rejection doesn't leave loans_completed stuck at 0.
+        const { error: vouchUpdateError } = await supabase
           .from('vouches')
           .update({
             loans_completed: newCompleted,
@@ -167,8 +278,67 @@ export async function onVoucheeLoanCompleted(
           })
           .eq('id', vouch.id);
 
+        if (vouchUpdateError) {
+          log.error(`[VoucherAccountability] Failed to update vouch ${vouch.id}:`, vouchUpdateError);
+          // Re-throw so the outer catch logs it in result.errors and we don't
+          // silently return with loans_completed still 0.
+          throw vouchUpdateError;
+        }
+
+        log.info(`[VoucherAccountability] vouch ${vouch.id}: loans_completed → ${newCompleted}, loans_active → ${newActive}`);
+
         // Recalculate this voucher's success rate across ALL their vouches
         await recalculateVoucherSuccessRate(supabase, vouch.voucher_id);
+
+        // ── Recalculate vouch_strength and trust_score_boost ─────────────
+        // BUG FIX: vouch_strength and trust_score_boost were set once at vouch
+        // creation and never updated on positive outcomes (only on defaults).
+        // Now we recalculate them using the voucher's improved success rate
+        // and current trust tier so they reflect the voucher's growing credibility.
+        try {
+          // Get voucher's current profile for tier and success rate
+          const { data: voucherProfile } = await supabase
+            .from('users')
+            .select('trust_tier, vouching_success_rate')
+            .eq('id', vouch.voucher_id)
+            .single();
+
+          // Get the vouch's relationship details for recalculation
+          const { data: vouchDetails } = await supabase
+            .from('vouches')
+            .select('relationship, known_years, vouch_type')
+            .eq('id', vouch.id)
+            .single();
+
+          if (voucherProfile && vouchDetails) {
+            const { computeVouchStrength } = await import('@/lib/trust-score');
+
+            const newStrength = computeVouchStrength({
+              voucherTier: voucherProfile.trust_tier || 'tier_1',
+              relationship: vouchDetails.relationship || '',
+              knownYears: vouchDetails.known_years,
+              vouchType: vouchDetails.vouch_type || 'character',
+              voucherSuccessRate: voucherProfile.vouching_success_rate ?? 100,
+            });
+
+            // trust_score_boost tracks 1:1 with vouch_strength
+            const newBoost = newStrength;
+
+            if (newStrength !== vouch.vouch_strength) {
+              await supabase
+                .from('vouches')
+                .update({
+                  vouch_strength: newStrength,
+                  trust_score_boost: newBoost,
+                })
+                .eq('id', vouch.id);
+
+              log.info(`[VoucherAccountability] vouch ${vouch.id}: vouch_strength ${vouch.vouch_strength} → ${newStrength}, trust_score_boost → ${newBoost}`);
+            }
+          }
+        } catch (strengthErr) {
+          log.error(`[VoucherAccountability] Error recalculating vouch_strength for vouch ${vouch.id}:`, strengthErr);
+        }
 
         // Record positive trust event for voucher (+2 pts per completed vouchee loan)
         await trustService.recordEvent(vouch.voucher_id, {
@@ -182,36 +352,34 @@ export async function onVoucheeLoanCompleted(
         });
         result.trustEventsRecorded++;
 
-        // In-app notification (good news — no email needed) — NON-BLOCKING
-        void (async () => {
-          try {
+        // In-app notification (good news) — awaited so it persists on serverless
+        try {
             const { error } = await supabase.from('notifications').insert({
               user_id: vouch.voucher_id,
               loan_id: loanId,
-              type: 'vouchee_loan_completed',
+              type: 'voucher_completed',
               title: '🎉 Vouchee Repaid Their Loan',
               message:
                 'Someone you vouched for just completed repaying a loan. Your vouching track record is improving.',
               data: { vouch_id: vouch.id, borrower_id: borrowerId },
             });
-            if (error) console.error('[VoucherAccountability] Notification insert failed:', error.message);
-          } catch {
+            if (error) log.error('[VoucherAccountability] Notification insert failed:', (error as Error).message);
+        } catch {
             // swallow
-          }
-        })();
+        }
 
         result.vouchersNotified++;
-      } catch (err: any) {
-        console.error(`[VoucherAccountability] Error processing voucher ${vouch.voucher_id}:`, err);
-        result.errors.push(`voucher ${vouch.voucher_id}: ${err.message}`);
+      } catch (err: unknown) {
+        log.error(`[VoucherAccountability] Error processing voucher ${vouch.voucher_id}:`, err);
+        result.errors.push(`voucher ${vouch.voucher_id}: ${(err as Error).message}`);
       }
     }
-  } catch (err: any) {
-    console.error('[VoucherAccountability] onVoucheeLoanCompleted error:', err);
-    result.errors.push(err.message);
+  } catch (err: unknown) {
+    log.error('[VoucherAccountability] onVoucheeLoanCompleted error:', err);
+    result.errors.push((err as Error).message);
   }
 
-  console.log(`[VoucherAccountability] Completion processed:`, result);
+  log.info(`[VoucherAccountability] Completion processed:`, result);
   return result;
 }
 
@@ -242,7 +410,7 @@ export async function onVoucheeLoanDefaulted(
     errors: [],
   };
 
-  console.log(`[VoucherAccountability] Loan DEFAULTED — borrower: ${borrowerId}, loan: ${loanId}`);
+  log.info(`[VoucherAccountability] Loan DEFAULTED — borrower: ${borrowerId}, loan: ${loanId}`);
 
   try {
     // Get borrower info for notification emails
@@ -262,7 +430,7 @@ export async function onVoucheeLoanDefaulted(
       .eq('status', 'active');
 
     if (!activeVouches || activeVouches.length === 0) {
-      console.log(`[VoucherAccountability] No active vouchers for defaulted borrower ${borrowerId}`);
+      log.info(`[VoucherAccountability] No active vouchers for defaulted borrower ${borrowerId}`);
       return result;
     }
 
@@ -289,7 +457,10 @@ export async function onVoucheeLoanDefaulted(
         // Downgrade this specific vouch's strength using the new success rate
         const degradedStrength = applySuccessRateMultiplier(vouch.vouch_strength ?? 0, newSuccessRate);
         if (degradedStrength !== vouch.vouch_strength) {
-          await supabase.from('vouches').update({ vouch_strength: degradedStrength }).eq('id', vouch.id);
+          await supabase.from('vouches').update({
+            vouch_strength: degradedStrength,
+            trust_score_boost: degradedStrength,  // keep trust_score_boost in sync
+          }).eq('id', vouch.id);
         }
 
         // ── Fire trust score penalty on the VOUCHER ──────────────────────
@@ -328,7 +499,7 @@ export async function onVoucheeLoanDefaulted(
             `Your ability to vouch for new people is suspended until these are resolved.`;
           profileUpdate.vouching_locked_at = new Date().toISOString();
 
-          console.log(
+          log.info(
             `[VoucherAccountability] LOCKING voucher ${vouch.voucher_id} — ${newActiveDefaults} active defaults`
           );
           result.vouchersLocked++;
@@ -351,17 +522,16 @@ export async function onVoucheeLoanDefaulted(
               profileUrl: `${APP_URL}/vouch/requests`,
             }),
           }).catch((err) =>
-            console.error(`[VoucherAccountability] Email failed for ${voucherProfile.email}:`, err)
+            log.error(`[VoucherAccountability] Email failed for ${voucherProfile.email}:`, err)
           );
         }
 
-        // ── In-app notification (urgent) — NON-BLOCKING ─────────────────
-        void (async () => {
-          try {
+        // ── In-app notification (urgent) — awaited for serverless ─────────────
+        try {
             const { error } = await supabase.from('notifications').insert({
               user_id: vouch.voucher_id,
               loan_id: loanId,
-              type: 'vouchee_loan_defaulted',
+              type: 'voucher_defaulted',
               title: '⚠️ Vouchee Defaulted — Action Needed',
               message: `${borrowerName} has defaulted on a loan you vouched for. ${
                 shouldLock && !wasAlreadyLocked ? 'Your vouching ability has been suspended.' : 'This affects your trust score.'
@@ -373,24 +543,23 @@ export async function onVoucheeLoanDefaulted(
                 vouching_locked: shouldLock,
               },
             });
-            if (error) console.error('[VoucherAccountability] Notification insert failed:', error.message);
-          } catch {
+            if (error) log.error('[VoucherAccountability] Notification insert failed:', (error as Error).message);
+        } catch {
             // swallow
-          }
-        })();
+        }
 
         result.vouchersNotified++;
-      } catch (err: any) {
-        console.error(`[VoucherAccountability] Error processing voucher ${vouch.voucher_id}:`, err);
-        result.errors.push(`voucher ${vouch.voucher_id}: ${err.message}`);
+      } catch (err: unknown) {
+        log.error(`[VoucherAccountability] Error processing voucher ${vouch.voucher_id}:`, err);
+        result.errors.push(`voucher ${vouch.voucher_id}: ${(err as Error).message}`);
       }
     }
-  } catch (err: any) {
-    console.error('[VoucherAccountability] onVoucheeLoanDefaulted error:', err);
-    result.errors.push(err.message);
+  } catch (err: unknown) {
+    log.error('[VoucherAccountability] onVoucheeLoanDefaulted error:', err);
+    result.errors.push((err as Error).message);
   }
 
-  console.log(`[VoucherAccountability] Default processed:`, result);
+  log.info(`[VoucherAccountability] Default processed:`, result);
   return result;
 }
 
@@ -406,7 +575,7 @@ export async function onVoucheeDefaultResolved(
   borrowerId: string,
   loanId: string
 ): Promise<void> {
-  console.log(`[VoucherAccountability] Default resolved — borrower: ${borrowerId}`);
+  log.info(`[VoucherAccountability] Default resolved — borrower: ${borrowerId}`);
 
   try {
     const { data: activeVouches } = await supabase
@@ -436,35 +605,81 @@ export async function onVoucheeDefaultResolved(
           update.vouching_locked = false;
           update.vouching_locked_reason = null;
           update.vouching_locked_at = null;
-          console.log(`[VoucherAccountability] UNLOCKING voucher ${vouch.voucher_id}`);
+          log.info(`[VoucherAccountability] UNLOCKING voucher ${vouch.voucher_id}`);
         }
 
         await supabase.from('users').update(update).eq('id', vouch.voucher_id);
 
         if (shouldUnlock) {
-          // NON-BLOCKING notification
-          void (async () => {
-            try {
+          // Awaited notification for serverless
+          try {
               const { error } = await supabase.from('notifications').insert({
                 user_id: vouch.voucher_id,
                 loan_id: loanId,
-                type: 'vouching_unlocked',
+                type: 'voucher_locked',
                 title: '✅ Vouching Ability Restored',
                 message:
                   'A previously defaulted vouchee has resolved their debt. Your vouching ability has been restored.',
               });
-              if (error) console.error('[VoucherAccountability] Notification insert failed:', error.message);
-            } catch {
+              if (error) log.error('[VoucherAccountability] Notification insert failed:', (error as Error).message);
+          } catch {
               // swallow
-            }
-          })();
+          }
         }
-      } catch (err: any) {
-        console.error(`[VoucherAccountability] Unlock error for voucher ${vouch.voucher_id}:`, err);
+      } catch (err: unknown) {
+        log.error(`[VoucherAccountability] Unlock error for voucher ${vouch.voucher_id}:`, err);
       }
     }
-  } catch (err: any) {
-    console.error('[VoucherAccountability] onVoucheeDefaultResolved error:', err);
+  } catch (err: unknown) {
+    log.error('[VoucherAccountability] onVoucheeDefaultResolved error:', err);
+  }
+}
+
+
+// ─── LOAN ACTIVATED → VOUCHER AWARENESS ─────────────────────────────────────
+
+/**
+ * Called when a borrower's loan becomes active.
+ * Increments loans_active on all current active vouches for this borrower.
+ * This is the companion to onVoucheeLoanCompleted / onVoucheeLoanDefaulted —
+ * without it, loans_active always stays 0 and the decrement logic is a no-op.
+ *
+ * Called from: /api/loans/[id]/accept route after loan status → active
+ *              /api/loans route (auto-match) after loan is funded
+ */
+export async function onVoucheeNewLoan(
+  supabase: SupabaseClient,
+  borrowerId: string,
+  loanId: string
+): Promise<void> {
+  log.info(`[VoucherAccountability] New loan activated — borrower: ${borrowerId}, loan: ${loanId}`);
+
+  try {
+    const { data: activeVouches } = await supabase
+      .from('vouches')
+      .select('id, voucher_id, loans_active')
+      .eq('vouchee_id', borrowerId)
+      .eq('status', 'active');
+
+    if (!activeVouches?.length) return;
+
+    for (const vouch of activeVouches) {
+      try {
+        await supabase
+          .from('vouches')
+          .update({
+            loans_active: (vouch.loans_active ?? 0) + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', vouch.id);
+      } catch (err) {
+        log.error(`[VoucherAccountability] loans_active increment error for vouch ${vouch.id}:`, err);
+      }
+    }
+
+    log.info(`[VoucherAccountability] loans_active incremented on ${activeVouches.length} vouches`);
+  } catch (err) {
+    log.error('[VoucherAccountability] onVoucheeNewLoan error:', err);
   }
 }
 

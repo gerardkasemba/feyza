@@ -8,6 +8,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient }              from '@supabase/supabase-js';
 import { verifyPartnerSecret }       from '../_auth';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-payment-methods');
 
 function serviceClient() {
   return createClient(
@@ -83,8 +86,8 @@ export async function GET(req: NextRequest) {
       auto_payments_count: user.auto_payments_count      ?? 0,
       manual_payments_count: user.manual_payments_count  ?? 0,
     });
-  } catch (err: any) {
-    console.error('[Partner /payment-methods GET]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /payment-methods GET]', err);
     return NextResponse.json({ error: 'Failed to fetch payment methods' }, { status: 500 });
   }
 }
@@ -121,8 +124,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error('[Partner /payment-methods POST]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /payment-methods POST]', err);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 }
@@ -152,13 +155,13 @@ export async function PATCH(req: NextRequest) {
     const { error } = await db.from('users').update(updates).eq('id', user_id);
 
     if (error) {
-      console.error('[Partner /payment-methods PATCH]', error);
+      log.error('[Partner /payment-methods PATCH]', error);
       return NextResponse.json({ error: 'Failed to update payment handles' }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error('[Partner /payment-methods PATCH]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /payment-methods PATCH]', err);
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }
 }

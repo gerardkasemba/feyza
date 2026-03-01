@@ -1,9 +1,16 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  // Enable React strict mode for better development experience
   reactStrictMode: true,
-  
+
+  // Reduce bundle size: tree-shake lucide-react, date-fns, react-icons
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns',
+    ],
+  },
+
   // Image optimization configuration
   images: {
     remotePatterns: [
@@ -36,13 +43,10 @@ const nextConfig: NextConfig = {
   },
 
   // ============================================
-  // ADDED: Middleware optimizations to prevent flickering
+  // Proxy optimizations (prevent flickering, avoid extra proxy runs)
   // ============================================
   
-  // Skip middleware on static assets and API routes
-  skipMiddlewareUrlNormalize: true,
-  
-  // Prevent trailing slash redirects that cause extra middleware runs
+  skipProxyUrlNormalize: true,
   skipTrailingSlashRedirect: true,
   
   // Optimize static asset handling
@@ -53,6 +57,13 @@ const nextConfig: NextConfig = {
   
   // Generate ETags for better caching
   generateEtags: true,
+
+  // Keep Sentry and its deps out of the server bundle so Node built-ins (async_hooks, module, worker_threads) resolve at runtime
+  serverExternalPackages: [
+    '@sentry/node',
+    '@opentelemetry/context-async-hooks',
+    'import-in-the-middle',
+  ],
   
   // ============================================
   // OPTIONAL: Add if you have large pages that need ISR

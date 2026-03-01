@@ -1,3 +1,5 @@
+import { logger } from '@/lib/logger';
+const log = logger('platformFee');
 // Platform Fee Utility Library
 // Handles fee calculation and retrieval for all transactions
 
@@ -88,7 +90,7 @@ export async function getPlatformFeeSettings(): Promise<PlatformFeeSettings> {
       .single();
     
     if (error || !data) {
-      console.warn('Could not fetch platform fee settings, using defaults');
+      log.warn('Could not fetch platform fee settings, using defaults');
       return DEFAULT_FEE_SETTINGS;
     }
     
@@ -97,7 +99,7 @@ export async function getPlatformFeeSettings(): Promise<PlatformFeeSettings> {
     
     return cachedSettings;
   } catch (error) {
-    console.error('Error fetching platform fee settings:', error);
+    log.error('Error fetching platform fee settings:', error);
     return DEFAULT_FEE_SETTINGS;
   }
 }
@@ -328,14 +330,14 @@ export async function updatePlatformFeeSettings(
     }
     
     if (error) {
-      return { success: false, error: error.message };
+      return { success: false, error: (error as Error).message };
     }
     
     // Clear cache so new settings take effect immediately
     clearFeeSettingsCache();
     
     return { success: true };
-  } catch (error: any) {
-    return { success: false, error: error.message };
+  } catch (error: unknown) {
+    return { success: false, error: (error as Error).message };
   }
 }

@@ -7,6 +7,20 @@ import {
   getBusinessVerificationApprovedEmail,
   getBusinessVerificationRejectedEmail
 } from '@/lib/email';
+import { logger } from '@/lib/logger';
+import { processPendingLoansAfterVerification } from '@/lib/users/user-lifecycle-service';
+import { syncBusinessToLenderPrefs } from '@/lib/business/profile-service';
+import type { Loan } from '@/types';
+
+const log = logger('admin-verifications');
+
+/** Minimal owner shape fetched for business verification */
+interface OwnerRow {
+  id: string;
+  full_name: string;
+  email: string;
+}
+
 
 // GET: Fetch all pending verifications (users and businesses)
 export async function GET(request: NextRequest) {
@@ -79,12 +93,12 @@ export async function GET(request: NextRequest) {
       .order('verification_submitted_at', { ascending: true, nullsFirst: false });
 
     if (usersError) {
-      console.error('Error fetching pending users:', usersError);
+      log.error('Error fetching pending users:', usersError);
     }
 
     // Fetch pending loan requests for these users
     const userIds = (pendingUsers || []).map(u => u.id);
-    let pendingLoans: any[] = [];
+    let pendingLoans: Loan[] = [];
     
     if (userIds.length > 0) {
       const { data: loans, error: loansError } = await serviceClient
@@ -106,16 +120,16 @@ export async function GET(request: NextRequest) {
         .eq('status', 'awaiting_verification');
 
       if (loansError) {
-        console.error('Error fetching pending loans:', loansError);
+        log.error('Error fetching pending loans:', loansError);
       } else {
-        pendingLoans = loans || [];
+        pendingLoans = (loans || []) as unknown as Loan[];
       }
     }
 
     // Attach pending loans to users
     const usersWithLoans = (pendingUsers || []).map(user => ({
       ...user,
-      pending_loan_requests: pendingLoans.filter(loan => loan.user_id === user.id)
+      pending_loan_requests: pendingLoans.filter(loan => (loan as any).user_id === user.id)
     }));
 
     // Fetch pending businesses
@@ -140,12 +154,12 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: true });
 
     if (businessesError) {
-      console.error('Error fetching pending businesses:', businessesError);
+      log.error('Error fetching pending businesses:', businessesError);
     }
 
     // Get owner info for businesses
     const ownerIds = (pendingBusinesses || []).map(b => b.user_id).filter(Boolean);
-    let owners: any[] = [];
+    let owners: OwnerRow[] = [];
     
     if (ownerIds.length > 0) {
       const { data: ownerData } = await serviceClient
@@ -171,10 +185,10 @@ export async function GET(request: NextRequest) {
         total: usersWithLoans.length + businessesWithOwners.length
       }
     });
-  } catch (error: any) {
-    console.error('Error in verification API:', error);
+  } catch (error: unknown) {
+    log.error('Error in verification API:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to fetch verifications' },
+      { error: (error as Error).message || 'Failed to fetch verifications' },
       { status: 500 }
     );
   }
@@ -219,7 +233,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       const newStatus = action === 'approve' ? 'verified' : 'rejected';
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         verification_status: newStatus,
         verification_reviewed_at: new Date().toISOString(),
       };
@@ -234,14 +248,32 @@ export async function POST(request: NextRequest) {
         updateData.verification_notes = reason || 'Did not meet verification requirements';
       }
 
+      // Read old status before update (for pending loans trigger)
+      const { data: oldUser } = await serviceClient
+        .from('users')
+        .select('verification_status, full_name')
+        .eq('id', id)
+        .single();
+
       const { error } = await serviceClient
         .from('users')
         .update(updateData)
         .eq('id', id);
 
       if (error) {
-        console.error('Error updating user verification:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        log.error('Error updating user verification:', error);
+        return NextResponse.json({ error: (error as Error).message }, { status: 500 });
+      }
+
+      // Process pending loans if just verified (replaces trigger_process_pending_loans DB trigger)
+      if (newStatus === 'verified') {
+        processPendingLoansAfterVerification(
+          serviceClient as any,
+          id,
+          oldUser?.verification_status,
+          newStatus,
+          oldUser?.full_name || undefined
+        ).catch(err => log.error('[Verifications] pending loans processing error:', err));
       }
 
       // Send email notification
@@ -270,9 +302,9 @@ export async function POST(request: NextRequest) {
               html: emailContent.html
             });
           }
-          console.log(`Verification ${action} email sent to ${userData.email}`);
+          log.info(`Verification ${action} email sent to ${userData.email}`);
         } catch (emailError) {
-          console.error('Failed to send verification email:', emailError);
+          log.error('Failed to send verification email:', emailError);
           // Don't fail the request if email fails
         }
       }
@@ -301,7 +333,7 @@ export async function POST(request: NextRequest) {
       }
 
       const newStatus = action === 'approve' ? 'approved' : 'rejected';
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         verification_status: newStatus,
         verified_at: action === 'approve' ? new Date().toISOString() : null,
         verified_by: action === 'approve' ? user.id : null,
@@ -319,9 +351,13 @@ export async function POST(request: NextRequest) {
         .eq('id', id);
 
       if (error) {
-        console.error('Error updating business verification:', error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        log.error('Error updating business verification:', error);
+        return NextResponse.json({ error: (error as Error).message }, { status: 500 });
       }
+
+      // Sync lender_preferences with updated verification status (replaces tr_sync_business_lender_prefs trigger)
+      syncBusinessToLenderPrefs(serviceClient as any, id)
+        .catch(err => log.error('[Verifications] lender prefs sync error:', err));
 
       // Send email notification
       if (ownerEmail && businessData?.business_name) {
@@ -348,9 +384,9 @@ export async function POST(request: NextRequest) {
               html: emailContent.html
             });
           }
-          console.log(`Business verification ${action} email sent to ${ownerEmail}`);
+          log.info(`Business verification ${action} email sent to ${ownerEmail}`);
         } catch (emailError) {
-          console.error('Failed to send business verification email:', emailError);
+          log.error('Failed to send business verification email:', emailError);
           // Don't fail the request if email fails
         }
       }
@@ -359,10 +395,10 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
-  } catch (error: any) {
-    console.error('Error in verification action:', error);
+  } catch (error: unknown) {
+    log.error('Error in verification action:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to process verification' },
+      { error: (error as Error).message || 'Failed to process verification' },
       { status: 500 }
     );
   }

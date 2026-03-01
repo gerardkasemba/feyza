@@ -7,6 +7,7 @@ import { formatCurrency, formatPercentage } from '@/lib/utils'
 import MonthlyChart from '@/components/analytics/MonthlyChart'
 import ExportAnalyticsButton from '@/components/analytics/ExportAnalyticsButton'
 import AnalyticsTabs from '@/components/analytics/AnalyticsTabs'
+import type { Loan } from '@/types'
 
 import {
   TrendingUp,
@@ -62,18 +63,18 @@ export default async function BusinessAnalyticsPage() {
 
   // --- analytics ---
   const totalLoans = loans.length
-  const activeLoans = loans.filter((l: any) => l.status === 'active')
-  const completedLoans = loans.filter((l: any) => l.status === 'completed')
-  const defaultedLoans = loans.filter((l: any) => l.status === 'defaulted')
-  const cancelledLoans = loans.filter((l: any) => l.status === 'cancelled')
+  const activeLoans = loans.filter((l: Loan) => l.status === 'active')
+  const completedLoans = loans.filter((l: Loan) => l.status === 'completed')
+  const defaultedLoans = loans.filter((l: Loan) => l.status === 'defaulted')
+  const cancelledLoans = loans.filter((l: Loan) => l.status === 'cancelled')
 
-  const totalLent = loans.reduce((sum: number, l: any) => sum + Number(l.amount || 0), 0)
+  const totalLent = loans.reduce((sum: number, l: Loan) => sum + Number(l.amount || 0), 0)
   const totalInterestEarned = completedLoans.reduce(
-    (sum: number, l: any) => sum + Number(l.total_interest || 0),
+    (sum: number, l: Loan) => sum + Number(l.total_interest || 0),
     0
   )
   const totalOutstanding = activeLoans.reduce(
-    (sum: number, l: any) => sum + Number(l.amount_remaining || 0),
+    (sum: number, l: Loan) => sum + Number(l.amount_remaining || 0),
     0
   )
 
@@ -83,42 +84,42 @@ export default async function BusinessAnalyticsPage() {
 
   const avgInterestRate =
     loans.length > 0
-      ? loans.reduce((sum: number, l: any) => sum + Number(l.interest_rate || 0), 0) / loans.length
+      ? loans.reduce((sum: number, l: Loan) => sum + Number(l.interest_rate || 0), 0) / loans.length
       : 0
 
   const portfolioByStatus = [
     {
       status: 'Active',
       count: activeLoans.length,
-      amount: activeLoans.reduce((s: number, l: any) => s + Number(l.amount || 0), 0),
+      amount: activeLoans.reduce((s: number, l: Loan) => s + Number(l.amount || 0), 0),
       color: '#3b82f6',
       percentage: totalLoans > 0 ? (activeLoans.length / totalLoans) * 100 : 0,
     },
     {
       status: 'Completed',
       count: completedLoans.length,
-      amount: completedLoans.reduce((s: number, l: any) => s + Number(l.amount || 0), 0),
+      amount: completedLoans.reduce((s: number, l: Loan) => s + Number(l.amount || 0), 0),
       color: '#10b981',
       percentage: totalLoans > 0 ? (completedLoans.length / totalLoans) * 100 : 0,
     },
     {
       status: 'Defaulted',
       count: defaultedLoans.length,
-      amount: defaultedLoans.reduce((s: number, l: any) => s + Number(l.amount || 0), 0),
+      amount: defaultedLoans.reduce((s: number, l: Loan) => s + Number(l.amount || 0), 0),
       color: '#ef4444',
       percentage: totalLoans > 0 ? (defaultedLoans.length / totalLoans) * 100 : 0,
     },
     {
       status: 'Cancelled',
       count: cancelledLoans.length,
-      amount: cancelledLoans.reduce((s: number, l: any) => s + Number(l.amount || 0), 0),
+      amount: cancelledLoans.reduce((s: number, l: Loan) => s + Number(l.amount || 0), 0),
       color: '#6b7280',
       percentage: totalLoans > 0 ? (cancelledLoans.length / totalLoans) * 100 : 0,
     },
   ]
 
-  const geographicData = loans.reduce((acc: any, loan: any) => {
-    const country = loan.borrower?.country || 'Unknown'
+  const geographicData = loans.reduce((acc: Record<string, { country: string; count: number; totalAmount: number; activeLoans: number; completedLoans: number; defaultedLoans: number }>, loan: Loan) => {
+    const country = (loan.borrower as any)?.country || 'Unknown'
     if (!acc[country]) {
       acc[country] = {
         country,
@@ -133,15 +134,16 @@ export default async function BusinessAnalyticsPage() {
     acc[country].totalAmount += Number(loan.amount || 0)
     if (loan.status === 'active') acc[country].activeLoans++
     if (loan.status === 'completed') acc[country].completedLoans++
-    if (loan.status === 'defaulted') acc[country].defaultedLoans++
+    if ((loan.status as string) === 'defaulted') acc[country].defaultedLoans++
     return acc
   }, {})
 
-  const topCountries = Object.values(geographicData)
-    .sort((a: any, b: any) => b.count - a.count)
+  const topCountries = (Object.values(geographicData) as { country: string; count: number; totalAmount: number; activeLoans: number; completedLoans: number; defaultedLoans: number }[])
+    .sort((a, b) => b.count - a.count)
     .slice(0, 10)
 
-  const loanTypeData = loans.reduce((acc: any, loan: any) => {
+  type LoanTypeItem = { purpose: string; count: number; totalAmount: number; avgAmount: number; completionRate: number; completed: number }
+  const loanTypeData = loans.reduce((acc: Record<string, LoanTypeItem>, loan: Loan) => {
     const purpose = loan.purpose || 'Other'
     if (!acc[purpose]) {
       acc[purpose] = {
@@ -168,17 +170,18 @@ export default async function BusinessAnalyticsPage() {
     .sort((a: any, b: any) => b.count - a.count)
     .slice(0, 10)
 
-  const borrowerStats = loans.reduce((acc: any, loan: any) => {
+  type BorrowerItem = { id: string; name: string; email: string; tier: number; country: string; totalLoans: number; totalAmount: number; completed: number; active: number; defaulted: number }
+  const borrowerStats = loans.reduce((acc: Record<string, BorrowerItem>, loan: Loan) => {
     const borrowerId = loan.borrower?.id
     if (!borrowerId) return acc
 
     if (!acc[borrowerId]) {
       acc[borrowerId] = {
         id: borrowerId,
-        name: loan.borrower.full_name || 'Unknown',
-        email: loan.borrower.email || '',
-        tier: loan.borrower.borrowing_tier || 1,
-        country: loan.borrower.country || '',
+        name: loan.borrower?.full_name || (loan as { borrower_name?: string })?.borrower_name || 'Borrower',
+        email: loan.borrower?.email || '',
+        tier: loan.borrower?.borrowing_tier || 1,
+        country: (loan.borrower as any)?.country || '',
         totalLoans: 0,
         totalAmount: 0,
         completed: 0,
@@ -191,7 +194,7 @@ export default async function BusinessAnalyticsPage() {
     acc[borrowerId].totalAmount += Number(loan.amount || 0)
     if (loan.status === 'completed') acc[borrowerId].completed++
     if (loan.status === 'active') acc[borrowerId].active++
-    if (loan.status === 'defaulted') acc[borrowerId].defaulted++
+    if ((loan.status as string) === 'defaulted') acc[borrowerId].defaulted++
     return acc
   }, {})
 
@@ -212,7 +215,7 @@ export default async function BusinessAnalyticsPage() {
     monthlyData[key] = { loans: 0, amount: 0, interest: 0, active: 0, completed: 0, defaulted: 0 }
   }
 
-  loans.forEach((loan: any) => {
+  loans.forEach((loan: Loan) => {
     const date = loan.created_at ? new Date(loan.created_at) : null
     if (!date) return
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
@@ -225,10 +228,10 @@ export default async function BusinessAnalyticsPage() {
       monthlyData[key].completed++
       monthlyData[key].interest += Number(loan.total_interest || 0)
     }
-    if (loan.status === 'defaulted') monthlyData[key].defaulted++
+    if ((loan.status as string) === 'defaulted') monthlyData[key].defaulted++
   })
 
-  const monthlyStats = Object.entries(monthlyData).map(([month, data]) => {
+  const monthlyStats = Object.entries(monthlyData).map(([month, data]: [string, any]) => {
     const date = new Date(month + '-01')
     return {
       month,
@@ -637,7 +640,7 @@ export default async function BusinessAnalyticsPage() {
             Customer Geography
           </h3>
           <div className="space-y-3 max-h-96 overflow-y-auto">
-            {topCountries.map((country: any, index) => {
+            {topCountries.map((country, index) => {
               const percentage = totalLoans > 0 ? (country.count / totalLoans) * 100 : 0
               return (
                 <div key={country.country} className="space-y-1">

@@ -3,6 +3,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { RealtimeChannel } from '@supabase/supabase-js';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('PaymentContext');
 
 // Types
 export interface PaymentProvider {
@@ -137,9 +140,9 @@ export function PaymentProvider({
 
       if (provError) throw provError;
       setAllProviders(data || []);
-    } catch (err: any) {
-      console.error('[PaymentContext] Error fetching providers:', err);
-      setError(err.message);
+    } catch (err: unknown) {
+      log.error('[PaymentContext] Error fetching providers:', err);
+      setError((err as Error).message);
     }
   }, []);
 
@@ -167,9 +170,9 @@ export function PaymentProvider({
       );
       
       setUserMethods(validMethods);
-    } catch (err: any) {
-      console.error('[PaymentContext] Error fetching user methods:', err);
-      setError(err.message);
+    } catch (err: unknown) {
+      log.error('[PaymentContext] Error fetching user methods:', err);
+      setError((err as Error).message);
     }
   }, [userId, allProviders]);
 
@@ -212,12 +215,12 @@ export function PaymentProvider({
           table: 'payment_providers',
         },
         (payload) => {
-          console.log('[PaymentContext] Provider change:', payload.eventType);
+          log.debug('Provider change', { event: payload.eventType });
           refreshProviders();
         }
       )
       .subscribe((status) => {
-        console.log('[PaymentContext] Providers channel:', status);
+        log.debug('Providers channel status', { status });
       });
     
     newChannels.push(providersChannel);
@@ -235,12 +238,12 @@ export function PaymentProvider({
             filter: `user_id=eq.${userId}`,
           },
           (payload) => {
-            console.log('[PaymentContext] User method change:', payload.eventType);
+            log.debug('User method change', { event: payload.eventType });
             refreshUserMethods();
           }
         )
         .subscribe((status) => {
-          console.log('[PaymentContext] User methods channel:', status);
+          log.debug('User methods channel status', { status });
         });
       
       newChannels.push(userMethodsChannel);
@@ -355,7 +358,7 @@ export function useHasPaymentSetup(
         
         setHasPayment(bankConnected || (count || 0) > 0);
       } catch (err) {
-        console.error('Error checking payment setup:', err);
+        log.error('Error checking payment setup:', err);
         setHasPayment(bankConnected);
       } finally {
         setLoading(false);

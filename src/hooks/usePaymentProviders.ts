@@ -58,8 +58,8 @@ export function usePaymentProviders(options: UsePaymentProvidersOptions = {}): U
       
       const data = await res.json();
       setProviders(data.providers || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
       setProviders([]);
     } finally {
       setLoading(false);

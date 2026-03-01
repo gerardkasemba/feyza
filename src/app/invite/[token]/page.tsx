@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
@@ -163,7 +165,7 @@ export default function InvitePage() {
     setStep(nextStep);
   };
 
-  const handleBankConnected = (data: any) => {
+  const handleBankConnected = (data: { bank_name?: string; account_mask?: string; account_type?: string; [key: string]: unknown }) => {
     setBankConnected(true);
     setBankInfo(data);
     setStepError(null);
@@ -235,15 +237,15 @@ export default function InvitePage() {
       const transferResult = await transferResponse.json();
       
       if (transferResult.error) {
-        console.error('Transfer error:', transferResult.error);
+        log.error('Transfer error:', transferResult.error);
         // Don't fail completely - loan is accepted, transfer can be retried
       }
 
       setDisbursementComplete(true);
       setAccepted(true);
-    } catch (error: any) {
-      console.error('Error accepting loan:', error);
-      setStepError(error.message || 'Failed to process. Please try again.');
+    } catch (error: unknown) {
+      log.error('Error accepting loan:', error);
+      setStepError((error as Error).message || 'Failed to process. Please try again.');
     } finally {
       setDisbursing(false);
     }
@@ -267,7 +269,7 @@ export default function InvitePage() {
 
       setDeclined(true);
     } catch (error) {
-      console.error('Error declining loan:', error);
+      log.error('Error declining loan:', error);
     } finally {
       setIsSubmitting(false);
     }

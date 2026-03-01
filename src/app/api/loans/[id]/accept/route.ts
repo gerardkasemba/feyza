@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getLoanAcceptedEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+import { onLoanCreatedForBusiness } from '@/lib/business/borrower-trust-service';
+import { onVoucheeNewLoan } from '@/lib/vouching/accountability';
+import { preparePickupFields, logDisbursementCreated } from '@/lib/disbursements';
+
+const log = logger('loans-accept');
 
 export async function POST(
   request: NextRequest,
@@ -25,7 +31,7 @@ export async function POST(
       .single();
 
     if (loanError || !loan) {
-      console.error('Error fetching loan:', loanError);
+      log.error('Error fetching loan:', loanError);
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
@@ -66,10 +72,10 @@ export async function POST(
     if (!isAuthorized && !loan.lender_id) {
       // Check if there's a lender match for this user
       const { data: match } = await serviceSupabase
-        .from('lender_matches')
+        .from('loan_matches')
         .select('id')
         .eq('loan_id', loanId)
-        .eq('lender_id', user.id)
+        .eq('lender_user_id', user.id)
         .single();
       
       if (match) {
@@ -79,17 +85,17 @@ export async function POST(
       // Also check if user has a business that was matched
       if (!isAuthorized) {
         const { data: businessMatch } = await serviceSupabase
-          .from('lender_matches')
+          .from('loan_matches')
           .select('id, business_profiles!inner(user_id, business_name)')
           .eq('loan_id', loanId)
-          .not('business_lender_id', 'is', null);
+          .not('lender_business_id', 'is', null);
         
-        const userMatch = businessMatch?.find((m: any) => 
-          m.business_profiles?.user_id === user.id
+        const userMatch = businessMatch?.find((m) => 
+          (m.business_profiles as any)?.[0]?.user_id === user.id
         );
         if (userMatch) {
           isAuthorized = true;
-          lenderName = (userMatch as any).business_profiles?.business_name || lenderName;
+          lenderName = (userMatch as unknown as { business_profiles?: { user_id: string; business_name: string } }).business_profiles?.business_name || lenderName;
         }
       }
     }
@@ -107,7 +113,7 @@ export async function POST(
     }
 
     if (!isAuthorized) {
-      console.log('Authorization failed for user:', user.id, 'on loan:', loanId);
+      log.info('Authorization failed for user', { on_loan: loanId, data: user.id });
       return NextResponse.json({ error: 'Not authorized to accept this loan' }, { status: 403 });
     }
 
@@ -127,35 +133,56 @@ export async function POST(
       }
     }
 
-    // Get lender's interest rate
-    
-    let interestRate = loan.interest_rate || 0; // Default to loan's current rate
+    // Get lender's interest rate — MUST use lender_tier_policies (borrower-tier-specific),
+    // not lender_preferences.interest_rate (just a global fallback default).
+    // This route is called when the lender accepts directly from the loan page.
+
+    // Look up borrower's trust tier first
+    const { data: borrowerTierRow } = await serviceSupabase
+      .from('users')
+      .select('trust_tier')
+      .eq('id', loan.borrower_id)
+      .single();
+    const borrowerTier = borrowerTierRow?.trust_tier || 'tier_1';
+
+    let interestRate = 0; // Will be set below; falls back to 0 (personal/free loan)
     let interestType = loan.interest_type || 'simple';
 
+    // Determine the lender's user_id for the tier policy lookup
+    let lenderUserId: string | null = user.id;
     if (loan.business_lender_id) {
-      // Get business lender's interest rate from preferences first
-      const { data: lenderPref } = await serviceSupabase
-        .from('lender_preferences')
-        .select('interest_rate')
-        .eq('business_id', loan.business_lender_id)
+      const { data: bizProfile } = await serviceSupabase
+        .from('business_profiles')
+        .select('user_id')
+        .eq('id', loan.business_lender_id)
         .single();
-      
-      if (lenderPref?.interest_rate !== null && lenderPref?.interest_rate !== undefined) {
-        interestRate = lenderPref.interest_rate;
-        console.log(`[Accept] Using lender preference interest rate: ${interestRate}%`);
+      lenderUserId = bizProfile?.user_id || null;
+    }
+
+    if (lenderUserId) {
+      // Try tier-specific policy first (the authoritative rate for this borrower's tier)
+      const { data: tierPolicy } = await serviceSupabase
+        .from('lender_tier_policies')
+        .select('interest_rate')
+        .eq('lender_id', lenderUserId)
+        .eq('tier_id', borrowerTier)
+        .eq('is_active', true)
+        .single();
+
+      if (tierPolicy?.interest_rate != null) {
+        interestRate = Number(tierPolicy.interest_rate);
+        log.info(`[Accept] Tier policy rate for ${borrowerTier}: ${interestRate}%`);
       } else {
-        // Fall back to business profile default rate
-        const { data: business } = await serviceSupabase
-          .from('business_profiles')
-          .select('default_interest_rate, interest_type')
-          .eq('id', loan.business_lender_id)
+        // No tier policy → fall back to global lender_preferences rate
+        const prefField = loan.business_lender_id ? 'business_id' : 'user_id';
+        const prefValue = loan.business_lender_id || user.id;
+        const { data: lenderPref } = await serviceSupabase
+          .from('lender_preferences')
+          .select('interest_rate')
+          .eq(prefField, prefValue)
           .single();
-        
-        if (business) {
-          interestRate = business.default_interest_rate || 0;
-          interestType = business.interest_type || 'simple';
-          console.log(`[Accept] Using business profile interest rate: ${interestRate}% (${interestType})`);
-        }
+        interestRate = lenderPref?.interest_rate || 0;
+        log.info(`[Accept] No tier policy found, using preference rate: ${interestRate}%`);
       }
     }
 
@@ -175,7 +202,7 @@ export async function POST(
       const compoundAmount = loan.amount * Math.pow(1 + monthlyRate, loanMonths);
       totalInterest = Math.round((compoundAmount - loan.amount) * 100) / 100;
       
-      console.log(`[Accept] Compound interest calculation:`, {
+      log.info(`[Accept] Compound interest calculation:`, {
         principal: loan.amount,
         rate: interestRate,
         months: loanMonths,
@@ -188,7 +215,7 @@ export async function POST(
       // rate is the TOTAL interest percentage (e.g., 20% means $20 interest on $100)
       totalInterest = Math.round(loan.amount * (interestRate / 100) * 100) / 100;
       
-      console.log(`[Accept] Simple interest calculation:`, {
+      log.info(`[Accept] Simple interest calculation:`, {
         principal: loan.amount,
         rate: interestRate,
         totalInterest,
@@ -198,13 +225,26 @@ export async function POST(
 
     totalAmount = Math.round((loan.amount + totalInterest) * 100) / 100;
 
-    console.log(`[Accept] Calculated interest for loan ${loanId}:`, {
+    log.info(`[Accept] Calculated interest for loan ${loanId}:`, {
       principal: loan.amount,
       rate: interestRate,
       type: interestType,
       totalInterest,
       totalAmount
     });
+
+    // Normalize cash-pickup fields if present on the loan
+    const pickupFields =
+      loan.disbursement_method === 'cash_pickup'
+        ? preparePickupFields({
+            pickerFullName: (loan as any).picker_full_name ?? (loan as any).pickup_person_name,
+            recipientName: (loan as any).recipient_name,
+            cashPickupLocation: (loan as any).cash_pickup_location ?? (loan as any).pickup_person_location,
+            pickerPhone: (loan as any).picker_phone ?? (loan as any).pickup_person_phone,
+            pickerIdType: (loan as any).picker_id_type ?? (loan as any).pickup_person_id_type,
+            pickerIdNumber: (loan as any).picker_id_number ?? (loan as any).pickup_person_id_number,
+          })
+        : {};
 
     // Update loan status to active and set lender details + interest
     const { error: updateError } = await serviceSupabase
@@ -218,18 +258,41 @@ export async function POST(
         interest_type: interestType,
         total_interest: totalInterest,
         total_amount: totalAmount,
+        repayment_amount: Math.round((totalAmount / loan.total_installments) * 100) / 100,
         amount_remaining: totalAmount, // Set remaining to total (principal + interest)
         updated_at: new Date().toISOString(),
         uses_apr_calculation: false, // Explicitly set to false for simple interest
+        ...pickupFields,
       })
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('Error updating loan:', updateError);
+      log.error('Error updating loan:', updateError);
       return NextResponse.json({ error: 'Failed to accept loan: ' + updateError.message }, { status: 500 });
     }
 
-    console.log(`[Accept] Loan ${loanId} updated with interest rate ${interestRate}%`);
+    log.info(`[Accept] Loan ${loanId} updated with interest rate ${interestRate}%`);
+
+    await logDisbursementCreated({
+      loanId,
+      amount: loan.amount,
+      method: loan.disbursement_method ?? undefined,
+      currency: loan.currency ?? undefined,
+    }).catch((err) => log.error('[Accept] logDisbursementCreated error (non-fatal):', err));
+
+    // Update borrower_business_trust when loan becomes active (replaces tr_update_trust_on_loan_create trigger)
+    if (loan.business_lender_id) {
+      onLoanCreatedForBusiness(serviceSupabase as any, loan.borrower_id, loan.business_lender_id as string, Number(loan.amount))
+        .catch(err => log.error('[Accept] borrower trust on loan create error:', err));
+    }
+
+    // Increment loans_active on all vouches for this borrower (Bug fix: was never called)
+    // This is the increment side that makes onVoucheeLoanCompleted's decrement work correctly.
+    try {
+      await onVoucheeNewLoan(serviceSupabase as any, loan.borrower_id, loanId);
+    } catch (err) {
+      log.error('[Accept] onVoucheeNewLoan error (non-fatal):', err);
+    }
 
     // Regenerate payment schedule with new interest
     try {
@@ -284,48 +347,13 @@ export async function POST(
         .insert(schedule);
 
       if (scheduleError) {
-        console.error('[Accept] Error regenerating payment schedule:', scheduleError);
+        log.error('[Accept] Error regenerating payment schedule:', scheduleError);
       } else {
-        console.log(`[Accept] Regenerated payment schedule for loan ${loanId} with ${schedule.length} installments`);
+        log.info(`[Accept] Regenerated payment schedule for loan ${loanId} with ${schedule.length} installments`);
       }
     } catch (scheduleError) {
-      console.error('[Accept] Error in schedule regeneration:', scheduleError);
+      log.error('[Accept] Error in schedule regeneration:', scheduleError);
       // Don't fail the acceptance if schedule regeneration fails
-    }
-
-    // Create disbursement if loan has recipient info (for diaspora loans)
-    if (loan.recipient_name && loan.disbursement_method) {
-      try {
-        await serviceSupabase.from('disbursements').insert({
-          loan_id: loanId,
-          amount: loan.amount,
-          currency: loan.currency || 'USD',
-          disbursement_method: loan.disbursement_method,
-          // Mobile Money
-          mobile_provider: loan.mobile_money_provider,
-          mobile_number: loan.mobile_money_phone,
-          mobile_name: loan.mobile_money_name,
-          // Bank Transfer
-          bank_name: loan.bank_name,
-          bank_account_name: loan.bank_account_name,
-          bank_account_number: loan.bank_account_number,
-          bank_branch: loan.bank_branch,
-          bank_swift_code: loan.bank_swift_code,
-          // Cash Pickup
-          pickup_location: loan.cash_pickup_location,
-          // Recipient
-          recipient_name: loan.recipient_name,
-          recipient_phone: loan.recipient_phone,
-          recipient_id_type: loan.picker_id_type,
-          recipient_id_number: loan.picker_id_number,
-          recipient_country: loan.recipient_country,
-          status: 'pending',
-        });
-        console.log('Disbursement created for loan:', loanId);
-      } catch (disbursementError) {
-        console.error('Error creating disbursement:', disbursementError);
-        // Don't fail the loan acceptance if disbursement creation fails
-      }
     }
 
     // Create notification for borrower
@@ -338,8 +366,11 @@ export async function POST(
         message: `${lenderName} has accepted your loan request for ${loan.currency || 'USD'} ${loan.amount}. They will send the funds shortly.`,
       });
     } catch (notifError) {
-      console.error('Error creating notification:', notifError);
+      log.error('Error creating notification:', notifError);
     }
+
+    // NOTE: loans_active is already incremented by onVoucheeNewLoan() above (line ~248).
+    // The duplicate inline block that was here was double-counting — removed.
 
     // Send email to borrower
     if (loan.borrower?.email) {
@@ -354,7 +385,7 @@ export async function POST(
 
         await sendEmail({ to: loan.borrower.email, subject, html });
       } catch (emailError) {
-        console.error('Error sending email:', emailError);
+        log.error('Error sending email:', emailError);
       }
     }
 
@@ -364,10 +395,10 @@ export async function POST(
       redirectUrl: `/loans/${loanId}/fund`,
       message: 'Loan accepted! Please proceed to fund the loan.',
     });
-  } catch (error: any) {
-    console.error('Error accepting loan:', error);
+  } catch (error: unknown) {
+    log.error('Error accepting loan:', error);
     return NextResponse.json({ 
-      error: 'Internal server error: ' + (error.message || 'Unknown error') 
+      error: 'Internal server error: ' + ((error as Error).message || 'Unknown error') 
     }, { status: 500 });
   }
 }

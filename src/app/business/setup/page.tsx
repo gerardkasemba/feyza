@@ -1,10 +1,13 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('setup_page');
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, Button, Input, Select, InterestCalculatorModal } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
+import { generateUniqueBusinessSlug, syncBusinessToLenderPrefs } from '@/lib/business/profile-service';
 import { PlaidLinkButton, ConnectedBank } from '@/components/payments/PlaidLink';
 import { 
   ArrowLeft, Building2, Percent, Building, FileText, 
@@ -197,7 +200,7 @@ export default function BusinessSetupPage() {
         const dwollaEnabled = (providers || []).some(p => p.slug === 'dwolla');
         setIsDwollaEnabled(dwollaEnabled);
       } catch (err) {
-        console.error('Failed to check payment providers:', err);
+        log.error('Failed to check payment providers:', err);
       } finally {
         setLoadingPaymentProviders(false);
       }
@@ -280,33 +283,37 @@ export default function BusinessSetupPage() {
         const fileName = `${user.id}-${Date.now()}.${fileExt}`;
         const filePath = `logos/${fileName}`;
         
-        console.log('Uploading logo to:', filePath);
+        log.debug('Uploading logo to:', filePath);
         
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('business-assets')
           .upload(filePath, logoFile, { upsert: true });
         
         if (uploadError) {
-          console.error('Logo upload error:', uploadError);
-          console.error('Error details:', JSON.stringify(uploadError, null, 2));
+          log.error('Logo upload error:', uploadError);
+          log.error('Error details:', JSON.stringify(uploadError, null, 2));
           // Don't fail the whole process for logo upload, but show warning
           setError('Logo upload failed: ' + uploadError.message + '. Your profile was saved without a logo.');
         } else {
-          console.log('Upload successful:', uploadData);
+          log.debug('Upload successful:', uploadData);
           const { data: urlData } = supabase.storage
             .from('business-assets')
             .getPublicUrl(filePath);
           logoUrl = urlData.publicUrl;
-          console.log('Logo URL:', logoUrl);
+          log.debug('Logo URL:', logoUrl);
         }
         setUploadingLogo(false);
       }
       
+      // Generate unique slug (replaces set_business_slug DB trigger)
+      const slug = await generateUniqueBusinessSlug(supabase as any, businessName);
+
       const { data: businessProfile, error: insertError } = await supabase
         .from('business_profiles')
         .insert({
           user_id: user.id,
           business_name: businessName,
+          slug,
           business_type: businessType,
           business_entity_type: businessEntityType,
           description: description || null,
@@ -333,23 +340,8 @@ export default function BusinessSetupPage() {
 
       if (insertError) throw insertError;
 
-      // Create lender_preferences (business lender - only set business_id, not user_id)
-      await supabase
-        .from('lender_preferences')
-        .upsert({
-          business_id: businessProfile.id,
-          // Note: don't set user_id - constraint requires either user_id OR business_id, not both
-          is_active: false,
-          auto_accept: false,
-          preferred_currency: 'USD',
-          min_borrower_rating: 'neutral',
-          require_verified_borrower: false,
-          min_term_weeks: 1,
-          max_term_weeks: 52,
-          capital_pool: 0,
-          notify_on_match: true,
-          notify_email: true,
-        }, { onConflict: 'business_id' });
+      // Sync lender_preferences (replaces tr_sync_business_lender_prefs DB trigger)
+      await syncBusinessToLenderPrefs(supabase as any, businessProfile.id);
 
       // Update user profile
       await supabase
@@ -361,8 +353,8 @@ export default function BusinessSetupPage() {
         .eq('id', user.id);
 
       router.push('/business/setup/success');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create business profile');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to create business profile');
     } finally {
       setSaving(false);
     }

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { createFacilitatedTransfer } from '@/lib/dwolla';
 import { onVoucheeLoanDefaulted } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('cron-payment-retry');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 const MAX_RETRIES = 3;
@@ -55,6 +60,8 @@ export async function POST(request: NextRequest) {
         retry_count, last_retry_at, next_retry_at, retry_history,
         loan:loans(
           id, borrower_id, currency,
+          borrower_dwolla_funding_source_url,
+          lender_dwolla_funding_source_url,
           borrower:users!borrower_id(id, email, full_name, is_blocked)
         )
       `)
@@ -65,11 +72,11 @@ export async function POST(request: NextRequest) {
       .limit(100);
 
     if (fetchError) {
-      console.error('[PaymentRetry] Error fetching payments:', fetchError);
+      log.error('[PaymentRetry] Error fetching payments:', fetchError);
       return NextResponse.json({ error: 'Failed to fetch payments' }, { status: 500 });
     }
 
-    console.log(`[PaymentRetry] Found ${paymentsToRetry?.length || 0} payments to process`);
+    log.info(`[PaymentRetry] Found ${paymentsToRetry?.length || 0} payments to process`);
 
     // ============================================
     // 2. PROCESS EACH PAYMENT
@@ -79,17 +86,17 @@ export async function POST(request: NextRequest) {
       results.paymentsProcessed++;
       
       const loan = payment.loan as any;
-      const borrower = loan?.borrower;
+const borrower = loan?.borrower as any;
       
       if (!borrower || borrower.is_blocked) {
-        console.log(`[PaymentRetry] Skipping payment ${payment.id} - borrower blocked or not found`);
+        log.info(`[PaymentRetry] Skipping payment ${payment.id} - borrower blocked or not found`);
         continue;
       }
 
       const newRetryCount = (payment.retry_count || 0) + 1;
       const isLastRetry = newRetryCount >= MAX_RETRIES;
       
-      console.log(`[PaymentRetry] Processing payment ${payment.id} - Retry #${newRetryCount}/${MAX_RETRIES}`);
+      log.info(`[PaymentRetry] Processing payment ${payment.id} - Retry #${newRetryCount}/${MAX_RETRIES}`);
       
       // ============================================
       // 3. ATTEMPT TO CHARGE PAYMENT
@@ -100,22 +107,41 @@ export async function POST(request: NextRequest) {
       let providerResponse = {};
       
       try {
-        // TODO: Integrate with actual payment provider (Stripe, etc.)
-        // For now, simulate the charge attempt
-        // const chargeResult = await chargePayment(payment, borrower);
-        // chargeSuccess = chargeResult.success;
-        // chargeError = chargeResult.error;
-        // providerResponse = chargeResult.response;
-        
-        // Simulated failure for testing
-        chargeSuccess = false;
-        chargeError = 'Insufficient funds';
-        providerResponse = { simulated: true };
+        // Attempt Dwolla ACH transfer if funding sources are connected
+        if (loan?.borrower_dwolla_funding_source_url && loan?.lender_dwolla_funding_source_url) {
+          const { transferUrl, transferIds } = await createFacilitatedTransfer({
+            sourceFundingSourceUrl: loan.borrower_dwolla_funding_source_url,
+            destinationFundingSourceUrl: loan.lender_dwolla_funding_source_url,
+            amount: payment.amount,
+            currency: 'USD',
+            metadata: {
+              loan_id: loan.id,
+              payment_id: payment.id,
+              type: 'repayment_retry',
+              retry_number: newRetryCount,
+            },
+          });
+
+          if (transferUrl && transferIds.length > 0) {
+            chargeSuccess = true;
+            providerResponse = { transferUrl, transferId: transferIds[transferIds.length - 1], provider: 'dwolla' };
+          } else {
+            chargeError = 'Dwolla transfer returned no transfer ID';
+            providerResponse = { provider: 'dwolla', transferUrl, transferIds };
+          }
+        } else {
+          // No Dwolla funding sources — cannot charge
+          chargeSuccess = false;
+          chargeError = !loan?.borrower_dwolla_funding_source_url
+            ? 'Borrower bank account not connected'
+            : 'Lender bank account not connected';
+          providerResponse = { provider: 'none', reason: chargeError };
+        }
         
         results.retriesAttempted++;
-      } catch (err: any) {
-        chargeError = err.message || 'Unknown error';
-        console.error(`[PaymentRetry] Charge error for payment ${payment.id}:`, err);
+      } catch (err: unknown) {
+        chargeError = (err as Error).message || 'Unknown error';
+        log.error(`[PaymentRetry] Charge error for payment ${payment.id}:`, err);
       }
 
       // ============================================
@@ -199,7 +225,7 @@ export async function POST(request: NextRequest) {
           // 6. BLOCK THE BORROWER
           // ============================================
           
-          console.log(`[PaymentRetry] Blocking borrower ${borrower.id} after ${MAX_RETRIES} failed retries`);
+          log.info(`[PaymentRetry] Blocking borrower ${borrower.id} after ${MAX_RETRIES} failed retries`);
           
           // Calculate total outstanding debt
           const { data: outstandingPayments } = await supabase
@@ -230,6 +256,13 @@ export async function POST(request: NextRequest) {
             })
             .eq('id', borrower.id);
 
+          // Mark the loan as defaulted so trust score, analytics, and eligibility see it.
+          // Schema: loans_status_check must include 'defaulted' (see supabase/feyza-database.sql).
+          await supabase
+            .from('loans')
+            .update({ status: 'defaulted' })
+            .eq('id', payment.loan_id);
+
           // Create block record
           await supabase.from('borrower_blocks').insert({
             user_id: borrower.id,
@@ -251,15 +284,22 @@ export async function POST(request: NextRequest) {
           // Notify lender
           await notifyLenderOfDefault(supabase, loan, borrower, payment, totalDebt);
 
-          // ── Fire voucher consequence pipeline (non-blocking) ─────────────
+          // ── Fire voucher consequence pipeline (awaited so cron reflects success) ──
           // All active vouchers for this borrower receive:
           //   - Trust score penalty (-10 pts)
           //   - Success rate downgrade
           //   - Potential vouching lock if they hit 2+ active defaults
           //   - Urgent email notification
-          onVoucheeLoanDefaulted(supabase, borrower.id, payment.loan_id)
-            .then(r => console.log(`[PaymentRetry] Voucher default pipeline:`, r))
-            .catch(err => console.error(`[PaymentRetry] Voucher pipeline error:`, err));
+          try {
+            const voucherResult = await onVoucheeLoanDefaulted(supabase, borrower.id, payment.loan_id);
+            log.info(`[PaymentRetry] Voucher default pipeline:`, voucherResult);
+            if (voucherResult.errors?.length) {
+              results.errors.push(...voucherResult.errors.map(e => `voucher: ${e}`));
+            }
+          } catch (err) {
+            log.error(`[PaymentRetry] Voucher pipeline error:`, err);
+            results.errors.push(`voucher pipeline: ${(err as Error).message}`);
+          }
 
           results.borrowersBlocked++;
           results.notificationsSent += 2;
@@ -279,7 +319,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log('[PaymentRetry] Completed:', results);
+    log.info('[PaymentRetry] Completed:', results);
     
     return NextResponse.json({
       success: true,
@@ -287,7 +327,7 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('[PaymentRetry] Error:', error);
+    log.error('[PaymentRetry] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -297,10 +337,10 @@ export async function POST(request: NextRequest) {
 // ============================================
 
 async function notifyBorrower(
-  supabase: any, 
-  borrower: any, 
+  supabase: SupabaseServiceClient, 
+  borrower: Record<string, unknown>, 
   type: 'payment_retry_success' | 'payment_retry_failed' | 'account_blocked',
-  data: any
+  data: Record<string, unknown>
 ) {
   const { amount, currency, retryNumber, maxRetries, nextRetryDate, retriesRemaining, totalDebt, reason } = data;
   
@@ -314,21 +354,21 @@ async function notifyBorrower(
       title = '✅ Payment Successful';
       message = `Your payment of ${currency} ${amount} was successfully processed on retry attempt #${retryNumber}.`;
       emailSubject = '✅ Payment Successfully Processed';
-      emailHtml = getPaymentSuccessEmail(borrower.full_name, amount, currency, retryNumber);
+      emailHtml = getPaymentSuccessEmail(String(borrower.full_name), Number(amount), String(currency), Number(retryNumber));
       break;
       
     case 'payment_retry_failed':
       title = '⚠️ Payment Failed - Retry Scheduled';
-      message = `Payment of ${currency} ${amount} failed (Attempt ${retryNumber}/${maxRetries}). Next retry: ${new Date(nextRetryDate).toLocaleDateString()}. ${retriesRemaining} attempts remaining before account block.`;
+      message = `Payment of ${currency} ${amount} failed (Attempt ${retryNumber}/${maxRetries}). Next retry: ${new Date(nextRetryDate as string).toLocaleDateString()}. ${retriesRemaining} attempts remaining before account block.`;
       emailSubject = `⚠️ Payment Failed - ${retriesRemaining} Retry Attempts Remaining`;
-      emailHtml = getPaymentRetryFailedEmail(borrower.full_name, amount, currency, retryNumber, maxRetries, nextRetryDate, retriesRemaining);
+      emailHtml = getPaymentRetryFailedEmail(String(borrower.full_name), Number(amount), String(currency), Number(retryNumber), Number(maxRetries), new Date(String(nextRetryDate || "")), Number(retriesRemaining));
       break;
       
     case 'account_blocked':
       title = '🚫 Account Blocked';
       message = `Your account has been blocked due to payment default. Total outstanding debt: ${currency} ${totalDebt}. Please clear your debt to restore access.`;
       emailSubject = '🚫 Your Feyza Account Has Been Blocked';
-      emailHtml = getAccountBlockedEmail(borrower.full_name, amount, currency, totalDebt);
+      emailHtml = getAccountBlockedEmail(String(borrower.full_name), Number(amount), String(currency), Number(totalDebt));
       break;
   }
   
@@ -344,12 +384,12 @@ async function notifyBorrower(
   if (borrower.email) {
     try {
       await sendEmail({
-        to: borrower.email,
+        to: String(borrower.email),
         subject: emailSubject,
         html: emailHtml,
       });
     } catch (err) {
-      console.error('[PaymentRetry] Failed to send email:', err);
+      log.error('[PaymentRetry] Failed to send email:', err);
     }
   }
 }
@@ -358,7 +398,7 @@ async function notifyBorrower(
 // HELPER: NOTIFY LENDER OF DEFAULT
 // ============================================
 
-async function notifyLenderOfDefault(supabase: any, loan: any, borrower: any, payment: any, totalDebt: number) {
+async function notifyLenderOfDefault(supabase: SupabaseServiceClient, loan: Record<string, unknown>, borrower: Record<string, unknown>, payment: Record<string, unknown>, totalDebt: number) {
   // Get lender info
   let lenderEmail = '';
   let lenderName = 'Lender';
@@ -384,7 +424,7 @@ async function notifyLenderOfDefault(supabase: any, loan: any, borrower: any, pa
     if (user) {
       lenderEmail = user.email;
       lenderName = user.full_name;
-      lenderId = loan.lender_id;
+      lenderId = String(loan.lender_id || '');
     }
   }
   
@@ -403,10 +443,10 @@ async function notifyLenderOfDefault(supabase: any, loan: any, borrower: any, pa
       await sendEmail({
         to: lenderEmail,
         subject: `⚠️ Borrower Default Alert - ${borrower.full_name}`,
-        html: getLenderDefaultAlertEmail(lenderName, borrower.full_name, payment.currency, totalDebt, loan.id),
+        html: getLenderDefaultAlertEmail(String(lenderName), String(borrower.full_name), String(payment.currency), Number(totalDebt), String(String(loan.id))),
       });
     } catch (err) {
-      console.error('[PaymentRetry] Failed to send lender email:', err);
+      log.error('[PaymentRetry] Failed to send lender email:', err);
     }
   }
 }

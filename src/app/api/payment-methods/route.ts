@@ -2,6 +2,9 @@
 // FIXED: Handles both ?country=&type= (provider list) and ?loanId= (legacy loan lookup)
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceRoleClientDirect } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger';
+
+const log = logger('payment-methods');
 
 /**
  * GET /api/payment-methods
@@ -56,7 +59,7 @@ export async function GET(request: NextRequest) {
       const { data: providers, error } = await query
 
       if (error) {
-        console.error('[Payment Methods API] Error fetching providers:', error)
+        log.error('[Payment Methods API] Error fetching providers:', error)
         return NextResponse.json({ providers: [] }, { status: 200 })
       }
 
@@ -177,8 +180,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ success: true, paymentMethods })
 
-  } catch (error: any) {
-    console.error('[Payment Methods API] Error:', error)
+  } catch (error: unknown) {
+    log.error('[Payment Methods API] Error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch payment methods', providers: [] },
       { status: 500 }

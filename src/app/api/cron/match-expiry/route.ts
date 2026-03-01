@@ -1,12 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { sendEmail, getNoLendersAvailableEmail, getLoanRematchedEmail, getNewMatchForLenderEmail } from '@/lib/email';
+import { onVoucheeNewLoan } from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('cron-match-expiry');
 
 // Next.js 16 route configuration for cron jobs
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // Allow up to 60 seconds for cron execution
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+
+/** Loan row shape used in match-expiry helpers */
+interface ExpiryLoan {
+  id: string;
+  borrower_id?: string;
+  amount: number;
+  currency: string;
+  purpose?: string;
+  borrower_email?: string;
+  borrower_name?: string;
+  borrower_invite_email?: string;
+  [key: string]: unknown;
+}
+
+/** Loan match row shape used in match-expiry helpers */
+interface LoanMatch {
+  id: string;
+  loan_id: string;
+  lender_user_id?: string | null;
+  lender_business_id?: string | null;
+  status: string;
+  position?: number;
+  [key: string]: unknown;
+}
+
+/** Update payload for loans during auto-accept */
+interface LoanMatchUpdate {
+  status: string;
+  match_status: string;
+  matched_at: string;
+  interest_rate: number;
+  lender_id?: string;
+  business_lender_id?: string;
+}
+
+
+// Next.js 16 route configuration for cron jobs
+
 
 // Vercel cron jobs use GET by default
 export async function GET(request: NextRequest) {
@@ -54,7 +97,7 @@ async function handleMatchExpiry(request: NextRequest) {
       .lt('expires_at', now.toISOString());
 
     if (error) {
-      console.error('Error fetching expired matches:', error);
+      log.error('Error fetching expired matches:', error);
       return NextResponse.json({ error: 'Failed to fetch expired matches' }, { status: 500 });
     }
 
@@ -141,7 +184,7 @@ async function handleMatchExpiry(request: NextRequest) {
         // Notify borrower
         if (loan.borrower?.email) {
                     await sendEmail({
-            to: loan.borrower.email,
+            to: (loan.borrower as any)?.email,
             subject: 'Unable to Find a Matching Lender',
             html: `
             <!DOCTYPE html>
@@ -202,7 +245,7 @@ async function handleMatchExpiry(request: NextRequest) {
                       Unable to Find a Lender
                     </h2>
 
-                    <p>Hi ${loan.borrower.full_name || 'there'},</p>
+                    <p>Hi ${(loan.borrower as any)?.full_name || 'there'},</p>
 
                     <p>
                       We were unable to find a lender for your
@@ -291,13 +334,13 @@ async function handleMatchExpiry(request: NextRequest) {
       noMatchLoans: noMatchCount,
     });
   } catch (error) {
-    console.error('Error processing expired matches:', error);
+    log.error('Error processing expired matches:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 // Helper: Notify next lender
-async function notifyNextLender(supabase: any, loan: any, match: any) {
+async function notifyNextLender(supabase: SupabaseServiceClient, loan: ExpiryLoan, match: LoanMatch) {
   let lenderEmail: string | null = null;
   let lenderName = 'Lender';
 
@@ -331,7 +374,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
 
   if (prefs?.auto_accept) {
     // Auto-accept this loan
-    const loanUpdate: any = {
+    const loanUpdate: LoanMatchUpdate = {
       status: 'active',
       match_status: 'matched',
       matched_at: new Date().toISOString(),
@@ -341,7 +384,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
     if (match.lender_user_id) {
       loanUpdate.lender_id = match.lender_user_id;
     } else {
-      loanUpdate.business_lender_id = match.lender_business_id;
+      loanUpdate.business_lender_id = match.lender_business_id ?? undefined
     }
 
     await supabase
@@ -358,10 +401,18 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
       })
       .eq('id', match.id);
 
+    if (loan.borrower_id) {
+      try {
+        await onVoucheeNewLoan(supabase as any, loan.borrower_id, loan.id);
+      } catch (err) {
+        log.error('[MatchExpiry] onVoucheeNewLoan error (non-fatal):', err);
+      }
+    }
+
     // Notify borrower of auto-match
-    if (loan.borrower?.email) {
+    if ((loan.borrower as any)?.email) {
             await sendEmail({
-        to: loan.borrower.email,
+        to: (loan.borrower as any)?.email,
         subject: 'Loan Matched with New Lender!',
         html: `
       <!DOCTYPE html>
@@ -416,7 +467,7 @@ async function notifyNextLender(supabase: any, loan: any, match: any) {
             ">
 
               <p style="margin:0 0 12px 0; color:#065f46;">
-                Hi ${loan.borrower.full_name || 'there'}!
+                Hi ${(loan.borrower as any)?.full_name || 'there'}!
               </p>
 
               <p style="margin:0 0 20px 0; color:#065f46;">

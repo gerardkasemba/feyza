@@ -9,6 +9,9 @@ import { createClient }               from '@supabase/supabase-js';
 import { verifyPartnerSecret }        from '../_auth';
 import { VouchService }               from '@/lib/trust-score';
 import { checkVouchingEligibility }   from '@/lib/vouching/accountability';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-vouches');
 
 function serviceClient() {
   return createClient(
@@ -58,8 +61,8 @@ export async function GET(req: NextRequest) {
       can_vouch:         eligibility.eligible,
       vouch_blocked_reason: eligibility.eligible ? null : eligibility.reason,
     });
-  } catch (err: any) {
-    console.error('[Partner /vouches GET]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /vouches GET]', err);
     return NextResponse.json({ error: 'Failed to fetch vouches' }, { status: 500 });
   }
 }
@@ -118,8 +121,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, vouch: result.vouch });
-  } catch (err: any) {
-    console.error('[Partner /vouches POST]', err);
+  } catch (err: unknown) {
+    log.error('[Partner /vouches POST]', err);
     return NextResponse.json({ error: 'Failed to create vouch' }, { status: 500 });
   }
 }

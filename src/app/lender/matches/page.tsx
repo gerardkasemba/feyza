@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -40,6 +42,7 @@ interface LoanMatch {
     total_installments: number;
     lender_id?: string;
     business_lender_id?: string;
+    borrower_name?: string;
     borrower?: {
       full_name: string;
       borrower_rating?: string;
@@ -68,7 +71,7 @@ export default function PendingMatchesPage() {
       return;
     }
 
-    // Get user profile
+    // Get user profile for Navbar
     const { data: profile } = await supabase
       .from('users')
       .select('*')
@@ -77,108 +80,16 @@ export default function PendingMatchesPage() {
 
     setUser(profile);
 
-    // Get business profile if exists
-    const { data: business } = await supabase
-      .from('business_profiles')
-      .select('id')
-      .eq('user_id', user.id)
-      .single();
-
-    console.log('[Matches] User:', user.id, 'Business:', business?.id);
-
-    // Build query for matches
-    let matchQuery = supabase
-      .from('loan_matches')
-      .select('id, loan_id, status, match_score, expires_at, created_at, lender_user_id, lender_business_id')
-      .order('created_at', { ascending: false });
-
-    // Filter by lender (user or business)
-    if (business?.id) {
-      matchQuery = matchQuery.or(`lender_user_id.eq.${user.id},lender_business_id.eq.${business.id}`);
-    } else {
-      matchQuery = matchQuery.eq('lender_user_id', user.id);
-    }
-
-    // Filter by status
-    if (filter === 'pending') {
-      matchQuery = matchQuery.eq('status', 'pending');
-    }
-
-    const { data: matchesData, error } = await matchQuery.limit(50);
-
-    console.log('[Matches] Raw matches:', matchesData?.length, 'Error:', error);
-
-    if (error) {
-      console.error('Error loading matches:', error);
+    // Matches with borrower names from API (service role so names are populated)
+    const res = await fetch(`/api/lender/matches?filter=${filter}`);
+    if (!res.ok) {
+      log.error('Error loading matches:', res.status);
       setMatches([]);
-    } else if (matchesData && matchesData.length > 0) {
-      // Fetch loan details separately
-      const loanIds = matchesData.map(m => m.loan_id).filter(Boolean);
-      
-      if (loanIds.length > 0) {
-        const { data: loansData, error: loansError } = await supabase
-          .from('loans')
-          .select('id, amount, currency, purpose, repayment_frequency, total_installments, lender_id, business_lender_id, borrower_id')
-          .in('id', loanIds);
-        
-        console.log('[Matches] Loans data:', loansData?.length, 'Error:', loansError);
-        
-        // Get borrower details
-        const borrowerIds = [...new Set(loansData?.map(l => l.borrower_id).filter(Boolean) || [])];
-        let borrowersMap: Record<string, any> = {};
-        
-        if (borrowerIds.length > 0) {
-          const { data: borrowersData } = await supabase
-            .from('users')
-            .select('id, full_name, borrower_rating')
-            .in('id', borrowerIds);
-          
-          borrowersMap = (borrowersData || []).reduce((acc, b) => {
-            acc[b.id] = b;
-            return acc;
-          }, {} as Record<string, any>);
-        }
-        
-        // ============================================
-        // CORRECTED LOGIC: Don't filter by lender_id
-        // The match status determines visibility
-        // ============================================
-        const enrichedMatches = matchesData
-          .map(match => {
-            const loan = loansData?.find(l => l.id === match.loan_id);
-            if (!loan) {
-              console.log('[Matches] No loan found for match', match.id);
-              return null;
-            }
-            
-            // IMPORTANT: Do NOT filter out loans with lender_id or business_lender_id
-            // The loan_matches.status field already tracks if this match is:
-            // - 'pending' (still active)
-            // - 'accepted' (this lender won the match)
-            // - 'declined' (this lender declined or another lender won)
-            // - 'expired' (this lender didn't respond in time)
-            //
-            // Filtering here would cause matches to mysteriously disappear
-            // from the lender's dashboard, leading to confusion.
-            
-            return {
-              ...match,
-              loan: {
-                ...loan,
-                borrower: borrowersMap[loan.borrower_id] || null
-              }
-            };
-          })
-          .filter(Boolean);
-
-        console.log('[Matches] Enriched matches:', enrichedMatches.length);
-        setMatches(enrichedMatches as LoanMatch[]);
-      } else {
-        setMatches([]);
-      }
-    } else {
-      setMatches([]);
+      setLoading(false);
+      return;
     }
+    const { matches: apiMatches } = await res.json();
+    setMatches(apiMatches || []);
 
     setLoading(false);
   }
@@ -235,7 +146,8 @@ export default function PendingMatchesPage() {
                 <Target className="w-7 h-7 text-primary-600 dark:text-primary-400" />
                 Loan Matches
               </h1>
-              <p className="text-neutral-500 dark:text-neutral-400 mt-1">
+              <h2 className="sr-only">Matches overview</h2>
+              <p className="text-neutral-600 dark:text-neutral-300 mt-1">
                 {pendingCount > 0 
                   ? `${pendingCount} pending match${pendingCount > 1 ? 'es' : ''} awaiting your response`
                   : 'Review and respond to matched loan requests'
@@ -286,11 +198,11 @@ export default function PendingMatchesPage() {
           ) : matches.length === 0 ? (
             /* Empty State */
             <Card className="text-center py-16">
-              <Inbox className="w-16 h-16 text-neutral-300 dark:text-neutral-600 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
+              <Inbox className="w-16 h-16 text-neutral-400 dark:text-neutral-500 mx-auto mb-4" aria-hidden />
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-2">
                 {filter === 'pending' ? 'No pending matches' : 'No matches yet'}
-              </h3>
-              <p className="text-neutral-500 dark:text-neutral-400 max-w-sm mx-auto mb-6">
+              </h2>
+              <p className="text-neutral-600 dark:text-neutral-300 max-w-sm mx-auto mb-6">
                 {filter === 'pending' 
                   ? 'You have no loan requests awaiting your response. When borrowers match with your preferences, they\'ll appear here.'
                   : 'When borrowers match with your lending preferences, their requests will appear here for you to review.'
@@ -346,7 +258,7 @@ export default function PendingMatchesPage() {
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-neutral-600 dark:text-neutral-400">
                           <span className="flex items-center gap-1">
                             <User className="w-4 h-4" />
-                            {match.loan?.borrower?.full_name || 'Anonymous'}
+                            {match.loan?.borrower?.full_name || match.loan?.borrower_name || 'Borrower'}
                           </span>
                           {match.loan?.borrower?.borrower_rating && (
                             <Badge variant="outline" className="text-xs mx-2">

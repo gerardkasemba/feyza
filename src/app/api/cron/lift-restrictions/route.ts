@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('cron-lift-restrictions');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -45,11 +48,11 @@ export async function POST(request: NextRequest) {
       .lte('restriction_ends_at', now.toISOString());
 
     if (fetchError) {
-      console.error('[RestrictionLifter] Error fetching borrowers:', fetchError);
+      log.error('[RestrictionLifter] Error fetching borrowers:', fetchError);
       return NextResponse.json({ error: 'Failed to fetch borrowers' }, { status: 500 });
     }
 
-    console.log(`[RestrictionLifter] Found ${borrowersToUnblock?.length || 0} borrowers to unblock`);
+    log.info(`[RestrictionLifter] Found ${borrowersToUnblock?.length || 0} borrowers to unblock`);
 
     // ============================================
     // 2. PROCESS EACH BORROWER
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
     
     for (const borrower of borrowersToUnblock || []) {
       try {
-        console.log(`[RestrictionLifter] Unblocking borrower ${borrower.id} (${borrower.full_name})`);
+        log.info(`[RestrictionLifter] Unblocking borrower ${borrower.id} (${borrower.full_name})`);
         
         // Unblock the borrower and reset to starter
         await supabase
@@ -100,13 +103,13 @@ export async function POST(request: NextRequest) {
 
         results.restrictionsLifted++;
         
-      } catch (err: any) {
-        console.error(`[RestrictionLifter] Error unblocking ${borrower.id}:`, err);
-        results.errors.push(`Failed to unblock ${borrower.id}: ${err.message}`);
+      } catch (err: unknown) {
+        log.error(`[RestrictionLifter] Error unblocking ${borrower.id}:`, err);
+        results.errors.push(`Failed to unblock ${borrower.id}: ${(err as Error).message}`);
       }
     }
 
-    console.log('[RestrictionLifter] Completed:', results);
+    log.info('[RestrictionLifter] Completed:', results);
     
     return NextResponse.json({
       success: true,
@@ -114,7 +117,7 @@ export async function POST(request: NextRequest) {
     });
     
   } catch (error) {
-    console.error('[RestrictionLifter] Error:', error);
+    log.error('[RestrictionLifter] Error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

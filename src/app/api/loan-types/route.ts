@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('loan-types');
 
 export interface LoanType {
   id: string;
@@ -51,7 +54,7 @@ export async function GET(request: NextRequest) {
           .eq('is_active', true);
 
         if (error) {
-          console.log('business_loan_types table may not exist, returning defaults');
+          log.info('business_loan_types table may not exist, returning defaults');
           return NextResponse.json({ loanTypes: DEFAULT_LOAN_TYPES });
         }
 
@@ -75,7 +78,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ loanTypes: loanTypes.length > 0 ? loanTypes : DEFAULT_LOAN_TYPES });
       } catch (err) {
-        console.log('Error fetching business loan types, returning defaults');
+        log.info('Error fetching business loan types, returning defaults');
         return NextResponse.json({ loanTypes: DEFAULT_LOAN_TYPES });
       }
     }
@@ -94,7 +97,7 @@ export async function GET(request: NextRequest) {
       const { data: loanTypes, error } = await query;
 
       if (error) {
-        console.log('loan_types table may not exist, returning defaults:', error.message);
+        log.info('loan_types table may not exist, returning defaults:', (error as Error).message);
         return NextResponse.json({ loanTypes: DEFAULT_LOAN_TYPES });
       }
 
@@ -103,11 +106,11 @@ export async function GET(request: NextRequest) {
         loanTypes: (loanTypes && loanTypes.length > 0) ? loanTypes : DEFAULT_LOAN_TYPES 
       });
     } catch (err) {
-      console.log('Error fetching loan types, returning defaults');
+      log.info('Error fetching loan types, returning defaults');
       return NextResponse.json({ loanTypes: DEFAULT_LOAN_TYPES });
     }
   } catch (error) {
-    console.error('Error in loan types API:', error);
+    log.error('Error in loan types API:', error);
     // Always return something useful, even on error
     return NextResponse.json({ loanTypes: DEFAULT_LOAN_TYPES });
   }
@@ -175,13 +178,13 @@ export async function POST(request: NextRequest) {
       if (error.code === '23505') {
         return NextResponse.json({ error: 'A loan type with this name already exists' }, { status: 400 });
       }
-      console.error('Error creating loan type:', error);
+      log.error('Error creating loan type:', error);
       return NextResponse.json({ error: 'Failed to create loan type' }, { status: 500 });
     }
 
     return NextResponse.json({ loanType: newLoanType });
   } catch (error) {
-    console.error('Error in loan types API:', error);
+    log.error('Error in loan types API:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

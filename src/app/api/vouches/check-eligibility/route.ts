@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { canUserVouch } from '@/lib/fraud-prevention/basic-eligibility';
+import { logger } from '@/lib/logger';
+
+const log = logger('vouches-check-eligibility');
 
 /**
  * POST /api/vouches/check-eligibility
@@ -18,8 +21,8 @@ export async function POST(request: NextRequest) {
 
     const eligibility = await canUserVouch(user.id);
     return NextResponse.json(eligibility);
-  } catch (error: any) {
-    console.error('[POST /api/vouches/check-eligibility]', error);
+  } catch (error: unknown) {
+    log.error('[POST /api/vouches/check-eligibility]', error);
     return NextResponse.json({ canVouch: false, reason: 'Server error.' }, { status: 500 });
   }
 }

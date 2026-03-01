@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('new_page');
 
 import React, { useEffect, useState, Suspense, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -7,7 +9,8 @@ import { Navbar, Footer } from '@/components/layout';
 import { Card, Button, Badge } from '@/components/ui';
 import { LoanRequestForm, LoanRequestFormData } from '@/components/loans/LoanRequestForm';
 import { createClient } from '@/lib/supabase/client';
-import { BusinessProfile } from '@/types';
+import { onLoanCreatedForBusiness } from '@/lib/business/borrower-trust-service';
+import { BusinessProfile, User } from '@/types';
 import { generateInviteToken, calculateRepaymentSchedule, toDateString } from '@/lib/utils';
 import {
   ArrowLeft,
@@ -37,7 +40,7 @@ function PageShell({
   subtitle,
   children,
 }: {
-  user: any;
+  user: User | null;
   title: string;
   subtitle?: string;
   children: React.ReactNode;
@@ -49,8 +52,9 @@ function PageShell({
         <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-6">
           <div className="mb-5">
             <h1 className="text-xl font-bold text-neutral-900 dark:text-white">{title}</h1>
+            <h2 className="sr-only">Request details</h2>
             {subtitle ? (
-              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">{subtitle}</p>
+              <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{subtitle}</p>
             ) : null}
           </div>
 
@@ -130,7 +134,7 @@ function Banner({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="text-sm font-bold text-neutral-900 dark:text-white">{title}</h3>
+            <h2 className="text-sm font-bold text-neutral-900 dark:text-white">{title}</h2>
             {badge ? (
               <span className="rounded-full border border-black/10 dark:border-white/10 px-2 py-0.5 text-[11px] font-semibold text-neutral-700 dark:text-neutral-200">
                 {badge}
@@ -300,7 +304,7 @@ function NewLoanContent() {
 
         setIsDwollaEnabled((providers || []).some((p) => p.slug === 'dwolla'));
       } catch (err) {
-        console.error('Failed to check payment providers:', err);
+        log.error('Failed to check payment providers:', err);
       }
     };
 
@@ -322,20 +326,16 @@ function NewLoanContent() {
     if (!user) return;
 
     try {
-      const response = await fetch('/api/plaid/create-link-token', {
+      const response = await fetch('/api/plaid/link-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: user.id,
-          userEmail: user.email,
-          userName: user.full_name,
-        }),
+        body: JSON.stringify({}),
       });
 
       const data = await response.json();
       if (data.link_token) setLinkToken(data.link_token);
     } catch (err) {
-      console.error('Error fetching link token:', err);
+      log.error('Error fetching link token:', err);
     }
   }, [user]);
 
@@ -345,14 +345,12 @@ function NewLoanContent() {
 
       setConnectingBank(true);
       try {
-        const response = await fetch('/api/plaid/guest-exchange', {
+        const response = await fetch('/api/plaid/exchange', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             public_token: publicToken,
-            account_id: metadata.accounts[0].id,
-            user_name: user.full_name,
-            user_email: user.email,
+            account_id: (metadata.accounts as any[])?.[0].id,
           }),
         });
 
@@ -386,7 +384,7 @@ function NewLoanContent() {
           alert(data.error || 'Failed to connect bank');
         }
       } catch (err) {
-        console.error('Error exchanging token:', err);
+        log.error('Error exchanging token:', err);
         alert('Failed to connect bank account');
       } finally {
         setConnectingBank(false);
@@ -416,23 +414,12 @@ function NewLoanContent() {
     const interestRate = data.lenderType === 'business' ? (data.interestRate || 0) : 0;
     const interestType = data.interestType || 'simple';
 
-    const termMonths =
-      data.totalInstallments *
-      (data.repaymentFrequency === 'weekly'
-        ? 0.25
-        : data.repaymentFrequency === 'biweekly'
-          ? 0.5
-          : 1);
-
+    // FLAT-RATE formula — consistent with accept route, matching engine and DB constraint
+    // (check_total_interest requires total_interest = amount * (interest_rate / 100) when uses_apr_calculation = false)
+    // For personal loans the lender sets their own rate at acceptance time, so we start at 0.
     let totalInterest = 0;
     if (interestRate > 0) {
-      if (interestType === 'simple') {
-        totalInterest = data.amount * (interestRate / 100 / 12) * termMonths;
-      } else {
-        const r = interestRate / 100;
-        const t = termMonths / 12;
-        totalInterest = data.amount * Math.pow(1 + r / 12, 12 * t) - data.amount;
-      }
+      totalInterest = Math.round(data.amount * (interestRate / 100) * 100) / 100;
     }
 
     const totalAmount = data.amount + totalInterest;
@@ -465,9 +452,9 @@ function NewLoanContent() {
             throw new Error(message);
           }
         }
-      } catch (error: any) {
-        if (error.message) throw error;
-        console.error('Failed to check trust level:', error);
+      } catch (error: unknown) {
+        if ((error as Error).message) throw error;
+        log.error('Failed to check trust level:', error);
       }
     }
 
@@ -482,11 +469,11 @@ function NewLoanContent() {
 
         if (invitedUser && !lookupError) invitedLenderInfo = invitedUser;
       } catch (error) {
-        console.error('Failed to look up invited user by username:', error);
+        log.error('Failed to look up invited user by username:', error);
       }
     }
 
-    const loanData: any = {
+    const loanData: Record<string, unknown> = {
       borrower_id: user.id,
       lender_type: data.lenderType,
       business_lender_id: targetLenderId,
@@ -541,6 +528,7 @@ function NewLoanContent() {
 
       status: 'pending',
       match_status: data.lenderType === 'business' ? 'pending' : 'manual',
+      uses_apr_calculation: false,
 
       amount_paid: 0,
       amount_remaining: Math.round(totalAmount * 100) / 100,
@@ -561,6 +549,13 @@ function NewLoanContent() {
 
     const { data: loan, error } = await supabase.from('loans').insert(loanData).select().single();
     if (error) throw error;
+
+    // Update borrower_business_trust when a business loan is created
+    // (replaces tr_update_trust_on_loan_create DB trigger)
+    if (targetLenderId && loanData.lender_type === 'business') {
+      onLoanCreatedForBusiness(supabase as any, user.id, targetLenderId as string, Number(data.amount))
+        .catch(err => console.error('[LoanNew] onLoanCreatedForBusiness error:', err));
+    }
 
     // NOTE: If your table doesn't have notifications.data, this insert will fail (you saw PGRST204).
     // Keep your original behavior, but you may want to remove "data" or add the column in DB.

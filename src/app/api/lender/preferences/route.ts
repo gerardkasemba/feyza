@@ -1,5 +1,35 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('lender-preferences');
+
+/** Lender preferences upsert shape */
+interface LenderPreferencesData {
+  is_active: boolean;
+  auto_accept: boolean;
+  min_amount: number;
+  max_amount: number;
+  preferred_currency: string;
+  interest_rate: number;
+  interest_type: string;
+  countries: string[];
+  states: string[];
+  min_borrower_rating: string;
+  require_verified_borrower: boolean;
+  min_term_weeks: number;
+  max_term_weeks: number;
+  capital_pool: number;
+  notify_on_match: boolean;
+  notify_email: boolean;
+  notify_sms: boolean;
+  first_time_borrower_limit: number;
+  allow_first_time_borrowers: boolean;
+  // Set on insert
+  business_id?: string | null;
+  user_id?: string | null;
+}
+
 
 // GET: Get current user's lender preferences
 export async function GET(request: NextRequest) {
@@ -47,7 +77,7 @@ export async function GET(request: NextRequest) {
       userId: user.id,
     });
   } catch (error) {
-    console.error('Error in GET preferences:', error);
+    log.error('Error in GET preferences:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -103,7 +133,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     // Prepare preference data
-    const preferencesData: any = {
+    const preferencesData: LenderPreferencesData = {
       is_active: is_active ?? true,
       auto_accept: auto_accept ?? false,
       min_amount: min_amount ?? 50,
@@ -157,7 +187,7 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error updating preferences:', error);
+        log.error('Error updating preferences:', error);
         return NextResponse.json({ error: 'Failed to update preferences' }, { status: 500 });
       }
       result = data;
@@ -178,15 +208,15 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) {
-        console.error('Error inserting preferences:', error);
-        return NextResponse.json({ error: 'Failed to save preferences: ' + error.message }, { status: 500 });
+        log.error('Error inserting preferences:', error);
+        return NextResponse.json({ error: 'Failed to save preferences: ' + (error as Error).message }, { status: 500 });
       }
       result = data;
     }
 
     return NextResponse.json({ success: true, preferences: result });
   } catch (error) {
-    console.error('Error in POST preferences:', error);
+    log.error('Error in POST preferences:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('page');
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -152,7 +154,7 @@ function LenderPreferencesContent() {
           states: prev.states.filter(s => validStateCodes.includes(s)),
         }));
       } catch (err) {
-        console.error('Failed to fetch states:', err);
+        log.error('Failed to fetch states:', err);
       }
       setLoadingStates(false);
     };
@@ -189,7 +191,7 @@ function LenderPreferencesContent() {
           setAvailableCountries(countriesData.countries || []);
         }
       } catch (err) {
-        console.error('Failed to fetch countries:', err);
+        log.error('Failed to fetch countries:', err);
       }
 
       const response = await fetch('/api/lender/preferences');
@@ -207,7 +209,7 @@ function LenderPreferencesContent() {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      log.error('Failed to fetch data:', err);
     } finally {
       setLoading(false);
     }
@@ -230,7 +232,7 @@ function LenderPreferencesContent() {
           setSelectedLoanTypeIds(selected);
         }
       } catch (error) {
-        console.error('Failed to fetch loan types:', error);
+        log.error('Failed to fetch loan types:', error);
       } finally {
         setLoadingLoanTypes(false);
       }
@@ -260,8 +262,8 @@ function LenderPreferencesContent() {
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save preferences');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to save preferences');
     } finally {
       setSaving(false);
     }
@@ -280,8 +282,8 @@ function LenderPreferencesContent() {
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (error: any) {
-      setError(error.message || 'Failed to save loan types');
+    } catch (error: unknown) {
+      setError((error as Error).message || 'Failed to save loan types');
     } finally {
       setSavingLoanTypes(false);
     }

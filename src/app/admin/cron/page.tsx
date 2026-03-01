@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -38,7 +40,7 @@ interface JobRun {
   duration_ms: number;
   status: 'running' | 'success' | 'error';
   items_processed: number;
-  result: any;
+  result: Record<string, unknown>;
   error_message: string | null;
   triggered_by: string | null;
 }
@@ -120,7 +122,7 @@ export default function CronJobsPage() {
         setJobRuns(data || []);
       }
     } catch (err) {
-      console.error('Error fetching job runs:', err);
+      log.error('Error fetching job runs:', err);
     }
     setLoading(false);
   };
@@ -148,11 +150,11 @@ export default function CronJobsPage() {
       
       // Refresh job runs
       await fetchJobRuns();
-    } catch (err: any) {
-      console.error('Error running job:', err);
+    } catch (err: unknown) {
+      log.error('Error running job:', err);
       setLastResults(prev => ({ 
         ...prev, 
-        [job.id]: { error: err.message, success: false } 
+        [job.id]: { error: (err as Error).message, success: false } 
       }));
     }
 

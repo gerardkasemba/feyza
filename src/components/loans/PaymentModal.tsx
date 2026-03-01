@@ -136,8 +136,8 @@ export function PaymentModal({
       setProofFile(null);
       setProofPreview(null);
       onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to record payment');
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to record payment');
     } finally {
       setIsSubmitting(false);
     }

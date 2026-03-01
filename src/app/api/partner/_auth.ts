@@ -11,6 +11,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('partner-_auth');
 
 const PARTNER_SECRET = process.env.FEYZA_PARTNER_SECRET ?? '';
 
@@ -20,7 +23,7 @@ const PARTNER_SECRET = process.env.FEYZA_PARTNER_SECRET ?? '';
  */
 export function verifyPartnerSecret(req: NextRequest): NextResponse | null {
   if (!PARTNER_SECRET) {
-    console.error('[Partner API] FEYZA_PARTNER_SECRET is not set!');
+    log.error('[Partner API] FEYZA_PARTNER_SECRET is not set!');
     return NextResponse.json(
       { error: 'Partner API not configured' },
       { status: 500 },

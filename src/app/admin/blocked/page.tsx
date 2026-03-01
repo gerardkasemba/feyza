@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
@@ -124,7 +126,7 @@ export default function BlockedBorrowersPage() {
 
       await fetchData();
     } catch (err) {
-      console.error('Error unblocking user:', err);
+      log.error('Error unblocking user:', err);
       alert('Failed to unblock user');
     }
     setUnblocking(null);

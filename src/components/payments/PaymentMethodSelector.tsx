@@ -97,8 +97,8 @@ export default function PaymentMethodSelector({
       if (!res.ok) throw new Error('Failed to fetch payment methods');
       const data = await res.json();
       setMethods(data.providers || []);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError((err as Error).message);
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentConfirmationEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('payments-confirm');
 
 export async function POST(request: NextRequest) {
   try {
@@ -83,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error confirming payment:', error);
+    log.error('Error confirming payment:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

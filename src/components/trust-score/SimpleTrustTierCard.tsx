@@ -1,9 +1,11 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('SimpleTrustTierCard');
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Card, Badge } from '@/components/ui';
-import { Users, ChevronRight, Loader2, ArrowUp } from 'lucide-react';
+import { Card, Modal } from '@/components/ui';
+import { Users, ChevronRight, Loader2, ArrowUp, HelpCircle } from 'lucide-react';
 
 interface SimpleTrustTier {
   tier: 'tier_1' | 'tier_2' | 'tier_3' | 'tier_4';
@@ -13,6 +15,7 @@ interface SimpleTrustTier {
   nextTierVouches: number;
 }
 
+// Indicative colors aligned with trust score: tier_1 = lowest (red), tier_4 = highest (green)
 const TIER_CONFIG: Record<
   string,
   {
@@ -26,39 +29,39 @@ const TIER_CONFIG: Record<
   }
 > = {
   tier_1: {
-    bg: 'bg-neutral-50 dark:bg-neutral-900/40',
-    border: 'border-neutral-200 dark:border-neutral-700',
-    badge: 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300',
+    bg: 'bg-red-50/60 dark:bg-red-900/10',
+    border: 'border-red-200 dark:border-red-800/50',
+    badge: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300',
     badgeText: 'Low Trust',
-    dot: 'bg-neutral-400',
-    progress: 'bg-neutral-400',
+    dot: 'bg-red-500',
+    progress: 'bg-red-500',
     label: 'Small amounts · Higher rates',
   },
   tier_2: {
-    bg: 'bg-amber-50/60 dark:bg-amber-900/10',
-    border: 'border-amber-200 dark:border-amber-800/50',
-    badge: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300',
+    bg: 'bg-orange-50/60 dark:bg-orange-900/10',
+    border: 'border-orange-200 dark:border-orange-800/50',
+    badge: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300',
     badgeText: 'Building Trust',
-    dot: 'bg-amber-500',
-    progress: 'bg-amber-500',
+    dot: 'bg-orange-500',
+    progress: 'bg-orange-500',
     label: 'Moderate amounts · Better rates',
   },
   tier_3: {
-    bg: 'bg-emerald-50/60 dark:bg-emerald-900/10',
-    border: 'border-emerald-200 dark:border-emerald-800/50',
-    badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
-    badgeText: 'Established Trust',
-    dot: 'bg-emerald-500',
-    progress: 'bg-emerald-500',
-    label: 'Higher amounts · Good rates',
-  },
-  tier_4: {
     bg: 'bg-blue-50/60 dark:bg-blue-900/10',
     border: 'border-blue-200 dark:border-blue-800/50',
     badge: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300',
-    badgeText: 'High Trust',
+    badgeText: 'Established Trust',
     dot: 'bg-blue-500',
     progress: 'bg-blue-500',
+    label: 'Higher amounts · Good rates',
+  },
+  tier_4: {
+    bg: 'bg-emerald-50/60 dark:bg-emerald-900/10',
+    border: 'border-emerald-200 dark:border-emerald-800/50',
+    badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300',
+    badgeText: 'High Trust',
+    dot: 'bg-emerald-500',
+    progress: 'bg-emerald-500',
     label: 'Max amounts · Best rates',
   },
 };
@@ -75,12 +78,13 @@ function tierProgress(tier: SimpleTrustTier): number {
 export function SimpleTrustTierCard({ className = '' }: { className?: string }) {
   const [tier, setTier] = useState<SimpleTrustTier | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showTierModal, setShowTierModal] = useState(false);
 
   useEffect(() => {
     fetch('/api/trust/tier')
       .then((r) => r.json())
       .then((d) => setTier(d.tier ?? null))
-      .catch((e) => console.error('[SimpleTrustTierCard]', e))
+      .catch((e) => log.error('[SimpleTrustTierCard]', e))
       .finally(() => setLoading(false));
   }, []);
 
@@ -111,9 +115,19 @@ export function SimpleTrustTierCard({ className = '' }: { className?: string }) 
               <Users className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
             </div>
             <div>
-              <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                Trust Tier
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  Trust Tier
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowTierModal(true)}
+                  className="p-0.5 rounded-full text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                  aria-label="Learn about Trust Tiers"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
               <p className="text-sm font-bold text-neutral-900 dark:text-white">
                 {cfg.badgeText}
               </p>
@@ -169,6 +183,32 @@ export function SimpleTrustTierCard({ className = '' }: { className?: string }) 
           <ChevronRight className="w-3.5 h-3.5 text-neutral-400" />
         </Link>
       </div>
+
+      <Modal isOpen={showTierModal} onClose={() => setShowTierModal(false)} title="About Trust Tiers" size="lg">
+        <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+          <p className="text-sm text-neutral-600 dark:text-neutral-400">
+            Your Trust Tier is based on how many people have vouched for you on Feyza. Lenders use tiers to set rates and limits — higher tiers unlock better terms.
+          </p>
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">The 4 tiers</p>
+            {Object.entries(TIER_CONFIG).map(([key, t]) => (
+              <div
+                key={key}
+                className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${t.border} ${t.bg}`}
+              >
+                <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${t.dot}`} />
+                <div className="min-w-0 flex-1">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${t.badge}`}>{t.badgeText}</span>
+                  <span className="text-xs text-neutral-600 dark:text-neutral-400 ml-2">{t.label}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">
+            Get more vouches from people who know you to move up. Vouchers put their reputation on the line — if you default, their standing is affected too.
+          </p>
+        </div>
+      </Modal>
     </Card>
   );
 }

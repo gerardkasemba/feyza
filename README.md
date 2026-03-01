@@ -1,56 +1,78 @@
-# Feyza 💰
+# Feyza
 
-> From Swahili "Feza" meaning money - Simple, transparent lending between people you trust.
+Borrow and lend with trust. A loan tracking platform for informal lending between individuals and businesses.
 
-A mobile-first loan tracking platform that allows users to request, track, and repay loans — either from registered business lenders or friends and family via invite links.
+- **Stack:** Next.js (App Router), React 19, Supabase (auth + Postgres), Tailwind CSS
+- **Deploy:** Vercel (recommended); cron jobs for payments, reminders, matching
 
-## Features
+## Quick start
 
-### Two Ways to Request a Loan
+1. **Clone and install**
+   ```bash
+   npm install
+   ```
 
-1. **Business Lenders** - Browse and request loans from verified businesses on the platform
-2. **Friends & Family** - Send invite links to personal contacts (no account required for lenders)
+2. **Environment**
+   - Copy `.env.example` to `.env.local`
+   - Fill in at least:
+     - `NEXT_PUBLIC_APP_URL` (e.g. `http://localhost:3000`)
+     - `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+     - `SUPABASE_SERVICE_ROLE_KEY` (required for API routes that need to bypass RLS)
+   - See [.env.example](.env.example) for all variables and which are **secret** (server-only).
 
-### Core Features
+3. **Database**
+   - Create a Supabase project and run the schema:
+     ```bash
+     # Apply main schema (tables, indexes, triggers)
+     psql $DATABASE_URL -f supabase/feyza-database.sql
+     ```
+   - Optional: enable [RLS](docs/SECURITY.md#row-level-security) for read protection:
+     ```bash
+     psql $DATABASE_URL -f supabase/migrations/0001_enable_rls_read_policies.sql
+     ```
 
-- 📱 **Mobile-first design** - Optimized for all devices with touch-friendly UI
-- 📊 **Visual timeline** - Track repayments with a clean, visual timeline
-- 🔔 **Smart notifications** - Friendly payment reminders via email
-- 📅 **Calendar export** - Add payment due dates to Google Calendar or iCal
-- 💳 **Multiple payment methods** - PayPal, Cash App, Venmo support
-- ✉️ **Email notifications** - Powered by Resend
-- 🌍 **Multi-currency support** - USD, EUR, GBP, NGN, GHS, KES
+4. **Run**
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3000](http://localhost:3000).
 
-### Guest Flow (No Account Required)
+## Scripts
 
-- Borrowers can request loans without creating an account
-- Lenders can accept and manage loans without creating an account
-- Simple email-based authentication for guest users
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server (Turbopack) |
+| `npm run build` | Production build |
+| `npm run start` | Start production server |
+| `npm run lint` | ESLint |
+| `npm run test` | Run unit/integration tests (includes payment handler critical path) |
+| `npm run test:coverage` | Tests with coverage report |
 
-## Tech Stack
+## Project structure
 
-- **Frontend**: Next.js 14, React 18, TypeScript, TailwindCSS
-- **Backend**: Supabase (PostgreSQL, Auth, Storage)
-- **Email**: Resend
-- **Payments**: PayPal, Cash App, Venmo integration
+- `src/app/` – Next.js App Router (pages, API routes, cron)
+- `src/components/` – Shared UI and layout
+- `src/lib/` – Supabase clients, payments, trust score, email, etc.
+- `src/types/` – Shared TypeScript types
+- `supabase/` – Schema (`feyza-database.sql`) and RLS migrations
 
-## Getting Started
+## Deployment (Vercel)
 
-### Prerequisites
+1. Connect the repo to Vercel and set **Environment Variables** from [.env.example](.env.example) (mark secrets as sensitive).
+2. Crons are defined in `vercel.json`; Vercel will call them with `Authorization: Bearer <CRON_SECRET>`.
+3. Ensure `NEXT_PUBLIC_APP_URL` is your production URL.
 
-- Node.js 18+
-- npm or yarn
-- Supabase account
-- Resend account
+## Security and RLS
 
-### Installation
+- Access control is enforced in the **application layer** (API routes check auth and roles).
+- The **service role** key is used only where necessary (cron, admin, trust score, payment handler, partner API). See [docs/SECURITY.md](docs/SECURITY.md).
+- Optional **Row Level Security (RLS)** can be enabled for read-side protection; see `supabase/migrations/0001_enable_rls_read_policies.sql` and [docs/SECURITY.md](docs/SECURITY.md).
 
-1. Clone the repository
-2. Install dependencies: `npm install`
-3. Set up environment variables: `cp .env.example .env.local`
-4. Run migrations in Supabase
-5. Start dev server: `npm run dev`
+## Observability
+
+- **Logs:** API and cron use `@/lib/logger` (JSON in production). View in Vercel Dashboard → Logs, or stream to your preferred log aggregator.
+- **Errors:** Set `SENTRY_DSN` in production to send errors to Sentry (see [Observability](#observability) in .env.example).
 
 ## License
 
-MIT License
+MIT

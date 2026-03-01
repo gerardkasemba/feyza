@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { createFacilitatedTransfer } from '@/lib/dwolla';
 import { sendEmail, getFundsOnTheWayEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+import type { User, BusinessProfile } from '@/types';
+
+const log = logger('loans-id-fund');
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
 
@@ -40,7 +44,7 @@ export async function POST(
       .single();
 
     if (loanError || !loan) {
-      console.error('Loan fetch error:', loanError);
+      log.error('Loan fetch error:', loanError);
       return NextResponse.json({ error: 'Loan not found' }, { status: 404 });
     }
 
@@ -61,7 +65,7 @@ export async function POST(
 
     // Handle MANUAL payment flow
     if (manualPayment) {
-      console.log('[Fund API] Processing manual payment:', { paymentMethod, transactionRef, receiptUrl: !!receiptUrl });
+      log.info('[Fund API] Processing manual payment:', { paymentMethod, transactionRef, receiptUrl: !!receiptUrl });
       
       // Update loan with manual funding info (use existing columns)
       const { error: updateError } = await serviceSupabase
@@ -79,7 +83,7 @@ export async function POST(
         .eq('id', loanId);
 
       if (updateError) {
-        console.error('Failed to update loan:', updateError);
+        log.error('Failed to update loan:', updateError);
         return NextResponse.json({ error: 'Failed to record funding' }, { status: 500 });
       }
 
@@ -105,7 +109,7 @@ export async function POST(
             html: emailContent.html,
           });
         } catch (emailError) {
-          console.error('Failed to send email:', emailError);
+          log.error('Failed to send email:', emailError);
           // Don't fail the request if email fails
         }
       }
@@ -128,7 +132,7 @@ export async function POST(
 
     // Handle ACH/Dwolla payment flow (existing code)
     // Get lender's Dwolla info - use business account if this is a business loan
-    let lenderDwollaInfo: any = null;
+    let lenderDwollaInfo: User | BusinessProfile | null = null;
     
     if (loan.business_lender_id) {
       // This is a business lender - use business Dwolla info
@@ -145,7 +149,7 @@ export async function POST(
       }
       
       lenderDwollaInfo = businessProfile;
-      console.log('[Fund] Using business Dwolla info for business lender:', loan.business_lender_id);
+      log.info('[Fund] Using business Dwolla info for business lender:', loan.business_lender_id);
     } else {
       // This is a personal lender - use personal Dwolla info
       const { data: lenderProfile } = await supabase
@@ -159,7 +163,7 @@ export async function POST(
       }
       
       lenderDwollaInfo = lenderProfile;
-      console.log('[Fund] Using personal Dwolla info for personal lender:', user.id);
+      log.info('[Fund] Using personal Dwolla info for personal lender:', user.id);
     }
 
     // Get borrower's Dwolla info - check multiple sources
@@ -173,10 +177,10 @@ export async function POST(
       }, { status: 400 });
     }
 
-    console.log('[Fund] Initiating ACH transfer:', {
+    log.info('[Fund] Initiating ACH transfer:', {
       loanId,
       amount: loan.amount,
-      lenderFundingSource: lenderDwollaInfo.dwolla_funding_source_url,
+      lenderFundingSource: lenderDwollaInfo!.dwolla_funding_source_url,
       borrowerFundingSource: borrowerDwollaFundingSource,
       isBusinessLender: !!loan.business_lender_id,
     });
@@ -191,7 +195,7 @@ export async function POST(
       .single();
     
     if (existingDisbursement) {
-      console.log(`[Fund] Disbursement already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
+      log.info(`[Fund] Disbursement already exists for loan ${loanId}: ${existingDisbursement.dwolla_transfer_id}`);
       return NextResponse.json({
         success: true,
         message: 'Disbursement already processed',
@@ -207,7 +211,7 @@ export async function POST(
 
     try {
       const result = await createFacilitatedTransfer({
-        sourceFundingSourceUrl: lenderDwollaInfo.dwolla_funding_source_url,
+        sourceFundingSourceUrl: lenderDwollaInfo!.dwolla_funding_source_url || '',
         destinationFundingSourceUrl: borrowerDwollaFundingSource,
         amount: loan.amount,
         currency: 'USD',
@@ -219,13 +223,13 @@ export async function POST(
 
       transferUrl = result.transferUrl;
       transferIds = result.transferIds;
-      console.log('[Fund] Transfer initiated:', { transferUrl, transferIds });
+      log.info('[Fund] Transfer initiated:', { transferUrl, transferIds });
 
-    } catch (dwollaError: any) {
-      console.error('[Fund] Dwolla transfer error:', dwollaError);
+    } catch (dwollaError: unknown) {
+      log.error('[Fund] Dwolla transfer error:', dwollaError);
       return NextResponse.json({ 
         error: 'Failed to initiate transfer. Please try again.',
-        details: dwollaError.message || 'Dwolla transfer failed'
+        details: (dwollaError instanceof Error ? dwollaError.message : undefined) || 'Dwolla transfer failed'
       }, { status: 500 });
     }
 
@@ -263,24 +267,24 @@ export async function POST(
         disbursement_status: 'processing',
         disbursement_transfer_id: transferIds[transferIds.length - 1],
         // Update lender info with correct Dwolla info (business or personal)
-        lender_dwolla_customer_url: lenderDwollaInfo.dwolla_customer_url,
-        lender_dwolla_customer_id: lenderDwollaInfo.dwolla_customer_id,
-        lender_dwolla_funding_source_url: lenderDwollaInfo.dwolla_funding_source_url,
-        lender_dwolla_funding_source_id: lenderDwollaInfo.dwolla_funding_source_id,
-        lender_bank_name: lenderDwollaInfo.bank_name,
-        lender_bank_account_mask: lenderDwollaInfo.bank_account_mask,
+        lender_dwolla_customer_url: lenderDwollaInfo!.dwolla_customer_url,
+        lender_dwolla_customer_id: lenderDwollaInfo!.dwolla_customer_id,
+        lender_dwolla_funding_source_url: lenderDwollaInfo!.dwolla_funding_source_url,
+        lender_dwolla_funding_source_id: lenderDwollaInfo!.dwolla_funding_source_id,
+        lender_bank_name: lenderDwollaInfo!.bank_name,
+        lender_bank_account_mask: lenderDwollaInfo!.bank_account_mask,
         lender_bank_connected: true,
       })
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('[Fund] Loan update error:', updateError);
+      log.error('[Fund] Loan update error:', updateError);
       // Transfer already initiated, so don't fail completely
     }
 
     // FIXED: Use lenderDwollaInfo instead of lenderProfile
     const lenderName = lenderDwollaInfo?.full_name || 
-                       lenderDwollaInfo?.business_name || 
+                       (lenderDwollaInfo as any)?.business_name || 
                        loan.business_lender?.business_name || 
                        'Your lender';
     const borrowerName = loan.borrower?.full_name || 'the borrower';
@@ -324,7 +328,7 @@ export async function POST(
           html: emailContent.html,
         });
       } catch (emailError) {
-        console.error('Failed to send email:', emailError);
+        log.error('Failed to send email:', emailError);
         // Don't fail the request if email fails
       }
     }
@@ -335,11 +339,11 @@ export async function POST(
       transferIds,
     });
 
-  } catch (error: any) {
-    console.error('[Fund] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Fund] Error:', error);
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error.message 
+      details: (error as Error).message 
     }, { status: 500 });
   }
 }

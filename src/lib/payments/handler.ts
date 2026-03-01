@@ -1,13 +1,17 @@
+import { logger } from '@/lib/logger';
+import { onLoanCompletedForBusiness } from '@/lib/business/borrower-trust-service';
+const log = logger('handler');
 /**
  * Centralized Payment Handler
- * 
- * All payment systems (Manual, Dwolla, PayPal, Stripe, Auto-pay) should call this
- * after a payment is successfully processed to update Trust Score.
+ *
+ * All payment systems (Manual, Dwolla, PayPal, Stripe, Auto-pay, Early-pay)
+ * call this after a payment is successfully processed to update Trust Score,
+ * vouches, lender capital, and borrower tier.
  */
 
 import { TrustScoreService } from '@/lib/trust-score';
 import { SupabaseClient } from '@supabase/supabase-js';
-import { onVoucheeLoanCompleted } from '@/lib/vouching/accountability';
+import { onVoucheeLoanCompleted, onVoucheePaymentMade } from '@/lib/vouching/accountability';
 
 export interface PaymentCompletedParams {
   supabase: SupabaseClient;
@@ -18,7 +22,13 @@ export interface PaymentCompletedParams {
   amount: number;
   dueDate?: string;
   paidDate?: string;
-  paymentMethod: 'manual' | 'dwolla' | 'paypal' | 'stripe' | 'auto';
+  paymentMethod: 'manual' | 'dwolla' | 'paypal' | 'stripe' | 'auto' | 'early';
+  /**
+   * Set true when the caller (e.g. payments/create) already updated
+   * users.total_payments_made / payments_early / payments_on_time / payments_late.
+   * Prevents double-counting those stats.
+   */
+  skipUserStats?: boolean;
 }
 
 export interface PaymentResult {
@@ -30,23 +40,25 @@ export interface PaymentResult {
 }
 
 /**
- * Call this after any payment is successfully processed
- * Updates trust score, checks if loan is completed, etc.
+ * Call this after any payment is successfully processed.
+ * Updates trust score, checks if loan is completed, updates lender capital,
+ * fires voucher completion pipeline, upgrades borrower tier.
  */
 export async function onPaymentCompleted(params: PaymentCompletedParams): Promise<PaymentResult> {
-  const { 
-    supabase, 
-    loanId, 
-    borrowerId, 
-    paymentId, 
-    scheduleId, 
-    amount, 
-    dueDate, 
+  const {
+    supabase,
+    loanId,
+    borrowerId,
+    paymentId,
+    scheduleId,
+    amount,
+    dueDate,
     paidDate = new Date().toISOString(),
-    paymentMethod 
+    paymentMethod,
+    skipUserStats = false,
   } = params;
 
-  console.log(`[PaymentHandler] Processing ${paymentMethod} payment for loan ${loanId}`);
+  log.info(`[PaymentHandler] Processing ${paymentMethod} payment for loan ${loanId}`);
 
   let trustScoreUpdated = false;
   let loanCompleted = false;
@@ -55,137 +67,179 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
   try {
     const trustService = new TrustScoreService(supabase);
 
-    // Calculate days from due date (negative = early, positive = late)
+    // ── 1. Calculate timing ────────────────────────────────────────────────
     let daysFromDue = 0;
     if (dueDate) {
-      const due = new Date(dueDate);
+      const due  = new Date(dueDate);
       const paid = new Date(paidDate);
       daysFromDue = Math.floor((paid.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
     }
+    log.info(`[PaymentHandler] Days from due: ${daysFromDue} (negative = early)`);
 
-    console.log(`[PaymentHandler] Days from due: ${daysFromDue} (negative = early)`);
+    // ── 2. Deduplication guard ─────────────────────────────────────────────
+    // Prevent the same payment from writing a duplicate trust_score_event
+    const resolvedPaymentId = paymentId || scheduleId;
+    if (resolvedPaymentId) {
+      const { data: existingEvent } = await supabase
+        .from('trust_score_events')
+        .select('id')
+        .eq('user_id', borrowerId)
+        .eq('payment_id', resolvedPaymentId)
+        .in('event_type', ['payment_ontime', 'payment_early', 'payment_late'])
+        .maybeSingle();
 
-    // Record payment event for trust score with error handling
-    try {
-      await trustService.onPaymentMade(
-        borrowerId,
-        loanId,
-        paymentId || scheduleId || 'unknown',
-        amount,  // Payment amount
-        daysFromDue
-      );
-      trustScoreUpdated = true;
-      console.log(`[PaymentHandler] ✅ Trust score updated for borrower ${borrowerId}`);
-    } catch (trustError: any) {
-      console.error(`[PaymentHandler] ❌ Failed to update trust score:`, trustError);
-      console.error(`[PaymentHandler] Trust error details:`, {
-        message: trustError.message,
-        code: trustError.code,
-        details: trustError.details,
-        hint: trustError.hint,
-      });
-      // Don't fail the payment, but log the error clearly
+      if (existingEvent) {
+        log.info(`[PaymentHandler] Trust event already exists for payment ${resolvedPaymentId} — skipping duplicate`);
+        // Still check loan completion below
+        trustScoreUpdated = true; // Don't report as error — it was already done
+      }
     }
 
-    // Update user payment stats
-    try {
-      const { data: userStats } = await supabase
-        .from('users')
-        .select('total_payments_made, auto_payments_count, manual_payments_count, payments_on_time, payments_early, payments_late, borrowing_tier, loans_at_current_tier, total_loans_completed')
-        .eq('id', borrowerId)
-        .single();
-
-      const isAutoPay = paymentMethod === 'dwolla' || paymentMethod === 'auto';
-      const updateData: any = {
-        total_payments_made: (userStats?.total_payments_made || 0) + 1,
-      };
-
-      // Track auto vs manual
-      if (isAutoPay) {
-        updateData.auto_payments_count = (userStats?.auto_payments_count || 0) + 1;
-      } else {
-        updateData.manual_payments_count = (userStats?.manual_payments_count || 0) + 1;
+    // ── 3. Record trust score event (if not a dupe) ────────────────────────
+    if (!trustScoreUpdated) {
+      try {
+        await trustService.onPaymentMade(
+          borrowerId,
+          loanId,
+          resolvedPaymentId,
+          amount,
+          daysFromDue
+        );
+        trustScoreUpdated = true;
+        log.info(`[PaymentHandler] ✅ Trust score updated for borrower ${borrowerId}`);
+      } catch (trustError: unknown) {
+        log.error(`[PaymentHandler] ❌ Failed to update trust score:`, trustError);
+        log.error(`[PaymentHandler] Trust error details:`, {
+          message: (trustError instanceof Error ? trustError.message : String(trustError)),
+          details: (trustError as any).details,
+          hint:    (trustError as any).hint,
+        });
       }
 
-      // Track payment timing
-      if (daysFromDue <= 0) {
-        if (daysFromDue < -2) {
-          updateData.payments_early = (userStats?.payments_early || 0) + 1;
+      // ── 3b. Reward vouchers on on-time / early borrower payments ──────────
+      // AWAITED — fire-and-forget promises are killed by serverless runtimes
+      // the moment the HTTP response is sent. loans_completed stayed 0 because
+      // onVoucheeLoanCompleted (below) suffered the same fate.
+      try {
+        await onVoucheePaymentMade(supabase, borrowerId, loanId, daysFromDue);
+      } catch (vouchPayErr) {
+        log.error(`[PaymentHandler] onVoucheePaymentMade error:`, vouchPayErr);
+      }
+    }
+
+    // ── 4. Update user payment stats (skipped if caller already did it) ────
+    if (!skipUserStats) {
+      try {
+        const { data: userStats } = await supabase
+          .from('users')
+          .select('total_payments_made, auto_payments_count, manual_payments_count, payments_on_time, payments_early, payments_late')
+          .eq('id', borrowerId)
+          .single();
+
+        const isAutoPay = paymentMethod === 'dwolla' || paymentMethod === 'auto';
+        const updateData: Record<string, unknown> = {
+          total_payments_made: (userStats?.total_payments_made || 0) + 1,
+        };
+
+        if (isAutoPay) {
+          updateData.auto_payments_count  = (userStats?.auto_payments_count  || 0) + 1;
         } else {
-          updateData.payments_on_time = (userStats?.payments_on_time || 0) + 1;
+          updateData.manual_payments_count = (userStats?.manual_payments_count || 0) + 1;
         }
-      } else {
-        updateData.payments_late = (userStats?.payments_late || 0) + 1;
+
+        if (daysFromDue <= 0) {
+          if (daysFromDue < -2) {
+            updateData.payments_early   = (userStats?.payments_early   || 0) + 1;
+          } else {
+            updateData.payments_on_time = (userStats?.payments_on_time || 0) + 1;
+          }
+        } else {
+          updateData.payments_late = (userStats?.payments_late || 0) + 1;
+        }
+
+        await supabase.from('users').update(updateData).eq('id', borrowerId);
+        log.info(`[PaymentHandler] ✅ User payment stats updated`);
+      } catch (statsError) {
+        log.error(`[PaymentHandler] Failed to update user stats:`, statsError);
       }
-
-      await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', borrowerId);
-
-      console.log(`[PaymentHandler] ✅ User payment stats updated:`, updateData);
-    } catch (statsError) {
-      console.error(`[PaymentHandler] Failed to update user stats:`, statsError);
     }
 
-    // Check if loan is now completed
+    // ── 5. Check if loan is now fully completed ────────────────────────────
     const { data: loan } = await supabase
       .from('loans')
-      .select('id, amount, amount_remaining, status')
+      .select('id, amount, amount_remaining, status, business_lender_id')
       .eq('id', loanId)
       .single();
 
     if (loan) {
-      // Check if all payments are made
       const { count: unpaidCount } = await supabase
         .from('payment_schedule')
         .select('id', { count: 'exact', head: true })
         .eq('loan_id', loanId)
         .eq('is_paid', false);
 
-      if (unpaidCount === 0 || (loan.amount_remaining !== null && loan.amount_remaining <= 0)) {
-        loanCompleted = true;
-        console.log(`[PaymentHandler] 🎉 Loan ${loanId} completed!`);
+      const isFullyPaid =
+        unpaidCount === 0 ||
+        (loan.amount_remaining !== null && Number(loan.amount_remaining) <= 0) ||
+        loan.status === 'completed';
 
-        // Update loan status
-        await supabase
-          .from('loans')
-          .update({ 
-            status: 'completed',
-            completed_at: new Date().toISOString()
-          })
-          .eq('id', loanId);
+      if (isFullyPaid) {
+        // Use event dedup instead of status check — callers (payments/create, payments/manual)
+        // already mark the loan 'completed' before calling us, so status !== 'completed' would
+        // always block this pipeline even on genuine first-time completions.
+        const { data: existingCompletionEvent } = await supabase
+          .from('trust_score_events')
+          .select('id')
+          .eq('user_id', borrowerId)
+          .eq('loan_id', loanId)
+          .in('event_type', ['loan_completed', 'first_loan_completed'])
+          .maybeSingle();
 
-        // Record loan completion for trust score
-        await trustService.onLoanCompleted(borrowerId, loanId, Number(loan.amount));
-        console.log(`[PaymentHandler] ✅ Loan completion recorded for trust score`);
+        if (!existingCompletionEvent) {
+          loanCompleted = true;
+          log.info(`[PaymentHandler] 🎉 Loan ${loanId} completed — firing completion pipeline!`);
 
-        // ── Fire voucher consequence pipeline (non-blocking) ──────────────
-        // Every active voucher for this borrower gets +2 pts and their
-        // success rate recalculated. This is the "good outcome" signal.
-        onVoucheeLoanCompleted(supabase, borrowerId, loanId)
-          .then(r => console.log(`[PaymentHandler] Voucher completion pipeline:`, r))
-          .catch(err => console.error(`[PaymentHandler] Voucher pipeline error:`, err));
-        // ============================================
-        // RELEASE AND INCREASE LENDER CAPITAL
-        // ============================================
+          // Mark loan completed if caller didn't (defensive)
+          if (loan.status !== 'completed') {
+            await supabase
+              .from('loans')
+              .update({ status: 'completed', completed_at: new Date().toISOString() })
+              .eq('id', loanId);
+          }
+
+          // Record loan completion for trust score
+          await trustService.onLoanCompleted(borrowerId, loanId, Number(loan.amount));
+          log.info(`[PaymentHandler] ✅ Loan completion recorded for trust score`);
+
+          // Update borrower_business_trust (replaces tr_update_trust_on_loan_complete trigger)
+          if (loan.business_lender_id) {
+            try {
+              await onLoanCompletedForBusiness(supabase, borrowerId, loan.business_lender_id as string, Number(loan.amount));
+            } catch (err) {
+              log.error(`[PaymentHandler] borrower trust completion error:`, err);
+            }
+          }
+
+          // ── Voucher completion pipeline — AWAITED ──────────────────────────
+          // Must be INSIDE the if(!existingCompletionEvent) guard — previously it
+          // leaked outside due to a missing closing brace, causing it to run on
+          // every fully-paid check instead of only on the first completion.
+          try {
+            const voucherResult = await onVoucheeLoanCompleted(supabase, borrowerId, loanId);
+            log.info(`[PaymentHandler] Voucher completion pipeline:`, voucherResult);
+          } catch (voucherErr) {
+            log.error(`[PaymentHandler] Voucher pipeline error:`, voucherErr);
+          }
+
+        // ── Release and increase lender capital ───────────────────────────
         try {
-          // Get full loan details
           const { data: fullLoan } = await supabase
             .from('loans')
-            .select(`
-              id,
-              amount,
-              total_interest,
-              total_amount,
-              lender_id,
-              business_lender_id
-            `)
+            .select('id, amount, total_interest, total_amount, lender_id, business_lender_id')
             .eq('id', loanId)
             .single();
 
           if (fullLoan && (fullLoan.business_lender_id || fullLoan.lender_id)) {
-            // Find the lender preference record
             const lenderFilter = fullLoan.business_lender_id
               ? `business_id.eq.${fullLoan.business_lender_id}`
               : `user_id.eq.${fullLoan.lender_id}`;
@@ -197,151 +251,85 @@ export async function onPaymentCompleted(params: PaymentCompletedParams): Promis
               .single();
 
             if (lenderPref) {
-              // Calculate new capital amounts
-              const principal = Number(fullLoan.amount) || 0;
-              const interest = Number(fullLoan.total_interest) || 0;
-              const totalReturn = principal + interest;
+              const principal    = Number(fullLoan.amount)         || 0;
+              const interest     = Number(fullLoan.total_interest) || 0;
+              const newReserved  = Math.max(0, (lenderPref.capital_reserved || 0) - principal);
+              const newPool      = (lenderPref.capital_pool || 0) + interest;
 
-              // Release reserved capital (reduce reserved by principal)
-              const newReserved = Math.max(0, (lenderPref.capital_reserved || 0) - principal);
-
-              // FIXED: Only add the INTEREST to the pool, not the principal
-              // The principal was already in the pool or reserved, we're just earning interest on top
-              const newPool = (lenderPref.capital_pool || 0) + interest;
-
-              // Update lender preference
               await supabase
                 .from('lender_preferences')
-                .update({
-                  capital_reserved: newReserved,
-                  capital_pool: newPool,
-                })
+                .update({ capital_reserved: newReserved, capital_pool: newPool })
                 .eq('id', lenderPref.id);
 
-              console.log(`[PaymentHandler] 💰 Capital updated for lender:`, {
-                lender_pref_id: lenderPref.id,
-                principal_returned: principal,
-                interest_earned: interest,
-                total_return: totalReturn,
-                old_pool: lenderPref.capital_pool,
-                new_pool: newPool,
-                old_reserved: lenderPref.capital_reserved,
-                new_reserved: newReserved,
-              });
+              log.info(`[PaymentHandler] 💰 Capital updated: interest +${interest}, reserved -${principal}`);
 
-              // Update lender stats
-              try {
-                if (fullLoan.business_lender_id) {
-                  const { data: businessStats } = await supabase
-                    .from('business_profiles')
-                    .select('total_loans_funded, total_amount_funded, total_interest_earned')
-                    .eq('id', fullLoan.business_lender_id)
-                    .single();
+              if (fullLoan.business_lender_id) {
+                const { data: bizStats } = await supabase
+                  .from('business_profiles')
+                  .select('total_interest_earned')
+                  .eq('id', fullLoan.business_lender_id)
+                  .single();
 
-                  await supabase
-                    .from('business_profiles')
-                    .update({
-                      total_interest_earned: (businessStats?.total_interest_earned || 0) + interest,
-                    })
-                    .eq('id', fullLoan.business_lender_id);
-                }
-              } catch (statsError) {
-                console.error('[PaymentHandler] Failed to update lender stats:', statsError);
+                await supabase
+                  .from('business_profiles')
+                  .update({ total_interest_earned: (bizStats?.total_interest_earned || 0) + interest })
+                  .eq('id', fullLoan.business_lender_id);
               }
-            } else {
-              console.warn(`[PaymentHandler] No lender preference found for completed loan ${loanId}`);
             }
           }
         } catch (capitalError) {
-          console.error(`[PaymentHandler] Failed to update lender capital:`, capitalError);
-          // Don't fail the payment if capital update fails
+          log.error(`[PaymentHandler] Failed to update lender capital:`, capitalError);
         }
 
-        // Update borrowing tier
+        // ── Update total_loans_completed on user ──────────────────────────
         try {
-          console.log(`[PaymentHandler] Checking tier upgrade for user ${borrowerId}...`);
-          
-          const { data: userStats } = await supabase
+          const { data: userCompletion } = await supabase
             .from('users')
-            .select('borrowing_tier, loans_at_current_tier, total_loans_completed')
+            .select('total_loans_completed')
             .eq('id', borrowerId)
             .single();
 
-          if (!userStats) {
-            console.error(`[PaymentHandler] ❌ Could not fetch user stats for tier update`);
-            throw new Error('User stats not found');
+          if (userCompletion !== null) {
+            await supabase
+              .from('users')
+              .update({
+                total_loans_completed: (userCompletion?.total_loans_completed || 0) + 1,
+              })
+              .eq('id', borrowerId);
+            log.info(`[PaymentHandler] ✅ total_loans_completed incremented`);
           }
-
-          const currentTier = userStats?.borrowing_tier || 1;
-          const loansAtTier = (userStats?.loans_at_current_tier || 0) + 1;
-          const totalCompleted = (userStats?.total_loans_completed || 0) + 1;
-
-          const tierUpdate: any = {
-            total_loans_completed: totalCompleted,
-          };
-
-          // Upgrade tier after 3 loans at current tier (up to tier 6)
-          if (loansAtTier >= 3 && currentTier < 6) {
-            tierUpdate.borrowing_tier = currentTier + 1;
-            tierUpdate.loans_at_current_tier = 0;
-            console.log(`[PaymentHandler] 🎖️ User ${borrowerId} upgraded from tier ${currentTier} to tier ${currentTier + 1}!`);
-          } else {
-            tierUpdate.loans_at_current_tier = loansAtTier;
-            console.log(`[PaymentHandler] User ${borrowerId} progress: ${loansAtTier}/3 loans at tier ${currentTier}`);
-          }
-
-          const { error: tierUpdateError } = await supabase
-            .from('users')
-            .update(tierUpdate)
-            .eq('id', borrowerId);
-
-          if (tierUpdateError) {
-            console.error(`[PaymentHandler] ❌ Failed to update borrowing tier:`, tierUpdateError);
-            throw tierUpdateError;
-          }
-
-          console.log(`[PaymentHandler] ✅ Borrowing tier updated:`, tierUpdate);
-        } catch (tierError: any) {
-          console.error(`[PaymentHandler] ❌ Borrowing tier update failed:`, tierError);
-          console.error(`[PaymentHandler] Tier error details:`, {
-            message: tierError.message,
-            code: tierError.code,
-            details: tierError.details,
-          });
-          // Don't fail the payment if tier update fails
+        } catch (completionErr) {
+          log.error(`[PaymentHandler] Failed to update total_loans_completed:`, completionErr);
         }
+        } // end if (!existingCompletionEvent)
       }
     }
 
-    // Get updated trust score
-    const scoreData = await trustService.getScore(borrowerId);
+    // ── 6. Get updated trust score ─────────────────────────────────────────
+    // If the loan just completed, force a full recalculate so the returned score
+    // reflects the completion bonus immediately (not a stale cached value).
+    const scoreData = loanCompleted
+      ? await trustService.recalculate(borrowerId)
+      : await trustService.getScore(borrowerId);
     if (scoreData) {
       newTrustScore = scoreData.score;
     }
 
-    return {
-      success: true,
-      trustScoreUpdated,
-      loanCompleted,
-      newTrustScore,
-    };
+    return { success: true, trustScoreUpdated, loanCompleted, newTrustScore };
 
-  } catch (error: any) {
-    console.error(`[PaymentHandler] Error processing payment:`, error);
-    
-    // Don't fail the payment if trust score update fails
+  } catch (error: unknown) {
+    log.error(`[PaymentHandler] Error processing payment:`, error);
     return {
       success: true, // Payment itself succeeded
       trustScoreUpdated: false,
       loanCompleted: false,
-      error: error.message,
+      error: (error as Error).message,
     };
   }
 }
 
 /**
  * Call this when a payment fails
- * Records the failure for trust score tracking
  */
 export async function onPaymentFailed(params: {
   supabase: SupabaseClient;
@@ -351,12 +339,10 @@ export async function onPaymentFailed(params: {
   reason?: string;
 }): Promise<void> {
   const { supabase, borrowerId, loanId, scheduleId, reason } = params;
-
-  console.log(`[PaymentHandler] Recording failed payment for loan ${loanId}`);
+  log.info(`[PaymentHandler] Recording failed payment for loan ${loanId}`);
 
   try {
     const trustService = new TrustScoreService(supabase);
-
     await trustService.recordEvent(borrowerId, {
       event_type: 'payment_failed',
       score_impact: -5,
@@ -365,10 +351,9 @@ export async function onPaymentFailed(params: {
       loan_id: loanId,
       payment_id: scheduleId,
     });
-
-    console.log(`[PaymentHandler] ✅ Failed payment recorded`);
+    log.info(`[PaymentHandler] ✅ Failed payment recorded`);
   } catch (error) {
-    console.error(`[PaymentHandler] Error recording failed payment:`, error);
+    log.error(`[PaymentHandler] Error recording failed payment:`, error);
   }
 }
 
@@ -383,26 +368,15 @@ export async function onPaymentMissed(params: {
   daysOverdue: number;
 }): Promise<void> {
   const { supabase, borrowerId, loanId, scheduleId, daysOverdue } = params;
-
-  console.log(`[PaymentHandler] Recording missed payment for loan ${loanId}, ${daysOverdue} days overdue`);
+  log.info(`[PaymentHandler] Recording missed payment for loan ${loanId}, ${daysOverdue} days overdue`);
 
   try {
     const trustService = new TrustScoreService(supabase);
 
-    // Penalty increases with days overdue
-    let scoreChange = -5;
-    let eventType = 'payment_late';
-
-    if (daysOverdue > 30) {
-      scoreChange = -15;
-      eventType = 'payment_missed';
-    } else if (daysOverdue > 14) {
-      scoreChange = -8;
-    } else if (daysOverdue > 7) {
-      scoreChange = -5;
-    } else {
-      scoreChange = -3;
-    }
+    let scoreChange = -3;
+    if (daysOverdue > 30)      scoreChange = -15;
+    else if (daysOverdue > 14) scoreChange = -8;
+    else if (daysOverdue > 7)  scoreChange = -5;
 
     await trustService.recordEvent(borrowerId, {
       event_type: daysOverdue > 30 ? 'payment_missed' : 'payment_late',
@@ -413,10 +387,8 @@ export async function onPaymentMissed(params: {
       payment_id: scheduleId,
       metadata: { days_overdue: daysOverdue },
     });
-
-
-    console.log(`[PaymentHandler] ✅ Missed payment recorded (${scoreChange} pts)`);
+    log.info(`[PaymentHandler] ✅ Missed payment recorded (${scoreChange} pts)`);
   } catch (error) {
-    console.error(`[PaymentHandler] Error recording missed payment:`, error);
+    log.error(`[PaymentHandler] Error recording missed payment:`, error);
   }
 }

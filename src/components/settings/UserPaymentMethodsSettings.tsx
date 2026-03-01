@@ -3,6 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Button, Badge, Input } from '@/components/ui';
 import { createClient } from '@/lib/supabase/client';
+import { clientLogger } from '@/lib/client-logger';
+
+const log = clientLogger('UserPaymentMethodsSettings');
 import {
   CreditCard,
   Smartphone,
@@ -101,7 +104,7 @@ export default function UserPaymentMethodsSettings({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'payment_providers' },
         () => {
-          console.log('[UserPaymentMethodsSettings] Provider changed, refreshing...');
+          log.debug('Provider changed, refreshing');
           fetchData();
         }
       )
@@ -109,7 +112,7 @@ export default function UserPaymentMethodsSettings({
         'postgres_changes',
         { event: '*', schema: 'public', table: 'user_payment_methods', filter: `user_id=eq.${userId}` },
         () => {
-          console.log('[UserPaymentMethodsSettings] User method changed, refreshing...');
+          log.debug('User method changed, refreshing');
           fetchData();
         }
       )
@@ -126,7 +129,7 @@ export default function UserPaymentMethodsSettings({
             updatedFields.zelle_phone !== undefined ||
             updatedFields.paypal_email !== undefined
           ) {
-            console.log('[UserPaymentMethodsSettings] User payment fields updated, refreshing...');
+            log.debug('User payment fields updated, refreshing');
             fetchData();
           }
         }
@@ -144,7 +147,7 @@ export default function UserPaymentMethodsSettings({
     const res = await fetch('/api/auth/user', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fullName: '', userType: 'individual' }),
+      body: JSON.stringify({ fullName: '' }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -165,7 +168,7 @@ export default function UserPaymentMethodsSettings({
         });
       } catch (migrationErr) {
         // Migration errors are non-fatal, continue loading
-        console.warn('Payment method migration skipped:', migrationErr);
+        log.warn('Payment method migration skipped', migrationErr);
       }
 
       // Fetch available providers for user's country (ONLY enabled ones)
@@ -211,7 +214,7 @@ export default function UserPaymentMethodsSettings({
       setUserMethods(filteredMethods);
 
       // For Zelle display: also fetch both contact fields from users table
-      if (filteredMethods.some((m: any) => m.payment_provider?.slug === 'zelle')) {
+      if (filteredMethods.some((m) => m.payment_provider?.slug === 'zelle')) {
         const { data: zelleUserData } = await supabase
           .from('users')
           .select('zelle_email, zelle_phone')
@@ -219,9 +222,9 @@ export default function UserPaymentMethodsSettings({
           .single();
         if (zelleUserData) setUserZelleInfo(zelleUserData);
       }
-    } catch (err: any) {
-      console.error('Error fetching payment methods:', err);
-      setError(err?.message || 'Failed to load payment methods');
+    } catch (err: unknown) {
+      log.error('Error fetching payment methods', err);
+      setError((err as any)?.message || 'Failed to load payment methods');
     } finally {
       setLoading(false);
     }
@@ -302,7 +305,7 @@ export default function UserPaymentMethodsSettings({
           zelle_phone: fields.phone.trim() || null,
         })
         .eq('id', userId);
-      if (legacyError) console.error('[Zelle] Legacy sync error:', legacyError);
+      if (legacyError) log.error('Zelle legacy sync error', legacyError);
 
       await fetchData();
       setEditingMethod(null);
@@ -311,9 +314,9 @@ export default function UserPaymentMethodsSettings({
       setShowAddNew(false);
       setSelectedProvider(null);
       onUpdate?.();
-    } catch (err: any) {
-      console.error('Error saving Zelle method:', err);
-      setError(err?.message || 'Failed to save Zelle');
+    } catch (err: unknown) {
+      log.error('Error saving Zelle method', err);
+      setError((err as any)?.message || 'Failed to save Zelle');
     } finally {
       setSaving(null);
     }
@@ -407,17 +410,17 @@ export default function UserPaymentMethodsSettings({
         }
 
         if (Object.keys(legacyUpdate).length > 0) {
-          console.log('[UserPaymentMethodsSettings] Updating legacy fields:', legacyUpdate);
+          log.debug('Updating legacy fields', legacyUpdate);
           const { error: legacyError } = await supabase
             .from('users')
             .update(legacyUpdate)
             .eq('id', userId);
 
           if (legacyError) {
-            console.error('[UserPaymentMethodsSettings] Error updating legacy fields:', legacyError);
+            log.error('Error updating legacy fields', legacyError);
             // Don't throw - this is non-critical
           } else {
-            console.log('[UserPaymentMethodsSettings] Legacy fields updated successfully');
+            log.debug('Legacy fields updated successfully');
           }
         }
       }
@@ -428,9 +431,9 @@ export default function UserPaymentMethodsSettings({
       setSelectedProvider(null);
       setNewIdentifier('');
       onUpdate?.();
-    } catch (err: any) {
-      console.error('Error saving payment method:', err);
-      setError(err?.message || 'Failed to save payment method');
+    } catch (err: unknown) {
+      log.error('Error saving payment method', err);
+      setError((err as any)?.message || 'Failed to save payment method');
     } finally {
       setSaving(null);
     }
@@ -467,23 +470,23 @@ export default function UserPaymentMethodsSettings({
         }
 
         if (Object.keys(legacyUpdate).length > 0) {
-          console.log('[UserPaymentMethodsSettings] Clearing legacy fields:', legacyUpdate);
+          log.debug('Clearing legacy fields', legacyUpdate);
           const { error: legacyError } = await supabase
             .from('users')
             .update(legacyUpdate)
             .eq('id', userId);
 
           if (legacyError) {
-            console.error('[UserPaymentMethodsSettings] Error clearing legacy fields:', legacyError);
+            log.error('Error clearing legacy fields', legacyError);
           }
         }
       }
 
       await fetchData();
       onUpdate?.();
-    } catch (err: any) {
-      console.error('Error removing payment method:', err);
-      setError(err?.message || 'Failed to remove payment method');
+    } catch (err: unknown) {
+      log.error('Error removing payment method', err);
+      setError((err as any)?.message || 'Failed to remove payment method');
     } finally {
       setSaving(null);
     }
@@ -517,16 +520,16 @@ export default function UserPaymentMethodsSettings({
             .eq('id', userId);
 
           if (legacyError) {
-            console.error('[UserPaymentMethodsSettings] Error updating preferred method:', legacyError);
+            log.error('Error updating preferred method', legacyError);
           }
         }
       }
 
       await fetchData();
       onUpdate?.();
-    } catch (err: any) {
-      console.error('Error setting default:', err);
-      setError(err?.message || 'Failed to set default payment method');
+    } catch (err: unknown) {
+      log.error('Error setting default method', err);
+      setError((err as any)?.message || 'Failed to set default payment method');
     } finally {
       setSaving(null);
     }

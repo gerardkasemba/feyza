@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useEffect, useState } from 'react';
 import { DEFAULT_SETTINGS } from '@/hooks/platformSettings';
@@ -131,7 +133,7 @@ export default function SettingsPage() {
         setSettings({ ...DEFAULT_SETTINGS, ...data.settings });
       }
     } catch (err) {
-      console.error('Error fetching settings:', err);
+      log.error('Error fetching settings:', err);
     }
     setLoading(false);
     setHasChanges(false);
@@ -141,7 +143,7 @@ export default function SettingsPage() {
     fetchSettings();
   }, []);
 
-  const handleChange = (key: string, value: any) => {
+  const handleChange = (key: string, value: unknown) => {
     setSettings(prev => ({ ...prev, [key]: value }));
     setSaved(false);
     setHasChanges(true);
@@ -165,9 +167,9 @@ export default function SettingsPage() {
       setSaved(true);
       setHasChanges(false);
       setTimeout(() => setSaved(false), 3000);
-    } catch (err: any) {
-      console.error('Error saving settings:', err);
-      alert(err.message || 'Failed to save settings. The platform_settings table may not exist. Please run the migration first.');
+    } catch (err: unknown) {
+      log.error('Error saving settings:', err);
+      alert((err as Error).message || 'Failed to save settings. The platform_settings table may not exist. Please run the migration first.');
     }
     setSaving(false);
   };

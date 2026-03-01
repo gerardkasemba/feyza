@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { logger } from '@/lib/logger';
+
+const log = logger('payment-providers');
 
 // GET: Public endpoint to check payment provider status
 // Used by fund page and other components to determine payment flow
@@ -14,7 +17,7 @@ export async function GET(request: NextRequest) {
       .order('display_order');
 
     if (error) {
-      console.error('[Payment Providers] Error fetching providers:', error);
+      log.error('[Payment Providers] Error fetching providers:', error);
       // Return safe defaults if table doesn't exist or error
       return NextResponse.json({
         providers: [],
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
       p.provider_type === 'manual'
     ) || true;
 
-    console.log('[Payment Providers] Status:', { 
+    log.info('[Payment Providers] Status:', { 
       dwollaEnabled, 
       autoPayEnabled, 
       dwolla: dwolla ? { is_enabled: dwolla.is_enabled, is_available_for_disbursement: dwolla.is_available_for_disbursement } : null 
@@ -64,8 +67,8 @@ export async function GET(request: NextRequest) {
         'Pragma': 'no-cache',
       }
     });
-  } catch (error: any) {
-    console.error('[Payment Providers] Error:', error);
+  } catch (error: unknown) {
+    log.error('[Payment Providers] Error:', error);
     // Return safe defaults on error
     return NextResponse.json({
       providers: [],

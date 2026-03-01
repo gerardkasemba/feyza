@@ -36,6 +36,8 @@ interface SearchResult {
 interface VouchRequestCardProps {
   className?: string;
   compact?: boolean;
+  /** User IDs the current user has already vouched for (hide Vouch button for these) */
+  alreadyVouchedUserIds?: string[];
 }
 
 /* ─────────────────────────────────────────────
@@ -65,7 +67,7 @@ function TierPill({ tier }: { tier: string | null }) {
    - less cramped
 ───────────────────────────────────────────── */
 
-function UserSearchSection({ onRequestSent }: { onRequestSent?: () => void }) {
+function UserSearchSection({ onRequestSent, alreadyVouchedUserIds = [] }: { onRequestSent?: () => void; alreadyVouchedUserIds?: string[] }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -181,6 +183,7 @@ function UserSearchSection({ onRequestSent }: { onRequestSent?: () => void }) {
         <div className="space-y-2">
           {results.map((u) => {
             const alreadySent = sentIds.includes(u.id);
+            const alreadyVouched = alreadyVouchedUserIds.includes(u.id);
 
             return (
               <div
@@ -226,6 +229,11 @@ function UserSearchSection({ onRequestSent }: { onRequestSent?: () => void }) {
                       <CheckCircle className="w-3.5 h-3.5" />
                       Sent
                     </span>
+                  ) : alreadyVouched ? (
+                    <span className="flex items-center gap-1 text-xs font-medium text-orange-600 dark:text-orange-400">
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      Already vouched
+                    </span>
                   ) : (
                     <>
                       <button
@@ -244,7 +252,7 @@ function UserSearchSection({ onRequestSent }: { onRequestSent?: () => void }) {
 
                       <VouchButton
                         targetUserId={u.id}
-                        targetName={u.full_name}
+                        targetName={u.full_name || u.username || 'this person'}
                         onVouchComplete={() => setSentIds((p) => [...p, u.id])}
                       />
                     </>
@@ -266,7 +274,7 @@ function UserSearchSection({ onRequestSent }: { onRequestSent?: () => void }) {
    - compact mode works
 ───────────────────────────────────────────── */
 
-export function VouchRequestCard({ className = '', compact = false }: VouchRequestCardProps) {
+export function VouchRequestCard({ className = '', compact = false, alreadyVouchedUserIds = [] }: VouchRequestCardProps) {
   const [expanded, setExpanded] = useState(!compact);
 
   const [email, setEmail] = useState('');
@@ -362,7 +370,7 @@ export function VouchRequestCard({ className = '', compact = false }: VouchReque
               <Sparkles className="w-4 h-4 text-amber-500" />
             </h3>
             <p className="text-sm text-neutral-500 dark:text-neutral-400">
-              Ask friends &amp; family to vouch for you
+              Vouches are people who back your reputation. Request vouches to improve your Trust Score and tier.
             </p>
           </div>
         </div>
@@ -394,7 +402,7 @@ export function VouchRequestCard({ className = '', compact = false }: VouchReque
               <Users className="w-4 h-4 text-primary-600 dark:text-primary-400" />
               <span className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Find someone on Feyza</span>
             </div>
-            <UserSearchSection />
+            <UserSearchSection alreadyVouchedUserIds={alreadyVouchedUserIds} />
           </div>
 
           {/* Divider */}

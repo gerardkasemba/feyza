@@ -14,7 +14,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet: Array<{ name: string; value: string; options?: any }>) {
+        setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
           response = NextResponse.next({
             request,
@@ -29,47 +29,43 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // OPTIMIZATION: Only get user for protected routes
-  // This avoids unnecessary auth checks on public pages
+  // Paths that require auth — redirect to signin if no session
   const protectedPaths = [
-    '/dashboard', '/loans', '/business', '/settings', 
-    '/notifications', '/admin', '/profile', '/lender', '/borrower'
+    '/dashboard', '/loans', '/business', '/settings',
+    '/notifications', '/admin', '/profile', '/lender', '/borrower',
   ]
-  
+  // Public paths where we still refresh session for logged-in users (e.g. /api/borrower/trust)
+  const sessionRefreshPaths = ['/apply', '/borrow']
+
   const authPaths = [
-    '/auth/signin', '/auth/signup', 
+    '/auth/signin', '/auth/signup',
     '/auth/forgot-password', '/auth/reset-password'
   ]
 
   const isProtectedPath = protectedPaths.some(path => pathname.startsWith(path))
+  const needsSessionRefresh = sessionRefreshPaths.some(path => pathname.startsWith(path))
   const isAuthPath = authPaths.some(path => pathname === path || pathname.startsWith(path))
 
-  // Skip auth check if not needed
-  if (!isProtectedPath && !isAuthPath) {
+  if (!isProtectedPath && !needsSessionRefresh && !isAuthPath) {
     return response
   }
 
   try {
-    // OPTIMIZATION: Use getSession instead of getUser for faster checks
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-    
+
     if (sessionError) {
       console.error('[Middleware] Session error:', sessionError.message)
-      
-      // Clear invalid cookies
       response.cookies.delete('sb-access-token')
       response.cookies.delete('sb-refresh-token')
-      
       if (isProtectedPath) {
         const url = new URL('/auth/signin', request.url)
         url.searchParams.set('redirect', pathname)
         return NextResponse.redirect(url)
       }
-      
       return response
     }
 
-    // Protected routes - redirect if not authenticated
+    // Only redirect to signin for truly protected paths (not /apply or /borrow — guest flow allowed)
     if (!session && isProtectedPath) {
       const url = new URL('/auth/signin', request.url)
       url.searchParams.set('redirect', pathname)

@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui';
 import { Navbar, Footer } from '@/components/layout';
-import GuestLoanRequestForm from '@/components/GuestLoanRequestForm';
 import {
   ArrowRight,
   Shield,
@@ -159,12 +158,18 @@ export default function HomePage() {
                     </div>
                     <div>
                       <p className="font-semibold text-white text-sm">Request a Loan</p>
-                      <p className="text-xs text-neutral-500">No account needed · No credit check</p>
+                      <p className="text-xs text-neutral-500">Create an account to get started — no credit check</p>
                     </div>
                   </div>
                 </div>
                 <div className="p-6">
-                  <GuestLoanRequestForm />
+                  <p className="text-neutral-600 dark:text-neutral-400 text-sm mb-4">Sign up to complete your loan request.</p>
+                  <Link href="/auth/signup">
+                    <Button size="lg" className="w-full bg-white text-primary-600 hover:bg-white/90 font-bold">
+                      Get Started — It&apos;s Free
+                      <ArrowRight className="w-4 h-4 ml-2 inline" />
+                    </Button>
+                  </Link>
                 </div>
               </div>
             </div>
@@ -586,7 +591,7 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Link href="/borrower/request">
+              <Link href="/loans/new">
                 <Button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white">
                   Invite a Lender <ArrowRight className="w-4 h-4 ml-1.5" />
                 </Button>

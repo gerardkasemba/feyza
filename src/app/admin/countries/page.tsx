@@ -1,4 +1,6 @@
 'use client';
+import { clientLogger } from '@/lib/client-logger';
+const log = clientLogger('admin_page');
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -122,7 +124,7 @@ export default function AdminCountriesPage() {
           setCountryPaymentMethods(grouped);
         }
       } catch (error) {
-        console.error('Failed to fetch data:', error);
+        log.error('Failed to fetch data:', error);
       }
 
       setLoading(false);
@@ -151,8 +153,8 @@ export default function AdminCountriesPage() {
         setMessage({ type: 'error', text: data.error || 'Failed to save' });
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-    } catch (error: any) {
-      setMessage({ type: 'error', text: error.message || 'Failed to save' });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: (error as Error).message || 'Failed to save' });
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
@@ -271,8 +273,8 @@ export default function AdminCountriesPage() {
           [countryCode]: [...(prev[countryCode] || []), data]
         }));
       }
-    } catch (error: any) {
-      setMessage({ type: 'error', text: `Failed to update payment method: ${error.message}` });
+    } catch (error: unknown) {
+      setMessage({ type: 'error', text: `Failed to update payment method: ${(error as Error).message}` });
     } finally {
       setSavingPaymentMethods(null);
     }

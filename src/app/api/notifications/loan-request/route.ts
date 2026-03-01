@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('notifications-loan-request');
 
 export async function POST(request: NextRequest) {
   try {
@@ -136,7 +139,7 @@ export async function POST(request: NextRequest) {
     </html>
     `;
 
-    console.log('Sending loan request notification to:', toEmail);
+    log.info('Sending loan request notification to:', toEmail);
     
     const result = await sendEmail({
       to: toEmail,
@@ -145,16 +148,16 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.success) {
-      console.error('Failed to send loan request email:', result.error);
+      log.error('Failed to send loan request email:', result.error);
       return NextResponse.json({ error: result.error }, { status: 500 });
     }
 
-    console.log('Loan request email sent successfully to:', toEmail);
-    return NextResponse.json({ success: true, messageId: result.data?.id });
-  } catch (error: any) {
-    console.error('Error sending notification:', error);
+    log.info('Loan request email sent successfully to:', toEmail);
+    return NextResponse.json({ success: true, messageId: (result.data as any)?.id });
+  } catch (error: unknown) {
+    log.error('Error sending notification:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to send notification' },
+      { error: (error as Error).message || 'Failed to send notification' },
       { status: 500 }
     );
   }

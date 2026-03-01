@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import type { SupabaseServiceClient } from '@/lib/supabase/server';
 import { sendEmail, getPaymentReminderEmail } from '@/lib/email';
 import { format, addDays } from 'date-fns';
+import { logger } from '@/lib/logger';
+
+const log = logger('payment-reminders');
 
 // Next.js 16 route configuration for cron jobs
 export const dynamic = 'force-dynamic';
@@ -25,7 +29,7 @@ export async function GET(request: NextRequest) {
     // Get date 3 days from now
     const reminderDate = addDays(new Date(), 3).toISOString().split('T')[0];
     
-    console.log(`[Payment Reminders] Checking for payments due on ${reminderDate}`);
+    log.info(`[Payment Reminders] Checking for payments due on ${reminderDate}`);
 
     // Find all unpaid payments due in 3 days
     const { data: upcomingPayments, error: fetchError } = await supabase
@@ -38,12 +42,12 @@ export async function GET(request: NextRequest) {
       .eq('due_date', reminderDate);
 
     if (fetchError) {
-      console.error('[Payment Reminders] Error fetching payments:', fetchError);
+      log.error('[Payment Reminders] Error fetching payments:', fetchError);
       throw fetchError;
     }
 
     if (!upcomingPayments || upcomingPayments.length === 0) {
-      console.log('[Payment Reminders] No payments due in 3 days');
+      log.info('[Payment Reminders] No payments due in 3 days');
       return NextResponse.json({ 
         success: true, 
         message: 'No reminders to send',
@@ -51,7 +55,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    console.log(`[Payment Reminders] Found ${upcomingPayments.length} upcoming payments`);
+    log.info(`[Payment Reminders] Found ${upcomingPayments.length} upcoming payments`);
 
     let sentCount = 0;
     let errorCount = 0;
@@ -62,7 +66,7 @@ export async function GET(request: NextRequest) {
 
         // Skip if loan is not active
         if (loan?.status !== 'active') {
-          console.log(`[Payment Reminders] Skipping payment ${payment.id} - loan not active`);
+          log.info(`[Payment Reminders] Skipping payment ${payment.id} - loan not active`);
           continue;
         }
 
@@ -80,7 +84,7 @@ export async function GET(request: NextRequest) {
         }
 
         if (!borrowerEmail) {
-          console.log(`[Payment Reminders] No borrower email for loan ${loan.id}`);
+          log.info(`[Payment Reminders] No borrower email for loan ${loan.id}`);
           continue;
         }
 
@@ -233,16 +237,16 @@ export async function GET(request: NextRequest) {
           `,
         });
 
-        console.log(`[Payment Reminders] Sent reminder to ${borrowerEmail} for payment ${payment.id}`);
+        log.info(`[Payment Reminders] Sent reminder to ${borrowerEmail} for payment ${payment.id}`);
         sentCount++;
 
-      } catch (err: any) {
-        console.error(`[Payment Reminders] Error sending reminder for payment ${payment.id}:`, err);
+      } catch (err: unknown) {
+        log.error(`[Payment Reminders] Error sending reminder for payment ${payment.id}:`, err);
         errorCount++;
       }
     }
 
-    console.log(`[Payment Reminders] Complete. Sent: ${sentCount}, Errors: ${errorCount}`);
+    log.info(`[Payment Reminders] Complete. Sent: ${sentCount}, Errors: ${errorCount}`);
 
     return NextResponse.json({
       success: true,
@@ -251,17 +255,17 @@ export async function GET(request: NextRequest) {
       errors: errorCount,
     });
 
-  } catch (error: any) {
-    console.error('[Payment Reminders] Fatal error:', error);
+  } catch (error: unknown) {
+    log.error('[Payment Reminders] Fatal error:', error);
     return NextResponse.json(
-      { error: error.message || 'Payment reminders failed' },
+      { error: (error as Error).message || 'Payment reminders failed' },
       { status: 500 }
     );
   }
 }
 
 // Helper function to get payment number
-async function getPaymentNumber(supabase: any, loanId: string, paymentId: string): Promise<number> {
+async function getPaymentNumber(supabase: SupabaseServiceClient, loanId: string, paymentId: string): Promise<number> {
   const { data: allPayments } = await supabase
     .from('payment_schedule')
     .select('id')
@@ -270,7 +274,7 @@ async function getPaymentNumber(supabase: any, loanId: string, paymentId: string
   
   if (!allPayments) return 1;
   
-  const index = allPayments.findIndex((p: any) => p.id === paymentId);
+  const index = allPayments.findIndex((p) => p.id === paymentId);
   return index >= 0 ? index + 1 : 1;
 }
 
@@ -417,10 +421,10 @@ export async function POST(request: NextRequest) {
       due_date: payment.due_date,
     });
 
-  } catch (error: any) {
-    console.error('Manual reminder error:', error);
+  } catch (error: unknown) {
+    log.error('Manual reminder error:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to send reminder' },
+      { error: (error as Error).message || 'Failed to send reminder' },
       { status: 500 }
     );
   }

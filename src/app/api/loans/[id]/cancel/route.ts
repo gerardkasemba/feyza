@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { sendEmail, getLoanCancelledEmail } from '@/lib/email';
+import { logger } from '@/lib/logger';
+
+const log = logger('loans-id-cancel');
 
 export async function POST(
   request: NextRequest,
@@ -59,7 +62,7 @@ export async function POST(
       .eq('id', loanId);
 
     if (updateError) {
-      console.error('Error cancelling loan:', updateError);
+      log.error('Error cancelling loan:', updateError);
       return NextResponse.json({ error: 'Failed to cancel loan' }, { status: 500 });
     }
 
@@ -89,12 +92,12 @@ export async function POST(
             .update({ capital_reserved: newReserved })
             .eq('id', lenderPref.id);
 
-          console.log(`[Cancel] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
+          log.info(`[Cancel] Released ${loan.amount} capital from lender preference ${lenderPref.id}. New reserved: ${newReserved}`);
         } else {
-          console.log(`[Cancel] No lender preference found for filter: ${lenderFilter}`);
+          log.info(`[Cancel] No lender preference found for filter: ${lenderFilter}`);
         }
       } catch (releaseError) {
-        console.error('[Cancel] Error releasing capital:', releaseError);
+        log.error('[Cancel] Error releasing capital:', releaseError);
         // Don't fail the cancellation if capital release fails
       }
     }
@@ -110,7 +113,7 @@ export async function POST(
           message: `${loan.borrower?.full_name || 'The borrower'} has cancelled their loan request for ${loan.currency} ${loan.amount}.`,
         });
       } catch (notifError) {
-        console.error('Error creating notification:', notifError);
+        log.error('Error creating notification:', notifError);
       }
     }
 
@@ -282,13 +285,13 @@ export async function POST(
           `,
         });
       } catch (emailError) {
-        console.error('Error sending cancellation email:', emailError);
+        log.error('Error sending cancellation email:', emailError);
       }
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error cancelling loan:', error);
+    log.error('Error cancelling loan:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

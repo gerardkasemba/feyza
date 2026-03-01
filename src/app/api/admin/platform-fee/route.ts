@@ -7,6 +7,9 @@ import {
   clearFeeSettingsCache,
   PlatformFeeSettings 
 } from '@/lib/platformFee';
+import { logger } from '@/lib/logger';
+
+const log = logger('admin-platform-fee');
 
 // GET: Get current platform fee settings (public)
 export async function GET(request: NextRequest) {
@@ -31,10 +34,10 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.json({ settings });
-  } catch (error: any) {
-    console.error('Error getting platform fee settings:', error);
+  } catch (error: unknown) {
+    log.error('Error getting platform fee settings:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to get settings' },
+      { error: (error as Error).message || 'Failed to get settings' },
       { status: 500 }
     );
   }
@@ -107,10 +110,10 @@ export async function POST(request: NextRequest) {
       settings: newSettings,
       message: 'Platform fee settings updated successfully',
     });
-  } catch (error: any) {
-    console.error('Error updating platform fee settings:', error);
+  } catch (error: unknown) {
+    log.error('Error updating platform fee settings:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to update settings' },
+      { error: (error as Error).message || 'Failed to update settings' },
       { status: 500 }
     );
   }
